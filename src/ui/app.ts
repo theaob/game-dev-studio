@@ -1,5 +1,6 @@
 import { availablePlatforms, createGame, doResearch, fire, hire, randomTitle, releaseGame, setPhaseFocus, startContract, startGame, tick, train, upgradeOffice, validateGame } from '../core/sim';
 import { normalizeFocus } from '../core/scoring';
+import { sequelName } from '../core/sequels';
 import type { GameSpec, GameState, GenreId, MarketingId, NoticeKind, SimEvent, SizeId } from '../core/types';
 import { clearSave, loadGame, saveGame } from '../save';
 import { OfficeScene } from './office';
@@ -522,6 +523,23 @@ export class App {
       case 'random-name':
         if (sheet?.kind === 'newGame') {
           sheet.draft.name = randomTitle();
+          this.renderSheet();
+        }
+        return;
+      case 'pick-sequel':
+        if (sheet?.kind === 'newGame') {
+          const d = sheet.draft;
+          const original = arg === 'none' ? undefined : s.released.find((g) => g.id === Number(arg));
+          if (original) {
+            d.sequelOf = original.id;
+            d.topic = original.topic;
+            d.genre = original.genre;
+            d.name = sequelName(original);
+          } else if (d.sequelOf !== undefined) {
+            d.sequelOf = undefined;
+            d.name = randomTitle();
+          }
+          sheet.error = undefined;
           this.renderSheet();
         }
         return;

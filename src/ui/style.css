@@ -915,6 +915,19 @@ nav.tabs .dot {
   margin-top: 10px;
 }
 
+/* ---------- Sequels ---------- */
+
+.sequel-card {
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: linear-gradient(90deg, #2e2552, var(--card));
+  border-left: 4px solid var(--accent);
+}
+
+.chip .tag {
+  margin-left: 2px;
+}
+
 /* ---------- Reception preview ---------- */
 
 .reception {

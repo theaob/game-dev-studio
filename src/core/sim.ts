@@ -22,6 +22,7 @@ import {
   topicById,
 } from './data';
 import { int, pick, random, range } from './rng';
+import { hasSequel, sequelSalesMult, seriesNumber } from './sequels';
 import { average, clamp, evaluate, normalizeFocus, rollReviews, scoreFactor } from './scoring';
 import { START_YEAR, TOTAL_WEEKS, WEEKS_PER_MONTH, WEEKS_PER_YEAR, yearFraction, yearOf } from './time';
 import type {
@@ -170,6 +171,12 @@ export function validateGame(state: GameState, spec: GameSpec): string | null {
   if (!platform || !isPlatformAvailable(platform, yearFraction(state.week))) return 'Platform not available.';
   if (!availableSizes(state).some((s) => s.id === spec.size)) return 'Game size not researched.';
   if (!availableMarketing(state).some((m) => m.id === spec.marketing)) return 'Marketing not available.';
+  if (spec.sequelOf !== undefined) {
+    const original = state.released.find((g) => g.id === spec.sequelOf);
+    if (!original) return 'The original game could not be found.';
+    if (hasSequel(state, original.id)) return `${original.name} already has a sequel.`;
+    if (original.topic !== spec.topic || original.genre !== spec.genre) return "A sequel keeps the original's topic and genre.";
+  }
   const cost = gameCost(state, spec).total;
   if (cost > state.cash) return `You need $${cost.toLocaleString('en-US')} to start this project.`;
   return null;
@@ -329,9 +336,12 @@ export function releaseGame(state: GameState): ReleaseReport | string {
 
   const users = platformUsers(platform, year);
   const sf = scoreFactor(score);
+  const original = p.sequelOf !== undefined ? state.released.find((g) => g.id === p.sequelOf) : undefined;
+  // A sequel sells to the original's fans (or suffers from its reputation).
+  const sequelMult = original ? sequelSalesMult(original) : 1;
   const audience = (users * 1e6 * 0.0008 + 3000) * sf * platformGenreFit(platform, p.genre) * size.unitMult * market.salesMult;
   const fanBuyers = state.fans * 0.2 * (score / 10) * Math.sqrt(size.unitMult);
-  const targetUnits = Math.round(audience * range(state, 0.85, 1.15) + fanBuyers);
+  const targetUnits = Math.round((audience * range(state, 0.85, 1.15) + fanBuyers) * sequelMult);
   const unitPrice = size.price * platform.priceMult * (1 + 0.025 * years);
 
   const game: ReleasedGame = {
@@ -357,6 +367,8 @@ export function releaseGame(state: GameState): ReleaseReport | string {
     fansGained: 0,
     unitPrice,
     cost: p.cost,
+    sequelOf: original?.id,
+    series: original ? seriesNumber(original) + 1 : 1,
   };
 
   // Learning: knowledge about combos, area importance and balance.
@@ -393,7 +405,17 @@ export function releaseGame(state: GameState): ReleaseReport | string {
   if (ev.align >= 0.7) insights.push({ text: 'Your focus during development was spot on.', kind: 'good' });
   else if (ev.align < 0.4) insights.push({ text: 'The team spent time on the wrong things for this genre.', kind: 'bad' });
   if (ev.bugRatio > 0.06) insights.push({ text: 'Reviewers complained about bugs. Polish longer next time.', kind: 'bad' });
-  if (ev.repeatMult < 1) insights.push({ text: 'Players feel they have seen this from you recently.', kind: 'bad' });
+  if (original) {
+    const pct = Math.round((sequelMult - 1) * 100);
+    if (pct > 0) insights.push({ text: `Fans of ${original.name} lined up for the sequel: +${pct}% sales.`, kind: 'good' });
+    else if (pct < 0) insights.push({ text: `${original.name}'s reputation held the sequel back: ${pct}% sales.`, kind: 'bad' });
+    if (ev.repeatMult < 1) insights.push({ text: `It came out too soon after ${original.name}. Give a series time to breathe.`, kind: 'bad' });
+    if (score >= original.score + 0.5) insights.push({ text: `Reviewers say it's even better than ${original.name}!`, kind: 'good' });
+    else if (score <= original.score - 0.5) insights.push({ text: `Fans felt it didn't live up to ${original.name}.`, kind: 'bad' });
+    else insights.push({ text: `A worthy follow-up to ${original.name}.`, kind: 'info' });
+  } else if (ev.repeatMult < 1) {
+    insights.push({ text: 'Players feel they have seen this from you recently.', kind: 'bad' });
+  }
   if (ev.pointsRatio < 0.9 && state.released.length > 0) insights.push({ text: 'Fans expected a bigger step up from your previous work.', kind: 'bad' });
   if (ev.staffMult < 1) insights.push({ text: `A ${size.name.toLowerCase()} game really needs a team of ${size.minStaff}+.`, kind: 'bad' });
   const pFit = platformGenreFit(platform, p.genre);

@@ -1,5 +1,6 @@
 import { genreById, platformById, platformGenreFit, sizeById, topicFit } from './data';
 import { gaussian, type RngHolder } from './rng';
+import { sequelQualityMult } from './sequels';
 import { yearFraction, START_YEAR } from './time';
 import type { GameProject, GameState } from './types';
 
@@ -73,7 +74,9 @@ export function evaluate(state: GameState, project: GameProject): Evaluation {
   const bugRatio = total > 0 ? project.bugs / total : 0;
   const bugMult = clamp(1 - bugRatio * 2.2, 0.55, 1);
 
-  const repeatMult = repeatMultiplier(state.released, project.topic, project.genre);
+  // Sequels are meant to repeat the combination; only rushing one out hurts.
+  const original = project.sequelOf !== undefined ? state.released.find((g) => g.id === project.sequelOf) : undefined;
+  const repeatMult = original ? sequelQualityMult(state.week, original) : repeatMultiplier(state.released, project.topic, project.genre);
 
   const staffMult = state.staff.length < size.minStaff ? 0.9 - 0.05 * (size.minStaff - state.staff.length) : 1;
   const platformMult = Math.sqrt(platformGenreFit(platformById(project.platform), project.genre));

@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { GENRES, PLATFORMS, TOPICS, platformUsers } from './data';
 import { playThrough } from './bot';
-import { benchmark, normalizeFocus, phaseAlignment, repeatMultiplier } from './scoring';
+import { benchmark, evaluate, normalizeFocus, phaseAlignment, repeatMultiplier } from './scoring';
+import { SEQUEL_TOO_SOON_MULT, sequelCandidates, sequelName, sequelSalesMult } from './sequels';
 import {
   createGame,
   doResearch,
@@ -15,7 +16,7 @@ import {
   validateGame,
 } from './sim';
 import { TOTAL_WEEKS, formatDate } from './time';
-import type { GameSpec } from './types';
+import type { GameProject, GameSpec } from './types';
 
 const spec: GameSpec = { name: 'Dragon Quest', topic: 'fantasy', genre: 'rpg', platform: 'pc', size: 'small', marketing: 'none' };
 
@@ -199,5 +200,65 @@ describe('whole-number bugs', () => {
     expect(repeatMultiplier([g('fantasy', 'rpg'), g('space', 'action')], 'fantasy', 'rpg')).toBe(0.85);
     expect(repeatMultiplier([g('space', 'rpg')], 'fantasy', 'rpg')).toBe(0.95);
     expect(repeatMultiplier([g('fantasy', 'rpg'), g('a', 'b'), g('c', 'd'), g('e', 'f')], 'fantasy', 'rpg')).toBe(1);
+  });
+});
+
+describe('sequels', () => {
+  /** Makes and releases one game so it can get a sequel. */
+  const releaseOne = (s: ReturnType<typeof createGame>, game: GameSpec) => {
+    expect(startGame(s, game, [10, 30, 60])).toBeNull();
+    for (let i = 0; i < 200 && s.activity; i++) {
+      const p = s.activity;
+      if (p.kind === 'game' && p.awaitingFocus) setPhaseFocus(s, [10, 30, 60]);
+      if (p.kind === 'game' && p.phase >= 3) {
+        const r = releaseGame(s);
+        if (typeof r === 'string') throw new Error(r);
+        return r;
+      }
+      tick(s);
+    }
+    throw new Error('game never finished');
+  };
+
+  it('names sequels and lists only the latest entry of each series', () => {
+    const s = createGame('Seq', 3);
+    const first = releaseOne(s, spec).game;
+    expect(sequelName(first)).toBe('Dragon Quest 2');
+    expect(sequelCandidates(s).map((g) => g.id)).toEqual([first.id]);
+    const second = releaseOne(s, { ...spec, name: sequelName(first), sequelOf: first.id }).game;
+    expect(second.series).toBe(2);
+    expect(second.sequelOf).toBe(first.id);
+    expect(sequelName(second)).toBe('Dragon Quest 3');
+    expect(sequelCandidates(s).map((g) => g.id)).toEqual([second.id]);
+  });
+
+  it('keeps topic and genre, and allows only one sequel per game', () => {
+    const s = createGame('Seq', 4);
+    const first = releaseOne(s, spec).game;
+    expect(validateGame(s, { ...spec, topic: 'scifi', sequelOf: first.id })).toMatch(/topic and genre/);
+    releaseOne(s, { ...spec, name: 'DQ2', sequelOf: first.id });
+    expect(validateGame(s, { ...spec, name: 'DQ2b', sequelOf: first.id })).toMatch(/already has a sequel/);
+  });
+
+  it('sells to the original’s fans and tires out long series', () => {
+    const g = (score: number, series = 1) => ({ score, series }) as Parameters<typeof sequelSalesMult>[0];
+    expect(sequelSalesMult(g(9))).toBeCloseTo(1.45);
+    expect(sequelSalesMult(g(7))).toBeCloseTo(1.24);
+    expect(sequelSalesMult(g(5))).toBe(1);
+    expect(sequelSalesMult(g(3))).toBeLessThan(1);
+    expect(sequelSalesMult(g(9, 4))).toBeLessThan(sequelSalesMult(g(9, 2)));
+  });
+
+  it('skips the repeat penalty unless the sequel is rushed', () => {
+    const s = createGame('Seq', 6);
+    const first = releaseOne(s, spec).game;
+    // Straight after the original: same combo as a new game is a repeat, as a sequel it's "too soon".
+    expect(startGame(s, { ...spec, name: 'DQ2', sequelOf: first.id }, [10, 30, 60])).toBeNull();
+    expect(evaluate(s, s.activity as GameProject).repeatMult).toBe(SEQUEL_TOO_SOON_MULT);
+    // A year later, a sequel carries no penalty while a non-sequel repeat still does.
+    s.week = first.releaseWeek + 60;
+    expect(evaluate(s, s.activity as GameProject).repeatMult).toBe(1);
+    (s.activity as GameProject).sequelOf = undefined;
+    expect(evaluate(s, s.activity as GameProject).repeatMult).toBe(0.85);
   });
 });

@@ -22,6 +22,8 @@ export interface GameSpec {
   platform: string;
   size: SizeId;
   marketing: MarketingId;
+  /** Id of the released game this is a sequel to. */
+  sequelOf?: number;
 }
 
 export interface GameProject extends GameSpec {
@@ -80,6 +82,8 @@ export interface ReleasedGame extends GameSpec {
   fansGained: number;
   unitPrice: number;
   cost: number;
+  /** Part number in its series: 1 for an original, 2 for its sequel, and so on. */
+  series?: number;
 }
 
 export interface Knowledge {

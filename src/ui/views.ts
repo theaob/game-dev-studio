@@ -126,7 +126,7 @@ function renderActivity(state: GameState): string {
       <div class="big-emoji" style="font-size:40px;margin:0">${topic.icon}</div>
       <div class="grow">
         <div class="card-title">${esc(a.name)}</div>
-        <div class="sub">${topic.name} ${genre.name} · ${platform.name} · ${sizeById(a.size).name}</div>
+        <div class="sub">${topic.name} ${genre.name} · ${platform.name} · ${sizeById(a.size).name}${a.sequelOf !== undefined ? ' · Sequel' : ''}</div>
       </div>
     </div>
     <div class="phases">
@@ -163,7 +163,7 @@ function gameRow(g: ReleasedGame, detail: string): string {
   <button class="list-item" data-action="game-detail" data-arg="${g.id}">
     <div class="score ${scoreClass(g.score)}">${g.score.toFixed(1)}</div>
     <div class="grow">
-      <div class="name">${esc(g.name)}</div>
+      <div class="name">${esc(g.name)}${(g.series ?? 1) > 1 ? ` <span class="tag">Part ${g.series}</span>` : ''}</div>
       <div class="sub">${topicById(g.topic).name} ${genreById(g.genre).name} · ${platformById(g.platform).name}</div>
       <div class="sub">${detail}</div>
     </div>
