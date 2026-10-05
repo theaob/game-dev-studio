@@ -3,8 +3,11 @@ import { normalizeFocus } from '../core/scoring';
 import type { GameSpec, GameState, GenreId, MarketingId, NoticeKind, SimEvent, SizeId } from '../core/types';
 import { clearSave, loadGame, saveGame } from '../save';
 import { OfficeScene } from './office';
+import { money, num } from './format';
 import { focusLean, renderSheet, type Sheet } from './sheets';
 import { SPEEDS, renderGames, renderNav, renderNews, renderResearch, renderStaff, renderStudio, renderTopbar, type Tab } from './views';
+
+type StatKey = 'cash' | 'fans' | 'rp';
 
 /** Real-time milliseconds per in-game week at 1x speed. */
 const WEEK_MS = 1500;
@@ -22,16 +25,20 @@ export class App {
   private last = 0;
   private reviewTimer = 0;
   private html: Record<string, string> = {};
-  private els: Record<'top' | 'scene' | 'main' | 'nav' | 'sheet' | 'fx' | 'toasts', HTMLElement>;
+  private els: Record<'top' | 'scroll' | 'scene' | 'main' | 'nav' | 'sheet' | 'fx' | 'toasts', HTMLElement>;
   private office = new OfficeScene();
+  /** Values currently shown in the top bar; they glide towards the real ones. */
+  private shownStats: Record<StatKey, number> | null = null;
+  private lastStats: Record<StatKey, number> | null = null;
+  private reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
   /** Identifies the newest notice the player has seen on the News tab. */
   private newsSeen = '';
   private lastDraw = 0;
 
   constructor(root: HTMLElement) {
-    root.innerHTML = `<div id="top"></div><div id="scene" class="scene"></div><main id="main"></main><div id="nav"></div><div id="sheet-root"></div><div id="fx"></div><div class="toasts" id="toasts"></div>`;
+    root.innerHTML = `<div id="top"></div><div id="scroll" class="scroll"><div id="scene" class="scene"></div><main id="main"></main></div><div id="nav"></div><div id="sheet-root"></div><div id="fx"></div><div class="toasts" id="toasts"></div>`;
     const $ = (id: string) => root.querySelector<HTMLElement>(`#${id}`)!;
-    this.els = { top: $('top'), scene: $('scene'), main: $('main'), nav: $('nav'), sheet: $('sheet-root'), fx: $('fx'), toasts: $('toasts') };
+    this.els = { top: $('top'), scroll: $('scroll'), scene: $('scene'), main: $('main'), nav: $('nav'), sheet: $('sheet-root'), fx: $('fx'), toasts: $('toasts') };
 
     this.els.scene.appendChild(this.office.el);
     root.addEventListener('click', (e) => this.onClick(e));
@@ -66,6 +73,7 @@ export class App {
         this.step();
       }
     }
+    this.updateStats(dt);
     // The office animates at ~30fps while visible.
     if (s && this.tab === 'studio' && !document.hidden && t - this.lastDraw > 32) {
       this.lastDraw = t;
@@ -121,6 +129,86 @@ export class App {
     }
   }
 
+  /**
+   * Cash, fans and research glide to their new values and flash green or red
+   * when they change. Only the text is touched, so taps on the top bar are never lost.
+   */
+  private updateStats(dtMs: number) {
+    const s = this.state;
+    if (!s) {
+      this.shownStats = this.lastStats = null;
+      return;
+    }
+    const target: Record<StatKey, number> = { cash: s.cash, fans: s.fans, rp: Math.floor(s.rp) };
+    const shown = (this.shownStats ??= { ...target });
+    const last = (this.lastStats ??= { ...target });
+    for (const key of ['cash', 'fans', 'rp'] as StatKey[]) {
+      const el = this.els.top.querySelector<HTMLElement>(`[data-stat="${key}"]`);
+      if (!el) continue;
+      const diff = target[key] - shown[key];
+      if (this.reducedMotion || Math.abs(diff) < 1) shown[key] = target[key];
+      else shown[key] += diff * Math.min(1, (dtMs / 1000) * 7);
+      const change = target[key] - last[key];
+      if (Math.abs(change) >= (key === 'cash' ? 500 : 1)) {
+        el.classList.remove('up', 'down');
+        void el.offsetWidth; // restart the flash animation
+        el.classList.add(change > 0 ? 'up' : 'down');
+        last[key] = target[key];
+      }
+      const v = shown[key];
+      const text = key === 'cash' ? money(v) : key === 'fans' ? num(v) : `${Math.floor(v)} RP`;
+      const b = el.querySelector('b')!;
+      if (b.textContent !== text) b.textContent = text;
+      if (key === 'cash') el.classList.toggle('neg', target.cash < 0);
+    }
+  }
+
+  /** Slide freshly shown content in. */
+  private animateIn(el: HTMLElement) {
+    if (this.reducedMotion) return;
+    el.classList.remove('enter');
+    void el.offsetWidth;
+    el.classList.add('enter');
+  }
+
+  /** After the last review lands: count the average up, and throw confetti for a hit. */
+  private onReviewsShown(score: number) {
+    const el = this.els.sheet.querySelector<HTMLElement>('[data-countup]');
+    if (el && !this.reducedMotion && !el.dataset.done) {
+      el.dataset.done = '1';
+      const end = Number(el.dataset.countup);
+      const start = performance.now();
+      const stepFn = (now: number) => {
+        const p = Math.min(1, (now - start) / 800);
+        const eased = 1 - Math.pow(1 - p, 3);
+        el.textContent = (end * eased).toFixed(1);
+        if (p < 1) requestAnimationFrame(stepFn);
+      };
+      requestAnimationFrame(stepFn);
+    }
+    if (score >= 8) this.confetti();
+  }
+
+  private confetti() {
+    if (this.reducedMotion) return;
+    const layer = document.createElement('div');
+    layer.className = 'confetti';
+    const colors = ['#7c5cff', '#ff5c9a', '#3ddc97', '#ffad3b', '#4fb3ff', '#ffd25c'];
+    for (let i = 0; i < 90; i++) {
+      const p = document.createElement('i');
+      p.style.left = `${Math.random() * 100}%`;
+      p.style.background = colors[i % colors.length];
+      p.style.setProperty('--drift', `${(Math.random() - 0.5) * 160}px`);
+      p.style.setProperty('--spin', `${(Math.random() - 0.5) * 1440}deg`);
+      p.style.animationDuration = `${1.8 + Math.random() * 1.4}s`;
+      p.style.animationDelay = `${Math.random() * 0.4}s`;
+      if (i % 3 === 0) p.style.borderRadius = '50%';
+      layer.appendChild(p);
+    }
+    document.body.appendChild(layer);
+    window.setTimeout(() => layer.remove(), 4000);
+  }
+
   private noticeKey(i: number): string {
     const n = this.state?.notices[i];
     return n ? `${n.week}|${n.text}` : '';
@@ -155,6 +243,7 @@ export class App {
     const s = this.state;
     if (s) {
       this.set('top', renderTopbar(s, this.speed));
+      this.updateStats(0);
       this.els.scene.hidden = this.tab !== 'studio';
       if (this.tab === 'news') this.markNewsRead();
       const view = { studio: renderStudio, games: renderGames, research: renderResearch, staff: renderStaff, news: renderNews }[this.tab];
@@ -313,9 +402,12 @@ export class App {
         this.render();
         return;
       case 'tab':
-        this.tab = arg as Tab;
-        window.scrollTo(0, 0);
-        this.render();
+        if (this.tab !== arg) {
+          this.tab = arg as Tab;
+          this.els.scroll.scrollTop = 0;
+          this.render();
+          this.animateIn(this.els.main);
+        }
         return;
       case 'menu':
         this.open({ kind: 'menu' });
@@ -387,7 +479,10 @@ export class App {
           this.sheet.shown++;
           this.vibrate(10);
           this.renderSheet();
-          if (this.sheet.shown >= 4) window.clearInterval(this.reviewTimer);
+          if (this.sheet.shown >= 4) {
+            window.clearInterval(this.reviewTimer);
+            this.onReviewsShown(this.sheet.report.game.score);
+          }
         }, 650);
         return;
       }
@@ -396,6 +491,7 @@ export class App {
           window.clearInterval(this.reviewTimer);
           sheet.shown = 4;
           this.renderSheet();
+          this.onReviewsShown(sheet.report.game.score);
         }
         return;
       case 'game-detail':

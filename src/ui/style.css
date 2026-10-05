@@ -34,6 +34,8 @@ body {
   font-size: 15px;
   line-height: 1.4;
   overscroll-behavior: none;
+  /* The page itself never scrolls; the content panel does (see .scroll). */
+  overflow: hidden;
 }
 
 button,
@@ -50,20 +52,44 @@ button {
   padding: 0;
 }
 
+/*
+ * A fixed, full-screen column: top bar, scrolling content, tab bar. Scrolling an
+ * inner panel works inside embeds that don't let the page scroll (like game
+ * portals' iframes) and avoids iOS Safari's page-scroll quirks.
+ */
 #app {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  width: 100%;
   max-width: 520px;
   margin: 0 auto;
-  min-height: 100%;
-  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+#top,
+#nav {
+  flex-shrink: 0;
+}
+
+.scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 /* ---------- Top bar ---------- */
 
 .topbar {
-  position: sticky;
-  top: 0;
+  position: relative;
   z-index: 10;
-  background: linear-gradient(var(--bg) 85%, transparent);
+  background: var(--bg);
   padding: calc(var(--safe-top) + 10px) 16px 10px;
 }
 
@@ -131,8 +157,83 @@ button {
   font-size: 15px;
 }
 
+.stat b {
+  display: inline-block;
+  transition: color 0.4s;
+}
+
 .stat.neg b {
   color: var(--bad);
+}
+
+/* Values flash and pop when they change. */
+.stat.up b {
+  animation: stat-up 0.7s ease-out;
+}
+
+.stat.down b {
+  animation: stat-down 0.7s ease-out;
+}
+
+@keyframes stat-up {
+  30% {
+    color: var(--good);
+    transform: scale(1.08);
+  }
+}
+
+@keyframes stat-down {
+  30% {
+    color: var(--bad);
+    transform: scale(0.95);
+  }
+}
+
+/* Tab switches slide in. */
+main.enter {
+  animation: tab-in 0.24s ease-out;
+}
+
+@keyframes tab-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+
+/* Primary actions breathe gently to draw the eye. */
+.btn.pulse {
+  animation: cta 2.4s ease-in-out infinite;
+}
+
+@keyframes cta {
+  50% {
+    box-shadow: 0 0 0 6px rgba(124, 92, 255, 0.18), 0 6px 24px rgba(255, 92, 154, 0.35);
+  }
+}
+
+/* Confetti for great reviews. */
+.confetti {
+  position: fixed;
+  inset: 0;
+  z-index: 65;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.confetti i {
+  position: absolute;
+  top: -12px;
+  width: 8px;
+  height: 12px;
+  border-radius: 2px;
+  animation: confetti-fall linear forwards;
+}
+
+@keyframes confetti-fall {
+  to {
+    transform: translate(var(--drift), 105vh) rotate(var(--spin));
+  }
 }
 
 .speed {
@@ -170,6 +271,7 @@ button {
 .office {
   display: block;
   width: 100%;
+  cursor: pointer;
   border-radius: var(--radius);
   background: var(--card);
   image-rendering: pixelated;
@@ -183,7 +285,7 @@ button {
 /* ---------- Main ---------- */
 
 main {
-  padding: 4px 16px calc(var(--safe-bottom) + 90px);
+  padding: 4px 16px 24px;
 }
 
 h2 {
@@ -347,6 +449,23 @@ h2 {
   transition: width 0.3s;
 }
 
+/* A shimmer runs along the bar while the team is developing. */
+.bar.live > i {
+  background:
+    linear-gradient(110deg, transparent 35%, rgba(255, 255, 255, 0.45) 50%, transparent 65%) 0 0 / 200% 100% no-repeat,
+    linear-gradient(90deg, var(--accent), var(--accent2));
+  animation: shimmer 1.4s linear infinite;
+}
+
+@keyframes shimmer {
+  from {
+    background-position: 150% 0, 0 0;
+  }
+  to {
+    background-position: -50% 0, 0 0;
+  }
+}
+
 .phases {
   display: flex;
   gap: 6px;
@@ -500,12 +619,8 @@ h2 {
 /* ---------- Bottom nav ---------- */
 
 nav.tabs {
-  position: fixed;
-  bottom: 0;
-  left: 50%;
-  transform: translateX(-50%);
+  position: relative;
   width: 100%;
-  max-width: 520px;
   display: flex;
   background: rgba(29, 26, 45, 0.94);
   backdrop-filter: blur(12px);
