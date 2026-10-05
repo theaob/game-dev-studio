@@ -157,7 +157,8 @@ jobs:
           cache: gradle
 
       # Release builds (main, tags, manual runs) are signed with the upload key from secrets.
-      # Pull requests, and repos without the secrets, get a debug-signed APK for testing.
+      # Pull requests, and repos without the secrets, are signed with the shared debug key in
+      # android/app/debug.keystore, which keeps updates installable.
       - name: Set up signing
         id: signing
         env:
@@ -167,7 +168,7 @@ jobs:
             echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.keystore"
             echo "signed=true" >> "$GITHUB_OUTPUT"
           else
-            echo "::notice::Building a debug-signed APK (no release signing for this run)."
+            echo "::notice::Signing the APK with the shared debug key (no release key for this run)."
             echo "signed=false" >> "$GITHUB_OUTPUT"
           fi
 
@@ -182,17 +183,15 @@ jobs:
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          task=assembleDebug
           if [ "$SIGNED" = "true" ]; then
-            task=assembleRelease
             export ANDROID_KEYSTORE_PATH="$RUNNER_TEMP/release.keystore"
           fi
-          ./gradlew "$task" --no-daemon -PversionCode="$GITHUB_RUN_NUMBER" -PversionName="$VERSION"
+          ./gradlew assembleRelease --no-daemon -PversionCode="$GITHUB_RUN_NUMBER" -PversionName="$VERSION"
 
       - name: Name the APK
         id: apk
         run: |
-          src=$(ls android/app/build/outputs/apk/*/*.apk | grep -v unsigned | head -1)
+          src=$(ls android/app/build/outputs/apk/release/*.apk | grep -v unsigned | head -1)
           [ -n "$src" ] || { echo "::error::No signed APK was produced"; ls -R android/app/build/outputs/apk; exit 1; }
           name="game-dev-studio-$VERSION.apk"
           mkdir -p apk && cp "$src" "apk/$name"
@@ -220,26 +219,14 @@ jobs:
       ITCH_GAME: ${{ secrets.ITCH_GAME }}
       VERSION: ${{ needs.build.outputs.version }}
       APK: ${{ needs.android.outputs.apk }}
+      SIGNED: ${{ needs.android.outputs.signed }}
     steps:
-      # Debug-signed APKs change signature every build, so players couldn't update; only ship release-signed ones.
-      - name: Check the APK is release-signed
-        id: check
-        run: |
-          if [ "${{ needs.android.outputs.signed }}" != "true" ]; then
-            echo "::warning::Not pushing the APK to itch.io: add the ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS and ANDROID_KEY_PASSWORD secrets (see README). The debug APK is in the run's artifacts."
-            echo "push=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "push=true" >> "$GITHUB_OUTPUT"
-          fi
-
       - uses: actions/download-artifact@v8
-        if: steps.check.outputs.push == 'true'
         with:
           name: android-apk
           path: apk
 
       - name: Install butler
-        if: steps.check.outputs.push == 'true'
         run: |
           curl -fsSL -o butler.zip https://broth.itch.zone/butler/linux-amd64/LATEST/archive/default
           unzip -q butler.zip -d "$HOME/butler"
@@ -248,14 +235,16 @@ jobs:
 
       # A channel named "android" is tagged as an Android download on the itch.io page.
       - name: Push to itch.io
-        if: steps.check.outputs.push == 'true'
         run: |
           target="$ITCH_USER/$ITCH_GAME:android"
           butler push "apk/$APK" "$target" --userversion "$VERSION"
           butler status "$target"
+          signing="shared debug key"
+          [ "$SIGNED" = "true" ] && signing="release key"
           {
             echo "### Android APK pushed to itch.io 🤖"
             echo ""
             echo "- Version: \`$VERSION\` (versionCode $GITHUB_RUN_NUMBER)"
             echo "- Channel: \`android\`"
+            echo "- Signed with: $signing"
           } >> "$GITHUB_STEP_SUMMARY"

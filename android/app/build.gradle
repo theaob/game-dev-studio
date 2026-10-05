@@ -19,8 +19,16 @@ android {
     }
     // Release signing comes from the environment (see README "Android"): CI writes the
     // keystore from the ANDROID_KEYSTORE_BASE64 secret and passes its path and passwords.
+    // Without it, builds are signed with the shared debug key committed in this folder, so
+    // every build has the same signature and installs as an update over the last one.
     def keystorePath = System.getenv('ANDROID_KEYSTORE_PATH')
     signingConfigs {
+        debug {
+            storeFile file('debug.keystore')
+            storePassword 'android'
+            keyAlias 'androiddebugkey'
+            keyPassword 'android'
+        }
         if (keystorePath) {
             release {
                 storeFile file(keystorePath)
@@ -32,7 +40,7 @@ android {
     }
     buildTypes {
         release {
-            if (keystorePath) signingConfig signingConfigs.release
+            signingConfig keystorePath ? signingConfigs.release : signingConfigs.debug
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
