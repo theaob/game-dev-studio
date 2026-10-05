@@ -12,4 +12,6 @@ export interface OfficeView {
   say(staffId: number, text: string, life?: number): void;
   /** Everyone reacts at once. */
   cheer(lines: string[]): void;
+  /** Pixels covered by the HUD (top) and the dock and tab bar (bottom), so the office is framed between them. */
+  setInsets?(top: number, bottom: number): void;
 }

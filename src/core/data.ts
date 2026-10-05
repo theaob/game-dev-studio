@@ -284,5 +284,44 @@ export const OFFICES: OfficeDef[] = [
 export const FIRST_NAMES = ['Alex', 'Sam', 'Jordan', 'Riley', 'Morgan', 'Casey', 'Taylor', 'Jamie', 'Robin', 'Avery', 'Quinn', 'Kai', 'Noa', 'Yuki', 'Mina', 'Leo', 'Ines', 'Omar', 'Priya', 'Mateo', 'Hana', 'Elif', 'Lars', 'Zoe', 'Ravi', 'Ada', 'Theo', 'Sana', 'Ivo', 'Lena'];
 export const LAST_NAMES = ['Park', 'Novak', 'Silva', 'Okafor', 'Tanaka', 'Weber', 'Costa', 'Lindqvist', 'Moreau', 'Kowalski', 'Ahmed', 'Rossi', 'Kim', 'Haddad', 'Nguyen', 'Fischer', 'Yilmaz', 'Santos', 'Ivanova', 'Byrne'];
 
-export const TITLE_WORDS_A = ['Super', 'Mega', 'Hyper', 'Lost', 'Eternal', 'Tiny', 'Crimson', 'Neon', 'Shadow', 'Golden', 'Iron', 'Pixel', 'Cosmic', 'Wild', 'Silent', 'Last'];
-export const TITLE_WORDS_B = ['Quest', 'Legends', 'Tales', 'Odyssey', 'Rush', 'Chronicles', 'Saga', 'Frontier', 'Kingdom', 'Heroes', 'Empire', 'Party', 'Story', 'Run', 'Wars', 'Dreams'];
+/**
+ * Name ideas per genre: `{a}` and `{b}` are filled from the two word lists, so an
+ * RPG suggests "Tales of Valdrath" while a puzzle game suggests "Gem Swap".
+ */
+export const GENRE_TITLES: Record<GenreId, { patterns: string[]; a: string[]; b: string[] }> = {
+  action: {
+    patterns: ['{a} {b}', '{a} {b}', '{b}: {a} Edition'],
+    a: ['Blast', 'Steel', 'Thunder', 'Rapid', 'Iron', 'Venom', 'Crimson', 'Turbo', 'Overkill', 'Bullet'],
+    b: ['Force', 'Assault', 'Fist', 'Rampage', 'Commando', 'Storm', 'Fury', 'Strike', 'Run', 'Brawl'],
+  },
+  adventure: {
+    patterns: ['The {a} {b}', '{a} {b}', 'Secret of the {a} {b}'],
+    a: ['Lost', 'Hidden', 'Sunken', 'Forgotten', 'Golden', 'Whispering', 'Emerald', 'Silent', 'Wandering'],
+    b: ['Island', 'Temple', 'Voyage', 'Expedition', 'Map', 'Lighthouse', 'Compass', 'Caverns', 'Horizon'],
+  },
+  rpg: {
+    patterns: ['{a} of {b}', '{b}: {a}', '{a} of {b}'],
+    a: ['Tales', 'Legend', 'Chronicles', 'Saga', 'Oath', 'Crown', 'Echoes', 'Heirs', 'Shards'],
+    b: ['Valdrath', 'Eldoria', 'the Ashen Realm', 'the Twelve Moons', 'the Fallen Star', 'Mythara', 'Kingsreach', 'the Ember Isles'],
+  },
+  simulation: {
+    patterns: ['{a} {b}', '{b} {a}', '{a} {b} Deluxe'],
+    a: ['Super', 'Pro', 'Ultimate', 'Real', 'Total', 'Busy', 'Grand', 'Little'],
+    b: ['Tycoon', 'Manager', 'Simulator', 'Life', 'Builder', 'Inc.', 'Story', 'Planner'],
+  },
+  strategy: {
+    patterns: ['{a} {b}', '{a}: {b}', 'Age of {a}'],
+    a: ['Empires', 'Kingdoms', 'Dominion', 'Conquest', 'Command', 'Realms', 'Banners', 'Throne', 'Legions'],
+    b: ['Ascendant', 'at War', 'Rising', 'Supreme', 'of Power', 'Total War', 'Eternal', 'Divided'],
+  },
+  puzzle: {
+    patterns: ['{a} {b}', '{a}{b}', '{a} {b} Mania'],
+    a: ['Block', 'Color', 'Tile', 'Gem', 'Bubble', 'Brain', 'Pixel', 'Crystal', 'Number'],
+    b: ['Drop', 'Shift', 'Swap', 'Twist', 'Logic', 'Pop', 'Stack', 'Match', 'Flip'],
+  },
+  casual: {
+    patterns: ['{a} {b}', '{a} {b}!', '{a} {b} Party'],
+    a: ['Happy', 'Tiny', 'Sunny', 'Bouncy', 'Lucky', 'Fluffy', 'Sweet', 'Snack', 'Cozy'],
+    b: ['Pets', 'Garden', 'Hop', 'Friends', 'Dash', 'Bakery', 'Town', 'Paws', 'Island'],
+  },
+};

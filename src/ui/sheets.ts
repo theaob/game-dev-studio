@@ -17,13 +17,15 @@ import {
   gameCost,
   staffWeeklyPoints,
 } from '../core/sim';
+import { SEQUEL_TOO_SOON_WEEKS, sequelCandidates, sequelSalesMult, seriesNumber } from '../core/sequels';
 import { formatShortDate, yearFraction } from '../core/time';
 import type { GameSpec, GameState, ReleaseReport } from '../core/types';
 import { esc, money, num, scoreClass } from './format';
 
 export type Sheet =
   | { kind: 'welcome'; name: string }
-  | { kind: 'newGame'; step: 1 | 2; draft: GameSpec; error?: string }
+  /** `nameEdited`: the player typed their own title, so picking a genre won't replace it. */
+  | { kind: 'newGame'; step: 1 | 2; draft: GameSpec; error?: string; nameEdited?: boolean }
   | { kind: 'focus'; phase: number; values: number[]; spec?: GameSpec; error?: string }
   | { kind: 'devComplete' }
   | { kind: 'review'; report: ReleaseReport; shown: number }
@@ -31,6 +33,7 @@ export type Sheet =
   | { kind: 'menu'; saved?: boolean }
   | { kind: 'help' }
   | { kind: 'confirm'; text: string; action: string; arg?: string; confirmLabel: string }
+  | { kind: 'contracts' }
   | { kind: 'gameOver' };
 
 export const OUTLETS = ['Game Weekly', 'Pixel Press', 'PlayZone', 'Joystick Journal'];
@@ -66,6 +69,8 @@ export function renderSheet(state: GameState | null, sheet: Sheet): string {
       return menu(sheet.saved);
     case 'gameOver':
       return gameOver(state);
+    case 'contracts':
+      return contracts(state);
   }
 }
 
@@ -108,7 +113,7 @@ const RECEPTION = [
  * How players are expected to receive a topic + genre combination. Only revealed
  * once the player has discovered the combination by releasing a game with it.
  */
-function receptionPreview(state: GameState, d: Pick<GameSpec, 'topic' | 'genre'>, platformId?: string): string {
+function receptionPreview(state: GameState, d: Pick<GameSpec, 'topic' | 'genre' | 'sequelOf'>, platformId?: string): string {
   const topic = topicById(d.topic).name;
   const genre = genreById(d.genre);
   const fit = state.knowledge.combos[`${d.topic}|${d.genre}`];
@@ -127,7 +132,8 @@ function receptionPreview(state: GameState, d: Pick<GameSpec, 'topic' | 'genre'>
   const past = state.released.filter((g) => g.topic === d.topic && g.genre === d.genre);
   const last = past[past.length - 1];
   if (last) notes.push(`📊 Last time, <b>${esc(last.name)}</b> scored <b>${last.score.toFixed(1)}</b>${past.length > 1 ? ` (${past.length} games so far)` : ''}.`);
-  const repeat = repeatMultiplier(state.released, d.topic, d.genre);
+  // A sequel is meant to repeat the combination; its own notes cover timing.
+  const repeat = d.sequelOf !== undefined ? 1 : repeatMultiplier(state.released, d.topic, d.genre);
   if (repeat < 0.9) notes.push('🥱 You released this combination recently. Players may feel they have seen it before.');
   else if (repeat < 1) notes.push(`🥱 Your last game was also ${genre.name}. Some players want variety.`);
   if (state.knowledge.balance[d.genre]) notes.push(`🎯 ${genre.name} fans like about ${Math.round(genre.designTarget * 100)}% design, ${100 - Math.round(genre.designTarget * 100)}% tech.`);
@@ -149,15 +155,54 @@ function receptionPreview(state: GameState, d: Pick<GameSpec, 'topic' | 'genre'>
     </div>`;
 }
 
+/** The "New game or sequel?" picker and, for a sequel, what to expect. */
+function sequelPicker(state: GameState, d: GameSpec): string {
+  const candidates = sequelCandidates(state);
+  if (!candidates.length) return '';
+  const original = d.sequelOf !== undefined ? state.released.find((g) => g.id === d.sequelOf) : undefined;
+  const chips = [
+    `<button class="chip ${original ? '' : 'on'}" data-action="pick-sequel" data-arg="none">✨ New game</button>`,
+    ...candidates.slice(0, 8).map(
+      (g) =>
+        `<button class="chip ${original?.id === g.id ? 'on' : ''}" data-action="pick-sequel" data-arg="${g.id}">🔁 ${esc(g.name)} <span class="tag ${g.score >= 7.5 ? 'good' : g.score >= 5 ? 'mid' : 'bad'}">${g.score.toFixed(1)}</span></button>`,
+    ),
+  ].join('');
+  let info = '';
+  if (original) {
+    const pct = Math.round((sequelSalesMult(original) - 1) * 100);
+    const part = seriesNumber(original) + 1;
+    const notes = [
+      pct > 0
+        ? `<li>📈 Fans of ${esc(original.name)} will buy it: <b>+${pct}% sales</b>.</li>`
+        : pct < 0
+          ? `<li>📉 ${esc(original.name)} wasn't well liked: <b>${pct}% sales</b>.</li>`
+          : `<li>🙂 ${esc(original.name)} was average, so no built-in audience.</li>`,
+      `<li>🎯 Reviewers will compare it to the original's <b>${original.score.toFixed(1)}</b>.</li>`,
+    ];
+    if (state.week - original.releaseWeek < SEQUEL_TOO_SOON_WEEKS) notes.push(`<li>⏳ ${esc(original.name)} came out less than a year ago. A rushed sequel reviews worse.</li>`);
+    if (part >= 4) notes.push(`<li>🥱 Part ${part} of a long series: players are starting to tire of it.</li>`);
+    info = `
+      <div class="sequel-card mt">
+        <div class="row"><b class="grow">Part ${part} of the ${esc(original.name.replace(/\s+\d+$/, ''))} series</b><span class="tag">${topicById(original.topic).icon} ${topicById(original.topic).name} ${genreById(original.genre).name}</span></div>
+        <ul class="reception-notes">${notes.join('')}</ul>
+      </div>`;
+  }
+  return `
+    <h4>New game or sequel?</h4>
+    <div class="chips">${chips}</div>
+    ${info}`;
+}
+
 function newGameStep1(state: GameState, d: GameSpec, error?: string): string {
+  const sequel = d.sequelOf !== undefined;
   return `
     <h3>New game</h3>
     <p class="muted">Step 1 of 3 · Concept</p>
-    <h4>Title</h4>
-    <div class="row">
-      <input class="text-input grow" data-bind="name" maxlength="32" value="${esc(d.name)}" placeholder="Game title" autocomplete="off" />
-      <button class="icon-btn" data-action="random-name" aria-label="Random name">🎲</button>
-    </div>
+    ${sequelPicker(state, d)}
+    ${
+      sequel
+        ? '<p class="sub mt">A sequel keeps the original\'s topic and genre.</p>'
+        : `
     <h4>Genre</h4>
     <div class="chips">
       ${GENRES.map((g) => `<button class="chip ${d.genre === g.id ? 'on' : ''}" data-action="pick-genre" data-arg="${g.id}">${g.icon} ${g.name}</button>`).join('')}
@@ -172,8 +217,19 @@ function newGameStep1(state: GameState, d: GameSpec, error?: string): string {
           return `<button class="chip ${d.topic === id ? 'on' : ''}" data-action="pick-topic" data-arg="${id}">${t.icon} ${t.name}${dot}</button>`;
         })
         .join('')}
-    </div>
+    </div>`
+    }
     ${d.topic && d.genre ? receptionPreview(state, d) : '<p class="sub mt">Coloured dots show combinations you have already discovered.</p>'}
+    ${
+      d.genre
+        ? `
+    <h4>Title</h4>
+    <div class="row">
+      <input class="text-input grow" data-bind="name" maxlength="32" value="${esc(d.name)}" placeholder="Game title" autocomplete="off" />
+      <button class="icon-btn" data-action="random-name" aria-label="Suggest another ${genreById(d.genre).name} title">🎲</button>
+    </div>`
+        : ''
+    }
     ${error ? `<div class="error">${esc(error)}</div>` : ''}
     <div class="btn-row">
       <button class="btn ghost" data-action="close">Cancel</button>
@@ -189,7 +245,7 @@ function newGameStep2(state: GameState, d: GameSpec, error?: string): string {
   const marketing = availableMarketing(state);
   return `
     <h3>New game</h3>
-    <p class="muted">Step 2 of 3 · ${esc(d.name)} · ${topicById(d.topic).name} ${genreById(d.genre).name}</p>
+    <p class="muted">Step 2 of 3 · ${esc(d.name)} · ${topicById(d.topic).name} ${genreById(d.genre).name}${d.sequelOf !== undefined ? ' · Sequel' : ''}</p>
     ${receptionPreview(state, d, d.platform)}
     <h4>Platform</h4>
     <div class="options">
@@ -366,8 +422,11 @@ function review(report: ReleaseReport, shown: number): string {
 function gameDetail(state: GameState, id: number): string {
   const g = state.released.find((x) => x.id === id);
   if (!g) return '';
+  const prequel = g.sequelOf !== undefined ? state.released.find((x) => x.id === g.sequelOf) : undefined;
+  const next = state.released.find((x) => x.sequelOf === g.id);
   return `
     <h3>${esc(g.name)}</h3>
+    ${prequel || next ? `<p class="sub">${prequel ? `Part ${seriesNumber(g)} · sequel to <b>${esc(prequel.name)}</b> (${prequel.score.toFixed(1)})` : 'Part 1'}${next ? ` · followed by <b>${esc(next.name)}</b> (${next.score.toFixed(1)})` : ''}</p>` : ''}
     <p class="muted">${topicById(g.topic).name} ${genreById(g.genre).name} · ${platformById(g.platform).name} · ${sizeById(g.size).name} · ${formatShortDate(g.releaseWeek)}</p>
     <div class="reviews">
       ${g.reviews.map((r, i) => `<div class="review"><div class="outlet">${OUTLETS[i]}</div><div class="num" style="animation:none">${r}</div></div>`).join('')}
@@ -391,6 +450,27 @@ function menu(saved?: boolean): string {
       <button class="option" data-action="help"><span class="emoji">📖</span><span class="grow"><b>How to play</b></span></button>
       <button class="option" data-action="save"><span class="emoji">💾</span><span class="grow"><b>Save game</b>${saved ? ' <span class="tag good">Saved!</span>' : '<br/><span class="sub">The game also saves automatically every month.</span>'}</span></button>
       <button class="option" data-action="ask-reset"><span class="emoji">🔄</span><span class="grow"><b>Start over</b><br/><span class="sub">Delete this save and found a new studio.</span></span></button>
+    </div>
+    <div class="btn-row"><button class="btn ghost" data-action="close">Close</button></div>`;
+}
+
+function contracts(state: GameState): string {
+  return `
+    <h3>Contract work</h3>
+    <p class="muted">Quick jobs that pay the bills and earn research points.</p>
+    <div class="options mt">
+      ${
+        state.contractOffers
+          .map(
+            (o) => `
+        <div class="option contract">
+          <span class="emoji">📝</span>
+          <span class="grow"><b>${esc(o.title)}</b><br/><span class="sub">${o.weeks} weeks · ${money(o.pay)} · +${o.rp} RP</span></span>
+          <button class="btn small" data-action="contract" data-arg="${o.id}">Take</button>
+        </div>`,
+          )
+          .join('') || '<p class="muted center">No offers right now. New ones arrive every month.</p>'
+      }
     </div>
     <div class="btn-row"><button class="btn ghost" data-action="close">Close</button></div>`;
 }

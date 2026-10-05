@@ -1,4 +1,5 @@
 import './ui/style.css';
+import '@fontsource-variable/bricolage-grotesque';
 import { App } from './ui/app';
 
 new App(document.getElementById('app')!);

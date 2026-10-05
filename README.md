@@ -2,11 +2,14 @@
 
 A mobile-first game development tycoon. Found a studio in a 1985 garage, make games, chase great reviews and grow into a campus by 2025.
 
-Built as an installable web app (PWA) in TypeScript + Vite. The only runtime dependency is three.js, which renders the 3D office and loads lazily after the game starts. It runs in any phone browser, works offline once loaded, and can be wrapped for the App Store or Google Play with [Capacitor](https://capacitorjs.com/).
+Built as an installable web app (PWA) in TypeScript + Vite. The only runtime dependencies are three.js, which renders the 3D office and loads lazily after the game starts, and the bundled Bricolage Grotesque display font.
+
+The UI is laid out like a mobile game, not a web page. The office fills the screen, with a HUD on top (studio, play/pause, speed, cash/fans/RP), an action dock and a floating tab bar. Other tabs slide up as panels over the office, and sheets can be swiped down to close. The visual style is warm paper and ink: outlined cards and buttons with hard offset shadows, a tomato-red primary colour, and mustard and teal accents. It runs in any phone browser, works offline once loaded, and can be wrapped for the App Store or Google Play with [Capacitor](https://capacitorjs.com/).
 
 ## Gameplay
 
 - **Make games**: pick a title, a **topic** and a **genre**. Some combinations are great and some are terrible. You learn which after each release, and from then on the new-game screen shows a **reception preview**: how players will take that combination, how your last game with it scored, and whether players are tired of seeing it.
+- **Make sequels** to any released game: they keep its topic and genre, sell to its fans (up to +45% for a hit, less for a flop), and skip the "seen this recently" penalty. Rushing one out within a year reviews worse, and long series start to tire players.
 - **Choose a platform**: 18 fictional platforms launch and retire over 40 years, from home computers and 8-bit consoles to handhelds, motion consoles and phones. Each has its own audience size, license cost and genre preferences.
 - **Set the focus** for each of the 3 development phases (Foundation, Content, Presentation). Each genre cares about different areas, and reviews reveal what matters.
 - **Balance design vs tech**: every genre has an ideal ratio.
