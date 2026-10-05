@@ -10,6 +10,7 @@ Built as an installable web app (PWA) in TypeScript + Vite with no runtime depen
 - **Choose a platform**: 18 fictional platforms launch and retire over 40 years, from home computers and 8-bit consoles to handhelds, motion consoles and phones. Each has its own audience size, license cost and genre preferences.
 - **Set the focus** for each of the 3 development phases (Foundation, Content, Presentation). Each genre cares about different areas, and reviews reveal what matters.
 - **Balance design vs tech**: every genre has an ideal ratio.
+- **Watch your team work** in an animated pixel-art office that changes as you move from the garage to the campus. Every so often a developer gets **in the zone**: they glow, sparks fly, and for a few weeks they produce 1.8x as much with half the bugs.
 - **Polish** to squash bugs before you release.
 - **Reviews** from 4 outlets decide sales and fans. The bar keeps rising: the market expects each game to beat your best work.
 - **Grow**: take contracts to pay the bills, earn research points, unlock topics, game sizes, engines and QA, hire and train staff, and move to bigger offices.
@@ -36,6 +37,7 @@ src/core/      Pure, deterministic simulation (no DOM). Seeded RNG lives in the 
   scoring.ts   Review score model
   bot.ts       Automated players used for tests and balancing
 src/ui/        DOM rendering: tabs, bottom sheets, game loop, animations
+  office.ts    Procedural pixel-art office scene (canvas)
 src/save.ts    localStorage persistence
 public/        PWA manifest, icon, service worker
 ```
