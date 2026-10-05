@@ -3,6 +3,7 @@ import { normalizeFocus } from '../core/scoring';
 import type { GameSpec, GameState, GenreId, MarketingId, NoticeKind, SimEvent, SizeId } from '../core/types';
 import { clearSave, loadGame, saveGame } from '../save';
 import { OfficeScene } from './office';
+import type { OfficeView } from './office-view';
 import { money, num } from './format';
 import { focusLean, renderSheet, type Sheet } from './sheets';
 import { SPEEDS, renderGames, renderNav, renderNews, renderResearch, renderStaff, renderStudio, renderTopbar, type Tab } from './views';
@@ -26,7 +27,8 @@ export class App {
   private reviewTimer = 0;
   private html: Record<string, string> = {};
   private els: Record<'top' | 'scroll' | 'scene' | 'main' | 'nav' | 'sheet' | 'fx' | 'toasts', HTMLElement>;
-  private office = new OfficeScene();
+  /** Starts as the 2D office and upgrades to 3D once three.js has loaded (if WebGL works). */
+  private office: OfficeView = new OfficeScene();
   /** Values currently shown in the top bar; they glide towards the real ones. */
   private shownStats: Record<StatKey, number> | null = null;
   private lastStats: Record<StatKey, number> | null = null;
@@ -41,6 +43,7 @@ export class App {
     this.els = { top: $('top'), scroll: $('scroll'), scene: $('scene'), main: $('main'), nav: $('nav'), sheet: $('sheet-root'), fx: $('fx'), toasts: $('toasts') };
 
     this.els.scene.appendChild(this.office.el);
+    this.loadOffice3D();
     root.addEventListener('click', (e) => this.onClick(e));
     root.addEventListener('input', (e) => this.onInput(e));
     document.addEventListener('visibilitychange', () => {
@@ -207,6 +210,26 @@ export class App {
     }
     document.body.appendChild(layer);
     window.setTimeout(() => layer.remove(), 4000);
+  }
+
+  /** Loads the three.js office in the background and swaps it in; keeps the 2D office if that fails. */
+  private loadOffice3D() {
+    import('./office3d')
+      .then(({ createOffice3D }) => {
+        const view = createOffice3D();
+        if (!view) return;
+        view.onLost = () => this.swapOffice(new OfficeScene());
+        this.swapOffice(view);
+      })
+      .catch(() => {
+        // Offline or blocked: the 2D office keeps working.
+      });
+  }
+
+  private swapOffice(view: OfficeView) {
+    this.office.el.replaceWith(view.el);
+    this.office = view;
+    this.lastDraw = 0;
   }
 
   private noticeKey(i: number): string {
