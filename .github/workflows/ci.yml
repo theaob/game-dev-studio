@@ -1,0 +1,123 @@
+name: CI & itch.io deploy
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: itch.io channel to push to
+        default: html5
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Typecheck, test & build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests & bot playthroughs
+        run: npm test
+
+      - name: Build
+        run: npx vite build
+
+      - name: Check the build is a valid HTML5 upload
+        run: |
+          test -f dist/index.html || { echo "dist/index.html missing"; exit 1; }
+          # itch.io serves the game from a sub-path, so asset URLs must be relative.
+          if grep -Eq '(src|href)="/' dist/index.html; then
+            echo "dist/index.html contains absolute asset paths; keep base: './' in vite.config.ts"
+            exit 1
+          fi
+          du -sh dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web-build
+          path: dist
+          retention-days: 14
+
+  deploy:
+    name: Push to itch.io
+    needs: build
+    # Deploy from main, from version tags, or when started by hand. Never from pull requests.
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')))
+    runs-on: ubuntu-latest
+    environment:
+      name: itch.io
+      url: https://${{ vars.ITCH_USER }}.itch.io/${{ vars.ITCH_GAME }}
+    concurrency:
+      group: itch-deploy
+      cancel-in-progress: false
+    env:
+      BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
+      ITCH_TARGET: ${{ vars.ITCH_USER }}/${{ vars.ITCH_GAME }}:${{ inputs.channel || 'html5' }}
+    steps:
+      - name: Check itch.io configuration
+        run: |
+          missing=0
+          [ -n "$BUTLER_API_KEY" ] || { echo "::error::Secret BUTLER_API_KEY is not set"; missing=1; }
+          [ -n "${{ vars.ITCH_USER }}" ] || { echo "::error::Variable ITCH_USER is not set"; missing=1; }
+          [ -n "${{ vars.ITCH_GAME }}" ] || { echo "::error::Variable ITCH_GAME is not set"; missing=1; }
+          exit $missing
+
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: package.json
+          sparse-checkout-cone-mode: false
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: web-build
+          path: dist
+
+      - name: Install butler
+        run: |
+          curl -fsSL -o butler.zip https://broth.itch.zone/butler/linux-amd64/LATEST/archive/default
+          unzip -q butler.zip -d "$HOME/butler"
+          chmod +x "$HOME/butler/butler"
+          echo "$HOME/butler" >> "$GITHUB_PATH"
+
+      - name: Work out the version
+        id: version
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            version="${GITHUB_REF#refs/tags/v}"
+          else
+            version="$(node -p "require('./package.json').version")-build.${GITHUB_RUN_NUMBER}"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Deploying $version to $ITCH_TARGET"
+
+      - name: Push to itch.io
+        run: |
+          butler -V
+          butler push dist "$ITCH_TARGET" --userversion "${{ steps.version.outputs.version }}"
+          butler status "${ITCH_TARGET}"
+
+      - name: Summary
+        run: |
+          {
+            echo "### Deployed to itch.io 🎮"
+            echo ""
+            echo "- Version: \`${{ steps.version.outputs.version }}\`"
+            echo "- Channel: \`$ITCH_TARGET\`"
+            echo "- Page: https://${{ vars.ITCH_USER }}.itch.io/${{ vars.ITCH_GAME }}"
+          } >> "$GITHUB_STEP_SUMMARY"

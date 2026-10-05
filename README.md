@@ -28,6 +28,31 @@ npm run build      # typecheck and production build in dist/
 npx vitest run scripts/balance.test.ts   # year-by-year economy report from bot players
 ```
 
+## CI and itch.io deployment
+
+`.github/workflows/ci.yml` runs on every push and pull request:
+
+1. **Build job**: `npm ci`, typecheck, unit tests and bot playthroughs, `vite build`, and a check that `dist/` is a valid HTML5 upload (has `index.html` and uses only relative asset paths). The build is saved as the `web-build` artifact.
+2. **Deploy job**: pushes that exact build to itch.io with [butler](https://itch.io/docs/butler/). It runs on pushes to `main`, on `v*` tags, and when started by hand from the Actions tab. It never runs for pull requests.
+
+Versions show up on itch.io as `0.1.0-build.<run number>` for `main` builds, or as the tag (`v1.2.0` → `1.2.0`) for releases.
+
+### One-time setup
+
+1. **Create the game on itch.io** (Dashboard → Create new project):
+   - Kind of project: **HTML**
+   - Upload a placeholder once, or let the first CI run create the `html5` channel. Then tick **This file will be played in the browser**.
+   - Embed options: **Mobile friendly**, orientation **Portrait**, viewport around **390 × 780**, and turn on **Fullscreen button**.
+2. **Get a butler API key**: run `butler login` locally and copy the key from `~/.config/itch/butler_creds`, or create one at <https://itch.io/user/settings/api-keys>.
+3. **Configure the GitHub repo** (Settings → Secrets and variables → Actions):
+   - Secret `BUTLER_API_KEY`: the key from step 2
+   - Variable `ITCH_USER`: your itch.io username (the `<user>` in `<user>.itch.io`)
+   - Variable `ITCH_GAME`: the project's URL slug (the `<game>` in `<user>.itch.io/<game>`)
+
+   The deploy job uses a GitHub environment called `itch.io`. You can add required reviewers to it under Settings → Environments if you want to approve each release.
+
+If anything is missing, the deploy job fails straight away with a message saying what to add.
+
 ## Project layout
 
 ```
