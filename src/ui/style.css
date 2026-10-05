@@ -34,6 +34,8 @@ body {
   font-size: 15px;
   line-height: 1.4;
   overscroll-behavior: none;
+  /* The page itself never scrolls; the content panel does (see .scroll). */
+  overflow: hidden;
 }
 
 button,
@@ -50,20 +52,44 @@ button {
   padding: 0;
 }
 
+/*
+ * A fixed, full-screen column: top bar, scrolling content, tab bar. Scrolling an
+ * inner panel works inside embeds that don't let the page scroll (like game
+ * portals' iframes) and avoids iOS Safari's page-scroll quirks.
+ */
 #app {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  width: 100%;
   max-width: 520px;
   margin: 0 auto;
-  min-height: 100%;
-  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+#top,
+#nav {
+  flex-shrink: 0;
+}
+
+.scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 /* ---------- Top bar ---------- */
 
 .topbar {
-  position: sticky;
-  top: 0;
+  position: relative;
   z-index: 10;
-  background: linear-gradient(var(--bg) 85%, transparent);
+  background: var(--bg);
   padding: calc(var(--safe-top) + 10px) 16px 10px;
 }
 
@@ -259,7 +285,7 @@ main.enter {
 /* ---------- Main ---------- */
 
 main {
-  padding: 4px 16px calc(var(--safe-bottom) + 90px);
+  padding: 4px 16px 24px;
 }
 
 h2 {
@@ -593,12 +619,8 @@ h2 {
 /* ---------- Bottom nav ---------- */
 
 nav.tabs {
-  position: fixed;
-  bottom: 0;
-  left: 50%;
-  transform: translateX(-50%);
+  position: relative;
   width: 100%;
-  max-width: 520px;
   display: flex;
   background: rgba(29, 26, 45, 0.94);
   backdrop-filter: blur(12px);

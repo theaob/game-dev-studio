@@ -25,7 +25,7 @@ export class App {
   private last = 0;
   private reviewTimer = 0;
   private html: Record<string, string> = {};
-  private els: Record<'top' | 'scene' | 'main' | 'nav' | 'sheet' | 'fx' | 'toasts', HTMLElement>;
+  private els: Record<'top' | 'scroll' | 'scene' | 'main' | 'nav' | 'sheet' | 'fx' | 'toasts', HTMLElement>;
   private office = new OfficeScene();
   /** Values currently shown in the top bar; they glide towards the real ones. */
   private shownStats: Record<StatKey, number> | null = null;
@@ -36,9 +36,9 @@ export class App {
   private lastDraw = 0;
 
   constructor(root: HTMLElement) {
-    root.innerHTML = `<div id="top"></div><div id="scene" class="scene"></div><main id="main"></main><div id="nav"></div><div id="sheet-root"></div><div id="fx"></div><div class="toasts" id="toasts"></div>`;
+    root.innerHTML = `<div id="top"></div><div id="scroll" class="scroll"><div id="scene" class="scene"></div><main id="main"></main></div><div id="nav"></div><div id="sheet-root"></div><div id="fx"></div><div class="toasts" id="toasts"></div>`;
     const $ = (id: string) => root.querySelector<HTMLElement>(`#${id}`)!;
-    this.els = { top: $('top'), scene: $('scene'), main: $('main'), nav: $('nav'), sheet: $('sheet-root'), fx: $('fx'), toasts: $('toasts') };
+    this.els = { top: $('top'), scroll: $('scroll'), scene: $('scene'), main: $('main'), nav: $('nav'), sheet: $('sheet-root'), fx: $('fx'), toasts: $('toasts') };
 
     this.els.scene.appendChild(this.office.el);
     root.addEventListener('click', (e) => this.onClick(e));
@@ -404,7 +404,7 @@ export class App {
       case 'tab':
         if (this.tab !== arg) {
           this.tab = arg as Tab;
-          window.scrollTo(0, 0);
+          this.els.scroll.scrollTop = 0;
           this.render();
           this.animateIn(this.els.main);
         }
