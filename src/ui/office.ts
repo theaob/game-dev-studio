@@ -32,7 +32,6 @@ export class OfficeScene {
   private lastT = 0;
   private lw = 0;
   private lh = 0;
-  private reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
   /** When each staff member got in the zone (scene time), for the entrance burst. */
   private zoneStart = new Map<number, number>();
   /** Scene clock in seconds; only advances while the game is running. */
@@ -104,7 +103,6 @@ export class OfficeScene {
   draw(state: GameState, t: number, running: boolean) {
     const dt = Math.min(0.1, (t - (this.lastT || t)) / 1000);
     this.lastT = t;
-    // Reduce Motion turns off particles, walks and the roaming cat; small character animations stay.
     const time = t / 1000;
 
     const capacity = OFFICES[state.officeLevel].capacity;
@@ -171,7 +169,7 @@ export class OfficeScene {
       anchors.set(s.id, { x: x + 30, y: y + 19 });
       this.hitboxes.push({ id: s.id, x: x + 14, y: y + 18, w: 20, h: 24, name: s.name });
       if (inZone) zoners.push({ x, y, s });
-      if (animating && !this.reducedMotion) this.emitWork(x, y, inZone, mode, dt);
+      if (animating) this.emitWork(x, y, inZone, mode, dt);
       this.maybeChatter(s, mode, inZone, tick, state.staff.length);
     }
     // Walkers go on top of the desks, back-to-front.
@@ -504,7 +502,7 @@ export class OfficeScene {
 
     // Person, seen from behind, sitting at the desk.
     const { g, p } = gesture;
-    const typingNow = (g === 'type' || g === 'lean' || g === 'look') && (animating || this.reducedMotion);
+    const typingNow = (g === 'type' || g === 'lean' || g === 'look') && animating;
     const speed = zone ? 22 : g === 'lean' ? 16 : 11;
     const beatN = Math.floor(gt * speed + look.phase * 10);
     const beat = typingNow ? beatN % 2 : 0;
@@ -742,7 +740,7 @@ export class OfficeScene {
 
   private updateCat(dt: number, w: number) {
     const cat = this.cat;
-    if (dt === 0 || this.reducedMotion) return;
+    if (dt === 0) return;
     cat.t += dt;
     if (cat.mode === 'walk') {
       cat.x += 7 * dt * cat.dir;
@@ -884,7 +882,7 @@ export class OfficeScene {
   private updateBreak(s: Staff, mode: Mode, zone: boolean, dt: number, people: number, tripFor: (slot: number) => number): CoffeeBreak | undefined {
     let b = this.breaks.get(s.id);
     if (!b) {
-      if (this.reducedMotion || zone || dt === 0) return undefined;
+      if (zone || dt === 0) return undefined;
       const perSecond = mode === 'idle' ? 1 / 20 : mode === 'polish' ? 1 / 55 : 1 / 40;
       const maxAway = Math.max(1, Math.floor(people / 3));
       if (this.breaks.size >= maxAway || Math.random() > perSecond * dt) return undefined;
@@ -996,7 +994,7 @@ export class OfficeScene {
       }
       const a = anchors.get(id);
       if (!a || b.age < 0) continue;
-      const pop = this.reducedMotion ? 1 : Math.min(1, 0.4 + b.age / 0.18);
+      const pop = Math.min(1, 0.4 + b.age / 0.18);
       const alpha = Math.min(1, (b.life - b.age) / 0.3);
       const pad = size * 0.45;
       const w = ctx.measureText(b.text).width + pad * 2;

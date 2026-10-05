@@ -368,7 +368,6 @@ export class Office3D implements OfficeView {
   private layoutKey = '';
   private aspect = 1.4;
   private width = 0;
-  private reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
   private lastT = 0;
   private clock = 0;
   private screenTimer = 0;
@@ -492,8 +491,6 @@ export class Office3D implements OfficeView {
   draw(state: GameState, t: number, running: boolean) {
     const dt = Math.min(0.1, (t - (this.lastT || t)) / 1000);
     this.lastT = t;
-    // Reduce Motion tones the scene down (no particles, walks or roaming cat)
-    // but characters keep their small animations so the office doesn't look frozen.
     const time = t / 1000;
     if (running) this.clock += dt;
     const tick = running ? dt : 0;
@@ -541,7 +538,7 @@ export class Office3D implements OfficeView {
           zoners.push(rig);
           zoneRig ??= rig;
         }
-        if (animating && !this.reducedMotion) this.emitWork(desk, inZone, mode, dt);
+        if (animating) this.emitWork(desk, inZone, mode, dt);
         this.maybeChatter(s, mode, inZone, tick, state.staff.length);
       }
       const away = !!walk;
@@ -1141,7 +1138,7 @@ export class Office3D implements OfficeView {
   private updateWalk(r: Rig, desk: Desk, mode: Mode, zone: boolean, dt: number, people: number): Walk | undefined {
     let w = this.walks.get(r.id);
     if (!w) {
-      if (this.reducedMotion || zone || dt === 0) return undefined; // no strolling with Reduce Motion
+      if (zone || dt === 0) return undefined;
       const perSecond = mode === 'idle' ? 1 / 20 : mode === 'polish' ? 1 / 55 : 1 / 40;
       const maxAway = Math.max(1, Math.floor(people / 3));
       if (this.walks.size >= maxAway || Math.random() > perSecond * dt) return undefined;
@@ -1209,7 +1206,7 @@ export class Office3D implements OfficeView {
     const parts = this.catParts!;
     const minX = -this.roomW / 2 + 0.5;
     const maxX = this.roomW / 2 - 1.2;
-    if (dt > 0 && !this.reducedMotion) {
+    if (dt > 0) {
       cat.t += dt;
       if (cat.mode === 'walk') {
         cat.x += 0.45 * dt * cat.dir;

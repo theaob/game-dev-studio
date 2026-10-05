@@ -1270,10 +1270,3 @@ input[type='range']::-moz-range-thumb {
   color: var(--muted);
 }
 
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before {
-    animation: none !important;
-    transition: none !important;
-  }
-}
