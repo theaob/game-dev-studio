@@ -4,6 +4,7 @@ import { sequelName } from '../core/sequels';
 import type { GameSpec, GameState, GenreId, MarketingId, NoticeKind, SimEvent, SizeId } from '../core/types';
 import { clearSave, loadGame, saveGame } from '../save';
 import { OfficeScene } from './office';
+import { OfficeLoading, hasWebGL } from './office-loading';
 import type { OfficeView } from './office-view';
 import { money, num } from './format';
 import { focusLean, renderSheet, type Sheet } from './sheets';
@@ -16,6 +17,9 @@ const WEEK_MS = 1500;
 
 /** Sheets that must be answered and can't be dismissed by tapping outside. */
 const BLOCKING: Sheet['kind'][] = ['welcome', 'focus', 'review', 'gameOver'];
+
+/** How long to wait for the 3D office before settling on the 2D one. */
+const OFFICE3D_TIMEOUT_MS = 10_000;
 
 export class App {
   private state: GameState | null;
@@ -31,7 +35,7 @@ export class App {
   /** Speed to resume at when un-pausing. */
   private lastSpeed = 1;
   /** Starts as the 2D office and upgrades to 3D once three.js has loaded (if WebGL works). */
-  private office: OfficeView = new OfficeScene();
+  private office: OfficeView = hasWebGL() ? new OfficeLoading() : new OfficeScene();
   /** Values currently shown in the top bar; they glide towards the real ones. */
   private shownStats: Record<StatKey, number> | null = null;
   private lastStats: Record<StatKey, number> | null = null;
@@ -261,17 +265,29 @@ export class App {
     });
   }
 
-  /** Loads the three.js office in the background and swaps it in; keeps the 2D office if that fails. */
+  /**
+   * Loads the three.js office while a loading card shows. The 2D office is only a
+   * fallback (no WebGL, download failed or too slow), and once it's on screen it
+   * stays for the session, so the office never visibly switches style mid-game.
+   */
   private loadOffice3D() {
+    if (!(this.office instanceof OfficeLoading)) return;
+    const fallback = () => {
+      if (this.office instanceof OfficeLoading) this.swapOffice(new OfficeScene());
+    };
+    const timer = window.setTimeout(fallback, OFFICE3D_TIMEOUT_MS);
     import('./office3d')
       .then(({ createOffice3D }) => {
+        window.clearTimeout(timer);
+        if (!(this.office instanceof OfficeLoading)) return;
         const view = createOffice3D();
-        if (!view) return;
+        if (!view) return fallback();
         view.onLost = () => this.swapOffice(new OfficeScene());
         this.swapOffice(view);
       })
       .catch(() => {
-        // Offline or blocked: the 2D office keeps working.
+        window.clearTimeout(timer);
+        fallback();
       });
   }
 

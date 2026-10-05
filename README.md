@@ -66,7 +66,8 @@ src/core/      Pure, deterministic simulation (no DOM). Seeded RNG lives in the 
   bot.ts       Automated players used for tests and balancing
 src/ui/        DOM rendering: tabs, bottom sheets, game loop, animations
   office3d.ts  3D office scene (three.js), lazy-loaded
-  office.ts    2D pixel-art office, used until three.js loads or if WebGL is unavailable
+  office.ts    2D pixel-art office: fallback when WebGL is unavailable or three.js can't load
+  office-loading.ts  Loading card shown while three.js downloads
   office-common.ts  Behaviour shared by both: looks, gestures, day/night, eras
 src/save.ts    localStorage persistence
 public/        PWA manifest, icon, service worker

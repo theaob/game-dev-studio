@@ -1342,12 +1342,45 @@ textarea {
 }
 
 .stage canvas.office {
+  /* Position and size are set by OfficeScene to fit between the HUD and the dock. */
   position: absolute;
-  left: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  border-radius: 0;
-  box-shadow: none;
+  border-radius: 14px;
+  /* Ink outline and hard shadow without changing the canvas box (keeps pixels square). */
+  box-shadow: 0 0 0 2px var(--ink), 0 5px 0 2px var(--ink);
+  background: var(--card);
+  animation: fade 0.35s ease-out;
+}
+
+/* Shown while three.js downloads, instead of flashing the 2D office first. */
+.office-loading {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+
+.office-loading span {
+  padding: 8px 16px;
+  border-radius: 999px;
+  font-weight: 800;
+  font-size: 14px;
+  color: var(--muted);
+  background: var(--card);
+  border: 2px solid var(--ink);
+  box-shadow: var(--pop);
+  animation: loading-bob 1.2s ease-in-out infinite;
+}
+
+@keyframes loading-bob {
+  50% {
+    transform: translateY(-4px);
+  }
+}
+
+/* The 3D office fades in once its first frame is ready. */
+.stage .office3d {
+  animation: fade 0.35s ease-out;
 }
 
 /* HUD */

@@ -13,6 +13,8 @@ const CELL_W = 48;
 const CELL_H = 40;
 const WALL_H = 22;
 const MAX_COLS = 4;
+/** Space between the framed room and the HUD, dock and screen edges (CSS px). */
+const FRAME_GAP = 16;
 
 interface Particle {
   x: number;
@@ -44,6 +46,7 @@ export class OfficeScene {
   private hitboxes: { id: number; x: number; y: number; w: number; h: number; name: string }[] = [];
   private era: Era = 'crt-mono';
   private level = 0;
+  private insets = { top: 0, bottom: 0 };
 
   constructor() {
     this.el = document.createElement('canvas');
@@ -229,15 +232,40 @@ export class OfficeScene {
     );
   }
 
+  /** Pixels covered by the HUD (top) and the dock and tab bar (bottom). */
+  setInsets(top: number, bottom: number) {
+    this.insets = { top, bottom };
+  }
+
+  /**
+   * Sizes the canvas to fit the free band between the HUD and the dock (as large
+   * as fits, keeping the room's aspect ratio), centred in that band.
+   */
   private resize(lw: number, lh: number) {
     const dpr = Math.min(window.devicePixelRatio || 1, 3);
-    const cssW = this.el.clientWidth || 360;
+    const stage = this.el.parentElement;
+    const sw = stage?.clientWidth || window.innerWidth;
+    const sh = stage?.clientHeight || window.innerHeight;
+    const gap = FRAME_GAP;
+    const bandW = sw - gap * 2;
+    const bandH = Math.max(80, sh - this.insets.top - this.insets.bottom - gap * 2);
+    const scale = Math.min(bandW / lw, bandH / lh);
+    const cssW = Math.floor(lw * scale);
+    const cssH = Math.floor(lh * scale);
+    const left = Math.round((sw - cssW) / 2);
+    const top = Math.round(this.insets.top + gap + (bandH - cssH) / 2);
+    const st = this.el.style;
+    if (st.width !== `${cssW}px` || st.height !== `${cssH}px` || st.left !== `${left}px` || st.top !== `${top}px`) {
+      st.width = `${cssW}px`;
+      st.height = `${cssH}px`;
+      st.left = `${left}px`;
+      st.top = `${top}px`;
+    }
     const w = Math.round(cssW * dpr);
-    const h = Math.round((cssW * lh * dpr) / lw);
+    const h = Math.round(cssH * dpr);
     if (lw !== this.lw || lh !== this.lh) {
       this.low.width = this.lw = lw;
       this.low.height = this.lh = lh;
-      this.el.style.aspectRatio = `${lw} / ${lh}`;
       this.particles = [];
     }
     if (this.el.width !== w || this.el.height !== h) {
@@ -301,11 +329,11 @@ export class OfficeScene {
     const floorY = WALL_H;
     if (level === 0) {
       // Garage: concrete, roll-up door ribs, a bare bulb.
-      rect(0, 0, w, floorY, '#5b5868');
-      for (let y = 2; y < floorY - 2; y += 3) rect(6, y, w - 12, 1, '#4a4757');
-      rect(0, floorY, w, h - floorY, '#3d3a46');
-      rect(Math.floor(w * 0.7), h - 8, 10, 3, '#34313b');
-      rect(Math.floor(w * 0.15), floorY + 4, 6, 2, '#47434f');
+      rect(0, 0, w, floorY, '#9a8c7a');
+      for (let y = 2; y < floorY - 2; y += 3) rect(6, y, w - 12, 1, '#8b7e6d');
+      rect(0, floorY, w, h - floorY, '#6e655a');
+      rect(Math.floor(w * 0.7), h - 8, 10, 3, '#635a50');
+      rect(Math.floor(w * 0.15), floorY + 4, 6, 2, '#655c51');
       rect(Math.floor(w / 2), 0, 1, 4, '#222');
       const glow = 0.18 + Math.sin(time * 3) * 0.02;
       c.fillStyle = `rgba(255, 220, 140, ${glow})`;
@@ -329,14 +357,14 @@ export class OfficeScene {
       rect(5, floorY - 15, 4, 3, '#4fbf6f');
     } else if (level === 2) {
       // Studio floor: purple wall, posters, a clock.
-      rect(0, 0, w, floorY, '#3c2f63');
-      rect(0, floorY - 2, w, 2, '#2c2249');
-      rect(0, floorY, w, h - floorY, '#2a2440');
-      for (let x = 0; x < w; x += 6) for (let y = floorY; y < h; y += 6) rect(x + ((y / 6) % 2) * 3, y, 1, 1, '#332c4d');
-      const posters = ['#ff5c9a', '#3ddc97', '#ffad3b', '#4fb3ff'];
+      rect(0, 0, w, floorY, '#56707a');
+      rect(0, floorY - 2, w, 2, '#46606a');
+      rect(0, floorY, w, h - floorY, '#3f4a52');
+      for (let x = 0; x < w; x += 6) for (let y = floorY; y < h; y += 6) rect(x + ((y / 6) % 2) * 3, y, 1, 1, '#4a565e');
+      const posters = ['#dc4b2a', '#23877d', '#f2b33d', '#2f7fc1'];
       posters.forEach((col, i) => {
         const px = 8 + i * Math.floor((w - 16) / 4);
-        rect(px, 4, 9, 12, '#1d1830');
+        rect(px, 4, 9, 12, '#2b2622');
         rect(px + 1, 5, 7, 10, col);
         rect(px + 2, 7, 3, 3, '#ffffff88');
       });
@@ -357,12 +385,12 @@ export class OfficeScene {
           if (lit) rect(x + 2, wy, 1, 1, '#ffe7a3');
         }
       }
-      for (let x = 0; x < w; x += 24) rect(x, 0, 1, floorY, '#3a4670');
-      rect(0, floorY - 1, w, 1, '#3a4670');
-      rect(0, floorY, w, h - floorY, '#232a3d');
-      for (let x = 0; x < w; x += 12) rect(x, floorY, 6, h - floorY, '#262e43');
+      for (let x = 0; x < w; x += 24) rect(x, 0, 1, floorY, '#5a6478');
+      rect(0, floorY - 1, w, 1, '#5a6478');
+      rect(0, floorY, w, h - floorY, '#3a4054');
+      for (let x = 0; x < w; x += 12) rect(x, floorY, 6, h - floorY, '#3f4559');
       const on = Math.sin(time * 2) > -0.8;
-      c.fillStyle = on ? '#ff5c9a' : '#5a2a44';
+      c.fillStyle = on ? '#dc4b2a' : '#5a3328';
       c.fillRect(4, 3, 14, 1);
       c.fillRect(4, 7, 14, 1);
       c.fillRect(4, 3, 1, 5);
@@ -374,7 +402,7 @@ export class OfficeScene {
       for (let i = 0; i < n; i++) {
         const lx = Math.round(((i + 0.5) * w) / n);
         rect(lx, 0, 1, 2, '#15131f');
-        rect(lx - 2, 2, 5, 1, level === 3 ? '#c8c3e6' : '#2a2836');
+        rect(lx - 2, 2, 5, 1, level === 3 ? '#d8d2c4' : '#2a2836');
         rect(lx - 1, 3, 3, 1, '#ffe7a3');
       }
     }
@@ -837,7 +865,7 @@ export class OfficeScene {
       c.fillRect(sx, sy, w, h);
       const px = Math.abs(((time * 6 + (look?.phase ?? 0) * 40) % (2 * (w - 2))) - (w - 2));
       const py = Math.abs(((time * 4 + (look?.phase ?? 0) * 20) % (2 * (h - 2))) - (h - 2));
-      c.fillStyle = '#7c5cff';
+      c.fillStyle = '#23877d';
       c.fillRect(sx + Math.floor(px), sy + Math.floor(py), 2, 2);
       return;
     }
@@ -1010,8 +1038,8 @@ export class OfficeScene {
       ctx.translate(tipX, tipY);
       ctx.scale(pop, pop);
       ctx.translate(-tipX, -tipY);
-      ctx.fillStyle = '#ffffff';
-      ctx.strokeStyle = '#15131f';
+      ctx.fillStyle = '#fff8ea';
+      ctx.strokeStyle = '#2b2622';
       ctx.lineWidth = Math.max(1.5, k * 0.5);
       roundedRect(ctx, bx, by, w, h, h / 2.4);
       ctx.fill();
@@ -1029,7 +1057,7 @@ export class OfficeScene {
       ctx.lineTo(tipX, tipY);
       ctx.lineTo(tx + size * 0.15, by + h);
       ctx.stroke();
-      ctx.fillStyle = '#1d1a2d';
+      ctx.fillStyle = '#2b2622';
       ctx.fillText(b.text, bx + w / 2, by + h / 2 + 1);
       ctx.restore();
     }
