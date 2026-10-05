@@ -29,6 +29,20 @@ describe('money curve', () => {
     expect(reachableUsers(300) / reachableUsers(30)).toBeLessThan(4);
   });
 
+  it('research points come fast enough to unlock the first upgrades early', () => {
+    // When does an average player first get medium-sized games (30 RP)?
+    const years = Array.from({ length: 8 }, (_, i) => {
+      const s = createGame('rp', (i + 1) * 7919);
+      const reports: ReleaseReport[] = [];
+      while (!s.over && !s.researched.includes('size_medium') && s.week < WEEKS_PER_YEAR * 10) {
+        botTurn(s, 'casual', reports);
+        tick(s);
+      }
+      return s.week / WEEKS_PER_YEAR;
+    });
+    expect(median(years)).toBeLessThan(2);
+  });
+
   it('a good studio grows rich, but not absurdly so', () => {
     const runs = careers('smart', 8);
     expect(runs.every((r) => r.over === 'retired')).toBe(true);

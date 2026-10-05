@@ -17,7 +17,9 @@ The UI is laid out like a mobile game, not a web page. The office fills the scre
 - **Polish** before you release. Fix bugs one at a time, or add more design or tech points to fix the game's balance for its genre. Design and tech polishing gives less each week, and new bugs slip in while nobody is fixing them. All points (design, tech, bugs, research) are gained in whole numbers.
 - **Reviews** from 4 outlets decide sales and fans. The bar keeps rising: the market expects each game to beat your best work.
 - **Store**: spend cash on power-ups. Boosts last a few game-development weeks: the Espresso Bar adds 20% more points, Pizza Night triples the chance of getting in the zone, and a Bug Bash fixes 40% of bugs at once. Permanent studio upgrades are Ergonomic Chairs (+5% points), Noise-cancelling Headphones (zone 50% more often) and Test Automation (15% fewer bugs). Boost prices scale with team size, and all prices rise over the years like salaries.
-- **Grow**: take contracts to pay the bills, earn research points, unlock topics, game sizes, engines and QA, hire and train staff, and move to bigger offices.
+- **Grow**: take contracts to pay the bills, earn research points (RP), unlock topics, game sizes, engines and QA, hire and train staff, and move to bigger offices.
+  - Every week of development earns RP (more with a bigger team), and every release earns more, scaled by its review score and size. Contracts earn some too.
+  - A solo founder earns roughly 50–60 RP a year, enough for medium-sized games within about a year and the first engine and design upgrades by the third or fourth.
 - **Money**:
   - Monthly rent and salaries apply (including a modest wage for you, the founder), and three months in the red means bankruptcy.
   - Every game has a production budget, so a flop loses money.

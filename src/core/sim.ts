@@ -575,7 +575,8 @@ export function releaseGame(state: GameState): ReleaseReport | string {
     s.tech = Math.min(10, s.tech + 0.16 * sizeXp * (c.tech / tot) * 2 * (0.5 + random(state) * 0.5));
   }
 
-  const rpEarned = Math.round((score / 2) * sizeXp);
+  // Shipping teaches the most: a well-reviewed, bigger game earns more research points.
+  const rpEarned = Math.round(score * RP_PER_SCORE_POINT * sizeXp);
   state.rp += rpEarned;
   state.bestPPW = Math.max(state.bestPPW, ev.ppw);
   state.released.push(game);
@@ -600,6 +601,18 @@ export function staffWeeklyPoints(state: GameState, s: Staff, phase: number, raw
   return perArea;
 }
 
+/** Research points per release, per review point (times the size bonus). */
+export const RP_PER_SCORE_POINT = 1.2;
+
+/**
+ * Research points a week of game development teaches the studio: a base for
+ * the studio itself plus a share per person, so a solo founder still makes
+ * steady progress (contracts teach half as much).
+ */
+export function weeklyRp(state: GameState): number {
+  return 1 + 0.5 * state.staff.length;
+}
+
 export function tick(state: GameState): SimEvent[] {
   const events: SimEvent[] = [];
   if (state.over) return events;
@@ -617,7 +630,7 @@ export function tick(state: GameState): SimEvent[] {
     tickBoosts(state);
   } else if (act?.kind === 'contract') {
     act.weeksDone++;
-    state.rp = Math.floor(state.rp) + wholeNumber(state, 0.15 * state.staff.length);
+    state.rp = Math.floor(state.rp) + wholeNumber(state, weeklyRp(state) * 0.5);
     if (act.weeksDone >= act.offer.weeks) {
       state.cash += act.offer.pay;
       state.rp += act.offer.rp;
@@ -703,7 +716,7 @@ function tickProject(state: GameState, p: GameProject, events: SimEvent[]) {
   p.design += designGain;
   p.tech += techGain;
   p.bugs += bugs;
-  state.rp += wholeNumber(state, 0.35 * state.staff.length);
+  state.rp += wholeNumber(state, weeklyRp(state));
   events.push({ type: 'points', design: designGain, tech: techGain, bugs });
 
   p.weekInPhase++;
@@ -843,7 +856,7 @@ function refreshContracts(state: GameState) {
       .replace('{platform}', pick(state, platforms).name);
     // Contracts pay the bills with a little to spare: a safety net, not a way to get rich.
     const pay = friendly(weeks * ((monthlyCosts(state) / WEEKS_PER_MONTH) * CONTRACT_MARGIN + 800 * priceIndex(state.week)) * range(state, 0.85, 1.2));
-    const offer: ContractOffer = { id: state.nextId++, title, weeks, pay, rp: Math.max(1, Math.round(weeks * 0.6 * range(state, 0.7, 1.4))) };
+    const offer: ContractOffer = { id: state.nextId++, title, weeks, pay, rp: Math.max(2, Math.round(weeks * 1.2 * range(state, 0.7, 1.4))) };
     return offer;
   });
 }
