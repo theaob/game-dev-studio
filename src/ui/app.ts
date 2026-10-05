@@ -42,7 +42,7 @@ export class App {
   /** Values currently shown in the top bar; they glide towards the real ones. */
   private shownStats: Record<StatKey, number> | null = null;
   private lastStats: Record<StatKey, number> | null = null;
-  /** Identifies the newest notice the player has seen on the News tab. */
+  /** Identifies the newest headline the player has seen on the News tab. */
   private newsSeen = '';
   private lastDraw = 0;
 
@@ -334,20 +334,21 @@ export class App {
     };
   }
 
-  private noticeKey(i: number): string {
-    const n = this.state?.notices[i];
-    return n ? `${n.week}|${n.text}` : '';
+  /** Identifies a headline on the News tab. */
+  private headlineKey(i: number): string {
+    const h = this.state?.industry?.headlines[i];
+    return h ? `${h.week}|${h.text}` : '';
   }
 
   private markNewsRead() {
-    if (this.state) this.newsSeen = this.noticeKey(this.state.notices.length - 1);
+    const n = this.state?.industry?.headlines.length ?? 0;
+    if (this.state) this.newsSeen = this.headlineKey(n - 1);
   }
 
   private unreadNews(): number {
-    const s = this.state;
-    if (!s) return 0;
-    for (let i = s.notices.length - 1; i >= 0; i--) if (this.noticeKey(i) === this.newsSeen) return s.notices.length - 1 - i;
-    return s.notices.length;
+    const list = this.state?.industry?.headlines ?? [];
+    for (let i = list.length - 1; i >= 0; i--) if (this.headlineKey(i) === this.newsSeen) return list.length - 1 - i;
+    return Math.min(list.length, 9);
   }
 
   private save() {

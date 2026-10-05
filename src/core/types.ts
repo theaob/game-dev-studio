@@ -147,6 +147,31 @@ export interface GameState {
   cat?: CatState;
   /** This year's GameExpo booth booking. */
   expo?: { year: number; booth: string };
+  /** Industry news: this year's trend, rival releases and headlines. */
+  industry?: IndustryState;
+}
+
+export interface Headline {
+  week: number;
+  icon: string;
+  text: string;
+  kind: NoticeKind;
+}
+
+export interface RivalGame {
+  week: number;
+  studio: string;
+  name: string;
+  genre: GenreId;
+  topic: string;
+  score: number;
+}
+
+export interface IndustryState {
+  /** This year's hot genre and topic. */
+  trend?: { year: number; genre: GenreId; topic: string };
+  headlines: Headline[];
+  rivalGames: RivalGame[];
 }
 
 export interface CatState {

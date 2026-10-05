@@ -21,6 +21,11 @@ The UI is laid out like a mobile game, not a web page. The office fills the scre
   - Hype pays off only if the game delivers. A well-reviewed game sells more and wins more fans. A hyped game that reviews badly gets a backlash: fewer sales and fans walking away.
   - **GameExpo** runs every year. Book a small, medium or big booth up to 8 weeks before it for a burst of hype and new fans.
   - After launch, use 📣 Push sales on a game on the market: an ad push sells more of its remaining copies, and a discount sale cuts the price but sells many more copies and wins extra fans.
+- **Industry news** (News tab):
+  - Every January a new **trend** starts: a hot genre (+15% sales) and a hot topic (+10%). The new-game screen marks them with 🔥.
+  - **Rival studios** open, release games and close over the decades. A rival's hit (8+) takes 15% of the sales of your games with the same topic and genre for half a year, and the new-game screen warns you.
+  - A **platform market** overview shows each platform's audience and whether it is growing, shrinking or about to be discontinued, plus rumours of next year's launches.
+  - A yearly round-up of your studio's releases, and your own studio log.
 - **Reviews** from 4 outlets decide sales and fans. The bar keeps rising: the market expects each game to beat your best work.
 - **Store**: spend cash on power-ups. Boosts last a few game-development weeks: the Espresso Bar adds 20% more points, Pizza Night triples the chance of getting in the zone, and a Bug Bash fixes 40% of bugs at once. Permanent studio upgrades are Ergonomic Chairs (+5% points), Noise-cancelling Headphones (zone 50% more often) and Test Automation (15% fewer bugs). Boost prices scale with team size, and all prices rise over the years like salaries.
 - **Grow**: take contracts to pay the bills, earn research points (RP), unlock topics, game sizes, engines and QA, hire and train staff, and move to bigger offices.

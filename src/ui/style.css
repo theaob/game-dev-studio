@@ -687,6 +687,55 @@ h2 {
   border-left: 3px solid var(--line);
 }
 
+/* ---------- News ---------- */
+
+.news-date {
+  margin: 14px 2px 6px;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.news-card {
+  padding: 0;
+}
+
+.headline {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 14px;
+  border-top: 1px solid var(--line);
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.headline:first-child {
+  border-top: 0;
+}
+
+.headline .hl-icon {
+  flex: none;
+  width: 22px;
+  text-align: center;
+}
+
+.headline.good {
+  box-shadow: inset 3px 0 0 var(--good);
+}
+
+.headline.bad {
+  box-shadow: inset 3px 0 0 var(--bad);
+}
+
+.studio-log summary {
+  cursor: pointer;
+  padding: 10px 2px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
 /* ---------- Bottom nav ---------- */
 
 nav.tabs {

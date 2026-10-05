@@ -24,6 +24,7 @@ import {
   train,
   upgradeOffice,
 } from './sim';
+import { RIVAL_CLASH_MULT, rivalClash, trendMult } from './industry';
 import { yearFraction } from './time';
 import type { GameSpec, GameState, ReleaseReport } from './types';
 
@@ -127,7 +128,9 @@ function smartSpec(state: GameState, minFit = 3, modestAds = false): GameSpec | 
             const spec: GameSpec = { name: `Game ${state.released.length + 1}`, topic, genre: genre.id, platform: platform.id, size: size.id, marketing: m.id };
             const cost = gameCost(state, spec).total;
             if (cost > state.cash - monthlyCosts(state) * 4) continue;
-            const value = (platformUsers(platform, year) + 5) * platformGenreFit(platform, genre.id) * size.unitMult * m.salesMult * platform.priceMult - cost / 20000;
+            // The smart bot reads the news: it chases trends and avoids a rival's recent hit.
+            const news = modestAds ? 1 : trendMult(state, genre.id, topic) * (rivalClash(state, genre.id, topic) ? RIVAL_CLASH_MULT : 1);
+            const value = (platformUsers(platform, year) + 5) * platformGenreFit(platform, genre.id) * size.unitMult * m.salesMult * platform.priceMult * news - cost / 20000;
             if (!best || value > best.value) best = { spec, value };
           }
         }

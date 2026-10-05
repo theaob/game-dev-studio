@@ -39,6 +39,7 @@ import {
 import type { BoothId, PromoId, SalesPushId } from './marketing';
 import { STARTING_CASH, founderSalary, friendly, marketingCost, officeCost, officeRent, priceIndex, reachableUsers, sizeCost } from './economy';
 import { int, pick, random, range } from './rng';
+import { RIVAL_CLASH_MULT, newTrend, rivalClash, tickIndustry, trendMult } from './industry';
 import { hasSequel, sequelSalesMult, seriesNumber } from './sequels';
 import { average, clamp, evaluate, normalizeFocus, rollReviews, scoreFactor } from './scoring';
 import { START_YEAR, TOTAL_WEEKS, WEEKS_PER_MONTH, WEEKS_PER_YEAR, yearFraction, yearOf } from './time';
@@ -98,6 +99,7 @@ export function createGame(studioName: string, seed = Date.now()): GameState {
   refreshContracts(state);
   refreshCandidates(state);
   notify(state, `${state.studioName} opens its doors in a humble garage. Time to make some games!`, 'good');
+  newTrend(state);
   return state;
 }
 
@@ -501,7 +503,11 @@ export function releaseGame(state: GameState): ReleaseReport | string {
   // Hype: launch buzz for a game that delivers, a backlash for one that doesn't.
   const hype = p.hype ?? 0;
   const buzz = hypeEffect(hype, score, market.salesMult);
-  const targetUnits = Math.round((audience * range(state, 0.85, 1.15) + fanBuyers) * sequelMult * buzz.salesMult);
+  // The industry: this year's trend sells, a rival's recent hit with the same idea takes a share.
+  const trend = trendMult(state, p.genre, p.topic);
+  const clash = rivalClash(state, p.genre, p.topic);
+  const clashMult = clash ? RIVAL_CLASH_MULT : 1;
+  const targetUnits = Math.round((audience * range(state, 0.85, 1.15) + fanBuyers) * sequelMult * buzz.salesMult * trend * clashMult);
   const unitPrice = size.price * platform.priceMult * (1 + 0.025 * years);
 
   const game: ReleasedGame = {
@@ -587,6 +593,8 @@ export function releaseGame(state: GameState): ReleaseReport | string {
       insights.push({ text: `Backlash: players were promised more. ${pct}% sales${lost ? ` and ${lost.toLocaleString('en-US')} fans lost` : ''}.`, kind: 'bad' });
     } else insights.push({ text: "The hype didn't move sales: the reviews were only average.", kind: 'info' });
   }
+  if (trend > 1) insights.push({ text: `Riding this year's trend: +${Math.round((trend - 1) * 100)}% sales.`, kind: 'good' });
+  if (clash) insights.push({ text: `${clash.studio}'s ${clash.name} got there first: ${Math.round((clashMult - 1) * 100)}% sales.`, kind: 'bad' });
   if (ev.staffMult < 1) insights.push({ text: `A ${size.name.toLowerCase()} game really needs a team of ${size.minStaff}+.`, kind: 'bad' });
   const pFit = platformGenreFit(platform, p.genre);
   if (pFit > 1.05) insights.push({ text: `${platform.name} owners love ${genre.name} games.`, kind: 'good' });
@@ -671,6 +679,7 @@ export function tick(state: GameState): SimEvent[] {
   tickSales(state);
 
   tickExpo(state);
+  tickIndustry(state);
   if (state.week % WEEKS_PER_MONTH === 0) monthly(state);
   if (state.week % WEEKS_PER_YEAR === 0) yearly(state);
 

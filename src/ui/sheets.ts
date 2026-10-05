@@ -28,6 +28,7 @@ import {
 } from '../core/sim';
 import { SEQUEL_TOO_SOON_WEEKS, sequelCandidates, sequelSalesMult, seriesNumber } from '../core/sequels';
 import { WEEKS_PER_YEAR, formatShortDate, yearFraction, yearOf } from '../core/time';
+import { RIVAL_CLASH_MULT, RIVAL_CLASH_WEEKS, rivalClash, trendMult } from '../core/industry';
 import { BOOTHS, EXPO_BOOKING_WEEKS, PROMOS, SALES_PUSHES, boothById, boothPrice, promoPrice, salesPushPrice, weeksToExpo } from '../core/marketing';
 import type { GameProject, GameSpec, GameState, ReleaseReport } from '../core/types';
 import { esc, money, num, scoreClass } from './format';
@@ -114,6 +115,7 @@ function help(): string {
       <p><b>Design vs Tech.</b> Every genre has a sweet spot between creative (design) and technical (tech) points.</p>
       <p><b>Polish.</b> After development you can keep polishing before you release: fix bugs (they hurt reviews), or add more design or tech points to fix the game's balance. Design and tech polishing gives less each week.</p>
       <p><b>Marketing.</b> Pick an ad budget when you start a game. Tap 📣 Promote while making it to build hype with previews and trailers, and book a booth at the yearly GameExpo. Hype sells more copies of a good game, but a hyped flop gets a backlash. After launch, 📣 Push sales runs ads or a discount sale.</p>
+      <p><b>Read the news.</b> Each year has a trending genre and topic (marked 🔥 when you start a game) that sell better. Rival studios release games too: right after a rival's hit, the same topic and genre sells less for a while. The News tab also shows which platforms are growing or on their way out.</p>
       <p><b>The cat.</b> Sometimes the studio cat curls up on a developer's lap, and they work 30% faster while it stays. You can carry the cat over and drop it on someone too, but it needs some alone time between laps.</p>
       <p><b>Store.</b> Spend cash on power-ups: boosts like an espresso bar or pizza night last a few weeks of development, and studio upgrades help forever. Find it next to Contracts, or tap ⚡ Boost while making a game.</p>
       <p><b>Raise the bar.</b> Players expect each game to beat your last one, and the industry keeps moving. Grow your team, train them and research better tech.</p>
@@ -139,6 +141,7 @@ function receptionPreview(state: GameState, d: Pick<GameSpec, 'topic' | 'genre' 
   const topic = topicById(d.topic).name;
   const genre = genreById(d.genre);
   const fit = state.knowledge.combos[`${d.topic}|${d.genre}`];
+  const news = newsNotes(state, d.genre, d.topic);
   if (fit === undefined) {
     return `
     <div class="reception unknown mt">
@@ -146,11 +149,12 @@ function receptionPreview(state: GameState, d: Pick<GameSpec, 'topic' | 'genre' 
       <div class="grow">
         <b>Unknown reception</b>
         <div class="sub">You haven't released a ${esc(topic)} ${genre.name} game yet. Make one to discover how players react.</div>
+        ${news.length ? `<ul class="reception-notes">${news.map((n) => `<li>${n}</li>`).join('')}</ul>` : ''}
       </div>
     </div>`;
   }
   const r = RECEPTION[fit];
-  const notes: string[] = [];
+  const notes: string[] = [...news];
   const past = state.released.filter((g) => g.topic === d.topic && g.genre === d.genre);
   const last = past[past.length - 1];
   if (last) notes.push(`📊 Last time, <b>${esc(last.name)}</b> scored <b>${last.score.toFixed(1)}</b>${past.length > 1 ? ` (${past.length} games so far)` : ''}.`);
@@ -177,6 +181,19 @@ function receptionPreview(state: GameState, d: Pick<GameSpec, 'topic' | 'genre' 
     </div>`;
 }
 
+/** What the News tab says about this idea: this year's trend and rivals' recent hits. */
+function newsNotes(state: GameState, genre: string, topic: string): string[] {
+  const notes: string[] = [];
+  const t = trendMult(state, genre, topic);
+  if (t > 1) notes.push(`🔥 On trend this year: <b>+${Math.round((t - 1) * 100)}% sales</b>.`);
+  const clash = rivalClash(state, genre, topic);
+  if (clash) {
+    const months = Math.max(1, Math.ceil((RIVAL_CLASH_WEEKS - (state.week - clash.week)) / 4));
+    notes.push(`⚔️ ${esc(clash.studio)}'s hit <b>${esc(clash.name)}</b> is still fresh: <b>${Math.round((RIVAL_CLASH_MULT - 1) * 100)}% sales</b> for about ${months} more month${months > 1 ? 's' : ''}.`);
+  }
+  return notes;
+}
+
 /** The "New game or sequel?" picker and, for a sequel, what to expect. */
 function sequelPicker(state: GameState, d: GameSpec): string {
   const candidates = sequelCandidates(state);
@@ -184,10 +201,14 @@ function sequelPicker(state: GameState, d: GameSpec): string {
   const original = d.sequelOf !== undefined ? state.released.find((g) => g.id === d.sequelOf) : undefined;
   const chips = [
     `<button class="chip ${original ? '' : 'on'}" data-action="pick-sequel" data-arg="none">✨ New game</button>`,
-    ...candidates.slice(0, 8).map(
-      (g) =>
-        `<button class="chip ${original?.id === g.id ? 'on' : ''}" data-action="pick-sequel" data-arg="${g.id}">🔁 ${esc(g.name)} <span class="tag ${g.score >= 7.5 ? 'good' : g.score >= 5 ? 'mid' : 'bad'}">${g.score.toFixed(1)}</span></button>`,
-    ),
+    // The 8 best-reviewed candidates, listed in release order.
+    ...candidates
+      .slice(0, 8)
+      .sort((a, b) => a.releaseWeek - b.releaseWeek || a.id - b.id)
+      .map(
+        (g) =>
+          `<button class="chip ${original?.id === g.id ? 'on' : ''}" data-action="pick-sequel" data-arg="${g.id}">🔁 ${esc(g.name)} <small class="muted">${yearOf(g.releaseWeek)}</small> <span class="tag ${g.score >= 7.5 ? 'good' : g.score >= 5 ? 'mid' : 'bad'}">${g.score.toFixed(1)}</span></button>`,
+      ),
   ].join('');
   let info = '';
   if (original) {
@@ -227,7 +248,7 @@ function newGameStep1(state: GameState, d: GameSpec, error?: string): string {
         : `
     <h4>Genre</h4>
     <div class="chips">
-      ${GENRES.map((g) => `<button class="chip ${d.genre === g.id ? 'on' : ''}" data-action="pick-genre" data-arg="${g.id}">${g.icon} ${g.name}</button>`).join('')}
+      ${GENRES.map((g) => `<button class="chip ${d.genre === g.id ? 'on' : ''}" data-action="pick-genre" data-arg="${g.id}">${g.icon} ${g.name}${state.industry?.trend?.genre === g.id ? ' 🔥' : ''}</button>`).join('')}
     </div>
     <h4>Topic</h4>
     <div class="chips">
@@ -236,7 +257,7 @@ function newGameStep1(state: GameState, d: GameSpec, error?: string): string {
           const t = topicById(id);
           const known = d.genre ? state.knowledge.combos[`${id}|${d.genre}`] : undefined;
           const dot = known !== undefined ? `<i class="fit fit-${known}" title="${FIT_LABELS[known]}"></i>` : '';
-          return `<button class="chip ${d.topic === id ? 'on' : ''}" data-action="pick-topic" data-arg="${id}">${t.icon} ${t.name}${dot}</button>`;
+          return `<button class="chip ${d.topic === id ? 'on' : ''}" data-action="pick-topic" data-arg="${id}">${t.icon} ${t.name}${state.industry?.trend?.topic === id ? ' 🔥' : ''}${dot}</button>`;
         })
         .join('')}
     </div>`

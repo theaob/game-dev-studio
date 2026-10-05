@@ -32,6 +32,7 @@ import {
   SALES_WEEKS,
 } from './sim';
 import { TOTAL_WEEKS, WEEKS_PER_YEAR, formatDate } from './time';
+import { RIVAL_CLASH_MULT, TREND_GENRE_BONUS, TREND_TOPIC_BONUS, trendMult } from './industry';
 import { EXPO_BOOKING_WEEKS, EXPO_WEEK, HYPE_DECAY, hypeEffect } from './marketing';
 import type { GameProject, GameSpec } from './types';
 
@@ -573,5 +574,61 @@ describe('marketing', () => {
     for (let w = 0; w < SALES_WEEKS; w++) tick(s);
     expect(g.unitsSold).toBe(g.targetUnits);
     expect(pushSales(s, g.id, 'ads')).toBe('It has left the charts.');
+  });
+});
+
+describe('industry news', () => {
+  it('sets a new trend every year and announces it', () => {
+    const s = createGame('News', 91);
+    const first = s.industry!.trend!;
+    expect(first.year).toBe(1985);
+    expect(s.industry!.headlines[0].text).toMatch(/1985 trend/);
+    while (s.week < WEEKS_PER_YEAR) tick(s);
+    const next = s.industry!.trend!;
+    expect(next.year).toBe(1986);
+    expect(next.genre).not.toBe(first.genre);
+    expect(next.topic).not.toBe(first.topic);
+    expect(trendMult(s, next.genre, next.topic)).toBeCloseTo(TREND_GENRE_BONUS * TREND_TOPIC_BONUS);
+    expect(trendMult(s, next.genre, 'no-such-topic')).toBe(TREND_GENRE_BONUS);
+  });
+
+  it('has rival studios release games, keeping the feed short', () => {
+    const s = createGame('News', 92);
+    for (let i = 0; i < WEEKS_PER_YEAR * 10; i++) {
+      s.activity = null; // stay idle so nothing else happens
+      tick(s);
+    }
+    const ind = s.industry!;
+    expect(ind.rivalGames.length).toBeGreaterThan(10);
+    expect(ind.headlines.length).toBeLessThanOrEqual(80);
+    expect(ind.headlines.some((h) => /released|flopped|smash hit/.test(h.text))).toBe(true);
+  });
+
+  it('sells more on trend and less right after a rival hit with the same idea', () => {
+    const run = (setup: (s: ReturnType<typeof createGame>) => void) => {
+      const s = createGame('News', 93);
+      s.cash = 1e7;
+      s.industry!.trend = { year: 1985, genre: 'action', topic: 'space' };
+      setup(s);
+      startGame(s, spec, [33, 33, 33]);
+      while (s.activity?.kind === 'game' && s.activity.phase < 3) {
+        if (s.activity.awaitingFocus) setPhaseFocus(s, [33, 33, 33]);
+        tick(s);
+      }
+      // Keep the setup in place even if the week's news changed it.
+      setup(s);
+      const r = releaseGame(s);
+      if (typeof r === 'string') throw new Error(r);
+      return r;
+    };
+    const plain = run(() => {});
+    const trendy = run((s) => (s.industry!.trend = { year: 1985, genre: 'rpg', topic: 'fantasy' }));
+    const clashed = run((s) => {
+      s.industry!.rivalGames = [{ week: s.week, studio: 'Lunar Soft', name: 'Dragon Saga', genre: 'rpg', topic: 'fantasy', score: 8.8 }];
+    });
+    expect(trendy.game.targetUnits / plain.game.targetUnits).toBeCloseTo(TREND_GENRE_BONUS * TREND_TOPIC_BONUS, 1);
+    expect(clashed.game.targetUnits / plain.game.targetUnits).toBeCloseTo(RIVAL_CLASH_MULT, 1);
+    expect(trendy.insights.some((i) => /trend/.test(i.text))).toBe(true);
+    expect(clashed.insights.some((i) => /Dragon Saga/.test(i.text))).toBe(true);
   });
 });
