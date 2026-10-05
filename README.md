@@ -48,6 +48,7 @@ npx vitest run scripts/balance.test.ts   # year-by-year economy report from bot 
 
 1. **Build job**: `npm ci`, typecheck, unit tests and bot playthroughs, `vite build`, and a check that `dist/` is a valid HTML5 upload (has `index.html` and uses only relative asset paths). The build is saved as the `web-build` artifact.
 2. **Deploy job**: pushes that exact build to itch.io with [butler](https://itch.io/docs/butler/). It runs on pushes to `main`, on `v*` tags, and when started by hand from the Actions tab. It never runs for pull requests.
+3. **Android jobs**: build an APK from the same web build and push it to the `android` channel (see [Android](#android)).
 
 Versions show up on itch.io as `0.1.0-build.<run number>` for `main` builds, or as the tag (`v1.2.0` → `1.2.0`) for releases.
 
@@ -85,10 +86,32 @@ src/save.ts    localStorage persistence
 public/        PWA manifest, icon, service worker
 ```
 
-## Shipping to app stores (next step)
+## Android
+
+The game is wrapped as a native Android app with [Capacitor](https://capacitorjs.com/). The Android Studio project is in `android/`, configured by `capacitor.config.ts` (app id `io.github.theaob.gamedevstudio`). It's portrait-only and uses the game's icon and a paper-coloured splash screen. Those images are generated from `assets/` with `npx @capacitor/assets generate --android`.
+
+**CI** (`.github/workflows/ci.yml`, job *Android APK*):
+- Every run copies the web build into the Android project and builds an APK with Gradle. The APK is saved as the `android-apk` artifact.
+- On `main`, `v*` tags and manual runs, the APK is signed with your release key and pushed to itch.io on the `android` channel, so it shows up as an Android download on the game page.
+- Pull requests get a debug-signed APK for testing and never deploy.
+- `versionCode` is the run number, so every build installs as an update. `versionName` matches the web version.
+
+**Signing (one-time setup).** Android only installs updates signed with the same key, so CI needs your release key as secrets. Create it once on your computer (needs Java):
 
 ```bash
-npm i @capacitor/core @capacitor/cli @capacitor/ios @capacitor/android
-npx cap init "Game Dev Studio" com.example.gamedevstudio --web-dir dist
-npm run build && npx cap add ios && npx cap add android && npx cap sync
+keytool -genkeypair -v -keystore release.keystore -alias upload -keyalg RSA -keysize 2048 -validity 10000
+base64 -w0 release.keystore   # on macOS: base64 -i release.keystore
 ```
+
+Then add four repository secrets (Settings → Secrets and variables → Actions):
+
+| Secret | Value |
+|---|---|
+| `ANDROID_KEYSTORE_BASE64` | the base64 output above |
+| `ANDROID_KEYSTORE_PASSWORD` | the keystore password you chose |
+| `ANDROID_KEY_ALIAS` | `upload` (or the alias you used) |
+| `ANDROID_KEY_PASSWORD` | the key password (same as the keystore password if you pressed Enter) |
+
+Keep `release.keystore` and its passwords backed up somewhere safe. If you lose them, players can't install updates and have to reinstall. Until the secrets exist, CI still builds a debug APK (download it from the run's artifacts) but skips the itch.io push with a warning.
+
+**Local builds:** `npm run android` builds the web game, syncs it into `android/` and opens Android Studio. You need Android Studio with JDK 21 and Android SDK 36.

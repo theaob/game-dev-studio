@@ -2,9 +2,9 @@
   <rect width="512" height="512" rx="112" fill="#efe4cf"/>
   <rect x="72" y="84" width="368" height="368" rx="92" fill="#2b2622"/>
   <rect x="72" y="64" width="368" height="368" rx="92" fill="#dc4b2a" stroke="#2b2622" stroke-width="14"/>
-  <path d="M150 220c0-33 27-60 60-60h92c33 0 60 27 60 60v58c0 41-33 74-74 74-23 0-38-12-50-28h-36c-12 16-27 28-50 28-41 0-74-33-74-74v-58z" transform="translate(0 -6)" fill="#fff8ea" stroke="#2b2622" stroke-width="12"/>
-  <rect x="190" y="222" width="56" height="16" rx="8" fill="#2b2622"/>
-  <rect x="210" y="202" width="16" height="56" rx="8" fill="#2b2622"/>
-  <circle cx="312" cy="216" r="13" fill="#f2b33d" stroke="#2b2622" stroke-width="6"/>
-  <circle cx="338" cy="246" r="13" fill="#23877d" stroke="#2b2622" stroke-width="6"/>
+  <path d="M136 210c0-30 24-54 54-54h132c30 0 54 24 54 54v60c0 40-32 72-72 72c-16 0-28-6-38-18h-20c-10 12-22 18-38 18c-40 0-72-32-72-72z" fill="#fff8ea" stroke="#2b2622" stroke-width="12" stroke-linejoin="round"/>
+  <rect x="168" y="232" width="56" height="16" rx="8" fill="#2b2622"/>
+  <rect x="188" y="212" width="16" height="56" rx="8" fill="#2b2622"/>
+  <circle cx="310" cy="226" r="13" fill="#f2b33d" stroke="#2b2622" stroke-width="6"/>
+  <circle cx="338" cy="256" r="13" fill="#23877d" stroke="#2b2622" stroke-width="6"/>
 </svg>
