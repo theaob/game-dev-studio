@@ -28,9 +28,9 @@ export function renderTopbar(state: GameState, speed: number): string {
       <button class="icon-btn" data-action="menu" aria-label="Menu">☰</button>
     </div>
     <div class="stats">
-      <div class="stat ${state.cash < 0 ? 'neg' : ''}"><small>Cash</small><b>${money(state.cash)}</b></div>
-      <div class="stat"><small>Fans</small><b>${num(state.fans)}</b></div>
-      <div class="stat"><small>Research</small><b>${Math.floor(state.rp)} RP</b></div>
+      <div class="stat" data-stat="cash"><small>Cash</small><b>${money(state.cash)}</b></div>
+      <div class="stat" data-stat="fans"><small>Fans</small><b>${num(state.fans)}</b></div>
+      <div class="stat" data-stat="rp"><small>Research</small><b>${Math.floor(state.rp)} RP</b></div>
     </div>
   </div>`;
 }
@@ -82,7 +82,7 @@ function renderActivity(state: GameState): string {
     <div class="card hero" id="activity">
       <div class="card-title">Your team is ready</div>
       <div class="sub">Start a new game, or take on contract work to pay the bills.</div>
-      <div class="btn-row"><button class="btn big" data-action="new-game">🎮 Develop a new game</button></div>
+      <div class="btn-row"><button class="btn big pulse" data-action="new-game">🎮 Develop a new game</button></div>
     </div>
     <h2>Contract work</h2>
     <div class="list">
@@ -133,7 +133,7 @@ function renderActivity(state: GameState): string {
       ${PHASES.map((p, i) => `<span class="${i < a.phase ? 'done' : i === a.phase ? 'now' : ''}">${i < a.phase ? '✓ ' : ''}${p.name}</span>`).join('')}
       <span class="${polishing ? 'now' : ''}">Polish</span>
     </div>
-    <div class="bar"><i style="width:${pct}%"></i></div>
+    <div class="bar ${polishing ? '' : 'live'}"><i style="width:${pct}%"></i></div>
     <div class="counters" id="counters">
       <div class="counter c-design"><b>${Math.round(a.design)}</b><small>Design</small></div>
       <div class="counter c-tech"><b>${Math.round(a.tech)}</b><small>Tech</small></div>
@@ -142,7 +142,7 @@ function renderActivity(state: GameState): string {
     ${
       polishing
         ? `<div class="sub mt">Development finished! The team is squashing bugs (${a.polishWeeks} week${a.polishWeeks === 1 ? '' : 's'} of polish). Release whenever you're ready.</div>
-           <div class="btn-row"><button class="btn big" data-action="release">🚀 Release game</button></div>`
+           <div class="btn-row"><button class="btn big pulse" data-action="release">🚀 Release game</button></div>`
         : ''
     }
   </div>`;

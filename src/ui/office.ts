@@ -4,6 +4,7 @@
  * filtering so it stays crisp on any phone screen.
  */
 import { OFFICES } from '../core/data';
+import { yearOf } from '../core/time';
 import type { GameState, Staff } from '../core/types';
 
 const CELL_W = 48;
@@ -76,6 +77,57 @@ function gestureFor(id: number, look: Look, t: number, mode: Mode, zone: boolean
   return { g: mode === 'idle' ? 'relax' : 'type', p };
 }
 
+/** Seconds of play for one full day/night cycle. */
+const DAY_SECONDS = 120;
+
+/** Computer hardware changes with the decades. */
+type Era = 'crt-mono' | 'crt' | 'lcd' | 'wide';
+
+function eraFor(year: number): Era {
+  if (year < 1990) return 'crt-mono';
+  if (year < 2000) return 'crt';
+  if (year < 2010) return 'lcd';
+  return 'wide';
+}
+
+/** Desk furniture gets nicer as the studio grows. */
+const DESK_WOOD = ['#7a6a55', '#8a5a3b', '#5c5f73', '#d9d4c7'];
+
+const shadeCache = new Map<string, string>();
+/** Lightens (f > 0) or darkens (f < 0) a #rrggbb colour. */
+function shade(hex: string, f: number): string {
+  const key = hex + f;
+  const hit = shadeCache.get(key);
+  if (hit) return hit;
+  const n = parseInt(hex.slice(1, 7), 16);
+  const target = f < 0 ? 0 : 255;
+  const mix = (v: number) => Math.round(v + (target - v) * Math.abs(f));
+  const out = `rgb(${mix(n >> 16)},${mix((n >> 8) & 255)},${mix(n & 255)})`;
+  shadeCache.set(key, out);
+  return out;
+}
+
+type Daylight = { tod: number; sun: number; dark: number; dusk: number };
+
+/** Time of day 0..1 (0 = midnight, 0.5 = noon) and how dark the room is. */
+function daylight(clock: number): Daylight {
+  const tod = (clock / DAY_SECONDS + 0.35) % 1;
+  const sun = Math.cos((tod - 0.5) * Math.PI * 2); // 1 at noon, -1 at midnight
+  const dark = Math.max(0, Math.min(0.5, (0.2 - sun) * 0.55));
+  const dusk = Math.max(0, 1 - Math.abs(sun) * 4); // around sunrise and sunset
+  return { tod, sun, dark, dusk };
+}
+
+const CAT_ID = -1;
+
+interface Cat {
+  x: number;
+  dir: 1 | -1;
+  mode: 'walk' | 'sit' | 'sleep';
+  t: number;
+  target: number;
+}
+
 function pickLine(list: string[]): string {
   return list[Math.floor(Math.random() * list.length)];
 }
@@ -96,6 +148,8 @@ interface Look {
   shirt: string;
   style: number;
   phase: number;
+  /** Desk item: 0 plant, 1 rubber duck, 2 papers, 3 robot figurine, 4 lamp, 5 cactus. */
+  prop: number;
 }
 
 const SKINS = ['#f5d0b5', '#e8b48f', '#c98b5e', '#a0673f', '#6e4329', '#ffdfc4'];
@@ -116,6 +170,7 @@ function lookFor(s: Staff): Look {
     shirt: SHIRTS[next(SHIRTS.length)],
     style: next(4),
     phase: next(1000) / 1000,
+    prop: next(6),
   };
 }
 
@@ -136,6 +191,11 @@ export class OfficeScene {
   private bubbles = new Map<number, Bubble>();
   private breaks = new Map<number, CoffeeBreak>();
   private staffIds: number[] = [];
+  private cat: Cat = { x: 20, dir: 1, mode: 'sleep', t: 0, target: 20 };
+  /** Where each person (and the cat) is on screen, for taps. Logical pixels. */
+  private hitboxes: { id: number; x: number; y: number; w: number; h: number; name: string }[] = [];
+  private era: Era = 'crt-mono';
+  private level = 0;
 
   constructor() {
     this.el = document.createElement('canvas');
@@ -143,6 +203,27 @@ export class OfficeScene {
     this.el.setAttribute('role', 'img');
     this.ctx = this.el.getContext('2d')!;
     this.lc = this.low.getContext('2d')!;
+    this.el.addEventListener('click', (e) => this.onTap(e));
+  }
+
+  /** Tapping someone makes them wave; tapping the cat gets a purr. */
+  private onTap(e: MouseEvent) {
+    const r = this.el.getBoundingClientRect();
+    const x = ((e.clientX - r.left) / r.width) * this.lw;
+    const y = ((e.clientY - r.top) / r.height) * this.lh;
+    // Topmost first: the cat and walkers are drawn last.
+    for (let i = this.hitboxes.length - 1; i >= 0; i--) {
+      const h = this.hitboxes[i];
+      if (x >= h.x && x <= h.x + h.w && y >= h.y && y <= h.y + h.h) {
+        if (h.id === CAT_ID) {
+          this.say(CAT_ID, pickLine(['❤️', 'Purr…', 'Mrrp!', '😺']), 1.8);
+          if (this.cat.mode === 'sleep') this.cat = { ...this.cat, mode: 'sit', t: 0 };
+        } else {
+          this.say(h.id, `👋 ${h.name === 'You' ? 'Hey boss!' : h.name.split(' ')[0]}`, 2);
+        }
+        return;
+      }
+    }
   }
 
   /** Called when the simulation reports someone got in the zone. */
@@ -189,13 +270,16 @@ export class OfficeScene {
     const animating = running && mode !== 'idle';
 
     const c = this.lc;
-    this.drawRoom(c, state.officeLevel, lw, lh, time);
-
     if (running) this.clock += dt;
     const tick = running ? dt : 0;
+    this.era = eraFor(yearOf(state.week));
+    this.level = state.officeLevel;
+    const light = daylight(this.reducedMotion ? 0 : this.clock);
+    this.drawRoom(c, state.officeLevel, lw, lh, time, light);
+    this.hitboxes = [];
     this.staffIds = state.staff.map((x) => x.id);
     for (const id of [...this.breaks.keys()]) if (!this.staffIds.includes(id)) this.breaks.delete(id);
-    for (const id of [...this.bubbles.keys()]) if (!this.staffIds.includes(id)) this.bubbles.delete(id);
+    for (const id of [...this.bubbles.keys()]) if (id !== CAT_ID && !this.staffIds.includes(id)) this.bubbles.delete(id);
 
     const offsetX = Math.floor((lw - cols * CELL_W) / 2);
     const deskAt = (i: number) => ({ x: offsetX + (i % cols) * CELL_W, y: WALL_H - 10 + Math.floor(i / cols) * CELL_H });
@@ -203,6 +287,7 @@ export class OfficeScene {
     this.drawCoffeeMachine(c, machine.x, machine.y, time);
 
     const zoners: { x: number; y: number; s: Staff }[] = [];
+    const glows: { x: number; y: number; color: string; r: number }[] = [];
     const anchors = new Map<number, { x: number; y: number }>();
     const walkers: { s: Staff; x: number; y: number; stage: CoffeeBreak['stage']; t: number }[] = [];
     for (let i = 0; i < desks; i++) {
@@ -223,11 +308,18 @@ export class OfficeScene {
         const wy = from.y + (to.y - from.y) * p;
         walkers.push({ s: s!, x: wx, y: wy, stage: brk.stage, t: brk.t });
         anchors.set(s!.id, { x: wx + 3, y: wy - 16 });
+        this.hitboxes.push({ id: s!.id, x: wx - 4, y: wy - 17, w: 9, h: 18, name: s!.name });
         continue;
       }
       this.drawDesk(c, x, y, s, mode, animating, inZone, time);
+      if (s) {
+        const color = inZone ? '255,190,80' : mode === 'idle' ? '124,92,255' : mode === 'polish' ? '120,255,190' : '90,170,255';
+        glows.push({ x: x + 24, y: y + 18, r: 20, color });
+        if (lookFor(s).prop === 4 && !this.dualMonitors()) glows.push({ x: x + 10, y: y + 24, r: 12, color: '255,200,120' });
+      }
       if (!s) continue;
       anchors.set(s.id, { x: x + 30, y: y + 19 });
+      this.hitboxes.push({ id: s.id, x: x + 14, y: y + 18, w: 20, h: 24, name: s.name });
       if (inZone) zoners.push({ x, y, s });
       if (animating && !this.reducedMotion) this.emitWork(x, y, inZone, mode, dt);
       this.maybeChatter(s, mode, inZone, tick, state.staff.length);
@@ -235,13 +327,30 @@ export class OfficeScene {
     // Walkers go on top of the desks, back-to-front.
     walkers.sort((a, b) => a.y - b.y).forEach((w) => this.drawWalker(c, w.s, w.x, w.y, w.stage, w.t, time));
 
+    // The studio cat roams the strip of floor in front of the desks.
+    const catY = lh - 3;
+    this.updateCat(tick, lw);
+    this.drawCat(c, catY, time);
+    anchors.set(CAT_ID, { x: this.cat.x + 3, y: catY - 6 });
+    this.hitboxes.push({ id: CAT_ID, x: this.cat.x - 2, y: catY - 8, w: 11, h: 9, name: 'cat' });
+
     this.updateParticles(c, dt);
+    this.drawLighting(c, lw, lh, light, glows, time);
 
     // Scale up crisply.
     const ctx = this.ctx;
     ctx.imageSmoothingEnabled = false;
     ctx.clearRect(0, 0, this.el.width, this.el.height);
     ctx.drawImage(this.low, 0, 0, this.el.width, this.el.height);
+
+    // Soft vignette pulls the eye to the middle.
+    const W = this.el.width;
+    const Hh = this.el.height;
+    const v = ctx.createRadialGradient(W / 2, Hh / 2, Math.min(W, Hh) * 0.35, W / 2, Hh / 2, Math.max(W, Hh) * 0.75);
+    v.addColorStop(0, 'rgba(10,8,20,0)');
+    v.addColorStop(1, 'rgba(10,8,20,0.38)');
+    ctx.fillStyle = v;
+    ctx.fillRect(0, 0, W, Hh);
 
     // Labels drawn at full resolution so the text is sharp.
     const k = this.el.width / lw;
@@ -293,7 +402,50 @@ export class OfficeScene {
   // Room
   // -------------------------------------------------------------------------
 
-  private drawRoom(c: CanvasRenderingContext2D, level: number, w: number, h: number, time: number) {
+  /** Sky colour for windows at this time of day. */
+  private sky(light: Daylight): { top: string; bottom: string; night: boolean } {
+    if (light.sun < -0.25) return { top: '#0f1430', bottom: '#1f2a55', night: true };
+    if (light.dusk > 0.3) return { top: '#4a5aa8', bottom: '#f29a5a', night: false };
+    return { top: '#5aa8e8', bottom: '#a8dcf5', night: false };
+  }
+
+  private drawSkyPane(c: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, light: Daylight, time: number) {
+    const sky = this.sky(light);
+    const g = c.createLinearGradient(0, y, 0, y + h);
+    g.addColorStop(0, sky.top);
+    g.addColorStop(1, sky.bottom);
+    c.fillStyle = g;
+    c.fillRect(x, y, w, h);
+    c.save();
+    c.beginPath();
+    c.rect(x, y, w, h);
+    c.clip();
+    if (sky.night) {
+      // Twinkling stars and a crescent moon.
+      c.fillStyle = '#ffffff';
+      for (let i = 0; i < w * h * 0.04; i++) {
+        const sx = x + ((i * 37 + 11) % w);
+        const sy = y + ((i * 53 + 7) % h);
+        if ((i + Math.floor(time * 2)) % 9) c.fillRect(sx, sy, 1, 1);
+      }
+      c.fillStyle = '#f4f1d8';
+      c.fillRect(x + w - 6, y + 2, 3, 3);
+      c.fillStyle = sky.top;
+      c.fillRect(x + w - 5, y + 2, 2, 2);
+    } else {
+      // The sun travels across the sky, and a cloud drifts by.
+      const sunX = x + (light.tod - 0.25) * 2 * w;
+      c.fillStyle = light.dusk > 0.3 ? '#ffb05a' : '#fff2b0';
+      c.fillRect(Math.round(sunX), y + 2 + Math.round((1 - light.sun) * (h - 5)), 3, 3);
+      c.fillStyle = 'rgba(255,255,255,0.85)';
+      const cx = x + ((time * 2) % (w + 10)) - 8;
+      c.fillRect(Math.round(cx), y + 3, 6, 2);
+      c.fillRect(Math.round(cx) + 2, y + 2, 3, 1);
+    }
+    c.restore();
+  }
+
+  private drawRoom(c: CanvasRenderingContext2D, level: number, w: number, h: number, time: number, light: Daylight) {
     const rect = (x: number, y: number, rw: number, rh: number, col: string) => {
       c.fillStyle = col;
       c.fillRect(x, y, rw, rh);
@@ -321,9 +473,9 @@ export class OfficeScene {
       for (let x = 0; x < w; x += 8) rect(x, floorY, 1, h - floorY, '#433530');
       const wx = Math.floor(w / 2) - 14;
       rect(wx, 3, 28, 12, '#e8dccf');
-      rect(wx + 1, 4, 26, 10, '#7ec8f2');
-      rect(wx + 4 + ((time * 2) % 22), 6, 5, 2, '#ffffff');
+      this.drawSkyPane(c, wx + 1, 4, 26, 10, light, time);
       rect(wx + 13, 4, 1, 10, '#e8dccf');
+      rect(wx - 1, 15, 30, 1, '#cfc2b3');
       rect(4, floorY - 6, 6, 6, '#b5653a');
       rect(3, floorY - 13, 8, 7, '#3d9a5a');
       rect(5, floorY - 15, 4, 3, '#4fbf6f');
@@ -346,12 +498,15 @@ export class OfficeScene {
       rect(cx + Math.round(Math.cos(a) * 2), 6 + Math.round(Math.sin(a) * 2), 1, 1, '#222');
     } else {
       // Campus: floor-to-ceiling windows with a city skyline and a neon sign.
-      rect(0, 0, w, floorY, '#1b2440');
+      this.drawSkyPane(c, 0, 0, w, floorY, light, time);
+      const night = this.sky(light).night;
       for (let x = 0; x < w; x += 7) {
         const bh = 6 + ((x * 37) % 11);
-        rect(x, floorY - bh, 6, bh, '#2b3760');
+        rect(x, floorY - bh, 6, bh, night ? '#1d2546' : '#4a5a86');
         for (let wy = floorY - bh + 2; wy < floorY - 1; wy += 3) {
-          if ((x + wy) % 5 !== 0) rect(x + 2, wy, 1, 1, (x + wy + Math.floor(time)) % 7 ? '#ffe7a3' : '#2b3760');
+          // Most office windows light up at night; a few stay lit in the day.
+          const lit = night ? (x + wy) % 5 !== 0 : (x * 7 + wy * 3) % 9 === 0;
+          if (lit) rect(x + 2, wy, 1, 1, '#ffe7a3');
         }
       }
       for (let x = 0; x < w; x += 24) rect(x, 0, 1, floorY, '#3a4670');
@@ -365,6 +520,56 @@ export class OfficeScene {
       c.fillRect(4, 3, 1, 5);
       c.fillRect(17, 3, 1, 5);
     }
+    if (level > 0) {
+      // Pendant ceiling lamps.
+      const n = Math.max(1, Math.round(w / 64));
+      for (let i = 0; i < n; i++) {
+        const lx = Math.round(((i + 0.5) * w) / n);
+        rect(lx, 0, 1, 2, '#15131f');
+        rect(lx - 2, 2, 5, 1, level === 3 ? '#c8c3e6' : '#2a2836');
+        rect(lx - 1, 3, 3, 1, '#ffe7a3');
+      }
+    }
+    // Floor depth: the back of the room is a little darker than the front.
+    const fg = c.createLinearGradient(0, floorY, 0, h);
+    fg.addColorStop(0, 'rgba(0,0,0,0.18)');
+    fg.addColorStop(1, 'rgba(255,255,255,0.03)');
+    c.fillStyle = fg;
+    c.fillRect(0, floorY, w, h - floorY);
+    rect(0, floorY, w, 1, 'rgba(0,0,0,0.25)');
+  }
+
+  /** Night falls: dim the room, then add light from screens and lamps. */
+  private drawLighting(c: CanvasRenderingContext2D, w: number, h: number, light: Daylight, glows: { x: number; y: number; color: string; r: number }[], time: number) {
+    if (light.dusk > 0) {
+      c.fillStyle = `rgba(255,140,60,${(light.dusk * 0.08).toFixed(3)})`;
+      c.fillRect(0, 0, w, h);
+    }
+    if (light.dark <= 0.01) return;
+    c.fillStyle = `rgba(10,8,35,${light.dark.toFixed(3)})`;
+    c.fillRect(0, 0, w, h);
+    c.save();
+    c.globalCompositeOperation = 'lighter';
+    const strength = light.dark * 1.4;
+    for (const g of glows) {
+      const flicker = 1 + Math.sin(time * 13 + g.x) * 0.04;
+      const rg = c.createRadialGradient(g.x, g.y, 1, g.x, g.y, g.r);
+      rg.addColorStop(0, `rgba(${g.color},${(0.45 * strength * flicker).toFixed(3)})`);
+      rg.addColorStop(1, `rgba(${g.color},0)`);
+      c.fillStyle = rg;
+      c.fillRect(g.x - g.r, g.y - g.r, g.r * 2, g.r * 2);
+    }
+    // Ceiling lights (a bare bulb in the garage).
+    const n = Math.max(1, Math.round(w / 64));
+    const lamps = this.level === 0 ? [w / 2] : Array.from({ length: n }, (_, i) => ((i + 0.5) * w) / n);
+    for (const lx of lamps) {
+      const rg = c.createRadialGradient(lx, 2, 1, lx, 14, 34);
+      rg.addColorStop(0, `rgba(255,214,150,${(0.5 * strength).toFixed(3)})`);
+      rg.addColorStop(1, 'rgba(255,214,150,0)');
+      c.fillStyle = rg;
+      c.fillRect(lx - 40, 0, 80, 50);
+    }
+    c.restore();
   }
 
   // -------------------------------------------------------------------------
@@ -391,34 +596,59 @@ export class OfficeScene {
       c.fillRect(x, y + 4, CELL_W, CELL_H);
     }
 
-    // Desk
-    rect(6, 30, 36, 3, '#8a5a3b');
-    rect(6, 33, 36, 1, '#5e3c27');
-    rect(8, 34, 2, 8, '#5e3c27');
-    rect(38, 34, 2, 8, '#5e3c27');
+    const wood = DESK_WOOD[Math.min(this.level, DESK_WOOD.length - 1)];
+    const dual = this.dualMonitors();
 
-    // Mug on the desk (it goes with them on a coffee break, or up to their lips)
-    if (!away && gesture?.g !== 'sip') {
-      rect(36, 27, 3, 3, '#e8e8f0');
-      rect(39, 28, 1, 1, '#e8e8f0');
+    // Desk with a shadow, a highlighted top edge and a darker front.
+    rect(7, 42, 34, 1, 'rgba(0,0,0,0.22)');
+    rect(6, 29, 36, 1, shade(wood, 0.25));
+    rect(6, 30, 36, 3, wood);
+    rect(6, 33, 36, 1, shade(wood, -0.35));
+    rect(8, 34, 2, 8, shade(wood, -0.3));
+    rect(38, 34, 2, 8, shade(wood, -0.3));
+
+    // Desk item, and the mug (which goes with them on a coffee break, or up to their lips).
+    if (s && look && !dual) this.drawProp(c, x, y, look, time);
+    const mugX = dual ? 8 : 36;
+    if (s && !away && gesture?.g !== 'sip') {
+      rect(mugX, 26, 3, 3, '#e8e8f0');
+      rect(mugX, 26, 3, 1, '#ffffff');
+      rect(mugX + 3, 27, 1, 1, '#e8e8f0');
+      if (Math.sin(time * 1.3 + (look?.phase ?? 0) * 10) > 0.4) rect(mugX + 1, 24 - Math.floor((time * 3) % 2), 1, 1, '#ffffff66');
     }
-    if (s && !away && gesture?.g !== 'sip' && Math.sin(time * 1.3 + (look?.phase ?? 0) * 10) > 0.4) rect(37, 25 - Math.floor((time * 3) % 2), 1, 1, '#ffffff66');
 
-    // Monitor
-    rect(13, 10, 22, 16, '#15131f');
-    rect(23, 26, 2, 4, '#15131f');
-    rect(19, 29, 10, 1, '#15131f');
-    this.drawScreen(c, x + 14, y + 11, 20, 13, s, mode, animating, zone, time, look);
+    // Monitor(s) for the era.
+    const scr = this.drawMonitor(c, x, y, dual);
+    this.drawScreen(c, x + scr.x, y + scr.y, scr.w, scr.h, s, mode, animating, zone, time, look);
+    if (scr.crt) {
+      // Scanlines and a little glass glare.
+      c.fillStyle = 'rgba(0,0,0,0.14)';
+      for (let ly = 1; ly < scr.h; ly += 2) c.fillRect(x + scr.x, y + scr.y + ly, scr.w, 1);
+      c.fillStyle = 'rgba(255,255,255,0.1)';
+      c.fillRect(x + scr.x + 1, y + scr.y + 1, 3, 1);
+      c.fillRect(x + scr.x + 1, y + scr.y + 2, 1, 2);
+    }
+    if (dual) {
+      // A second, portrait monitor with docs on it.
+      rect(37, 14, 9, 12, '#15131f');
+      rect(41, 26, 1, 3, '#2a2a33');
+      rect(39, 29, 5, 1, '#2a2a33');
+      c.fillStyle = s && !away ? '#e8e8f0' : '#0c0b12';
+      c.fillRect(x + 38, y + 15, 7, 10);
+      if (s && !away) {
+        c.fillStyle = '#9a98b0';
+        for (let ly = 0; ly < 4; ly++) c.fillRect(x + 39, y + 16 + ly * 2, 3 + ((s.id + ly) % 3), 1);
+      }
+    }
 
     if (away) {
       // Sticky note on the monitor while they're away.
-      rect(30, 11, 4, 4, '#ffd25c');
-      rect(31, 12, 2, 1, '#8a6a1a');
+      rect(scr.x + scr.w - 4, scr.y - 1, 4, 4, '#ffd25c');
+      rect(scr.x + scr.w - 3, scr.y, 2, 1, '#8a6a1a');
     }
+    const chair = this.level >= 2 ? '#2a2836' : this.level === 1 ? '#3a2f4a' : '#4a3a2f';
     if (!s || !look || away || !gesture) {
-      // Empty chair
-      rect(17, 32, 14, 9, '#2a2836');
-      rect(23, 41, 2, 2, '#1b1a24');
+      this.drawChair(c, x, y, chair);
       return;
     }
 
@@ -453,12 +683,12 @@ export class OfficeScene {
     const P = (rx: number, ry: number, rw: number, rh: number, col: string) => rect(rx + dx, ry, rw, rh, col);
     const H = (rx: number, ry: number, rw: number, rh: number, col: string) => rect(rx + dx + hdx, ry + hdy, rw, rh, col);
 
-    // Chair back (stays put while they sway)
-    rect(16, 34, 16, 8, '#2a2836');
-    rect(23, 42, 2, 1, '#1b1a24');
-    // Shoulders / shirt
+    // Chair (stays put while they sway)
+    this.drawChair(c, x, y, chair);
+    // Shoulders / shirt, lit from above
     P(17, hy + 8, 14, 7, look.shirt);
     P(17, hy + 8, 14, 1, '#ffffff33');
+    P(17, hy + 13, 14, 2, shade(look.shirt, -0.22));
 
     // Lower arms: on the keyboard, or behind the head when relaxing.
     const relaxing = g === 'relax' || g === 'swivel';
@@ -476,7 +706,7 @@ export class OfficeScene {
     }
 
     // Neck & head
-    P(22, hy + 7, 4, 2, look.skin);
+    P(22, hy + 7, 4, 2, shade(look.skin, -0.15));
     H(20, hy, 8, 8, look.skin);
     H(19, hy + 3, 1, 2, look.skin);
     H(28, hy + 3, 1, 2, look.skin);
@@ -502,6 +732,8 @@ export class OfficeScene {
         H(18, hy + 2, 2, 4, '#15131f');
         H(28, hy + 2, 2, 4, '#15131f');
     }
+    // A highlight on the hair.
+    if (look.style !== 3) H(21, hy, 6, 1, shade(look.hair, 0.28));
     // Turning the head shows a cheek and an eye.
     if (hdx > 0) {
       H(26, hy + 2, 2, 4, look.skin);
@@ -548,6 +780,191 @@ export class OfficeScene {
     }
   }
 
+  private dualMonitors(): boolean {
+    return this.era === 'wide' && this.level >= 2;
+  }
+
+  /** Draws the monitor body for the current era and returns the screen area (desk-relative). */
+  private drawMonitor(c: CanvasRenderingContext2D, x: number, y: number, dual: boolean) {
+    const rect = (rx: number, ry: number, rw: number, rh: number, col: string) => {
+      c.fillStyle = col;
+      c.fillRect(x + rx, y + ry, rw, rh);
+    };
+    if (this.era === 'crt-mono' || this.era === 'crt') {
+      // Chunky beige CRT.
+      const beige = '#d8cfb8';
+      rect(12, 9, 24, 17, beige);
+      rect(12, 9, 24, 1, shade(beige, 0.3));
+      rect(12, 25, 24, 1, shade(beige, -0.25));
+      rect(14, 11, 20, 13, '#3a3a30');
+      rect(19, 26, 10, 3, shade(beige, -0.1));
+      rect(17, 28, 14, 1, shade(beige, -0.25));
+      rect(33, 24, 1, 1, '#3ddc97');
+      return { x: 15, y: 12, w: 18, h: 11, crt: true };
+    }
+    if (this.era === 'lcd') {
+      // Silver flat panel.
+      const silver = '#b8bcc8';
+      rect(13, 10, 22, 16, silver);
+      rect(13, 10, 22, 1, shade(silver, 0.3));
+      rect(23, 26, 2, 3, shade(silver, -0.2));
+      rect(19, 29, 10, 1, shade(silver, -0.3));
+      return { x: 14, y: 11, w: 20, h: 13, crt: false };
+    }
+    // Thin-bezel widescreen.
+    const ox = dual ? -2 : 0;
+    rect(10 + ox, 11, 27, 14, '#15131f');
+    rect(23 + ox, 25, 2, 4, '#2a2a33');
+    rect(19 + ox, 29, 10, 1, '#2a2a33');
+    return { x: 11 + ox, y: 12, w: 25, h: 12, crt: false };
+  }
+
+  private drawChair(c: CanvasRenderingContext2D, x: number, y: number, col: string) {
+    const rect = (rx: number, ry: number, rw: number, rh: number, cc: string) => {
+      c.fillStyle = cc;
+      c.fillRect(x + rx, y + ry, rw, rh);
+    };
+    rect(15, 43, 18, 1, 'rgba(0,0,0,0.25)');
+    // Star base and wheels
+    rect(23, 41, 2, 1, '#1b1a24');
+    rect(18, 42, 12, 1, '#1b1a24');
+    rect(17, 42, 1, 1, '#0d0c12');
+    rect(30, 42, 1, 1, '#0d0c12');
+    // Backrest with rounded corners
+    rect(17, 33, 14, 8, col);
+    rect(16, 34, 16, 6, col);
+    rect(17, 33, 14, 1, shade(col, 0.22));
+    rect(16, 39, 16, 1, shade(col, -0.3));
+    rect(17, 40, 14, 1, shade(col, -0.3));
+  }
+
+  /** A personal item on the left of the desk. */
+  private drawProp(c: CanvasRenderingContext2D, x: number, y: number, look: Look, time: number) {
+    const rect = (rx: number, ry: number, rw: number, rh: number, col: string) => {
+      c.fillStyle = col;
+      c.fillRect(x + rx, y + ry, rw, rh);
+    };
+    switch (look.prop) {
+      case 0: {
+        // Potted plant, swaying gently.
+        const sway = Math.round(Math.sin(time * 1.2 + look.phase * 9) * 0.6);
+        rect(8, 26, 4, 3, '#b5653a');
+        rect(8, 26, 4, 1, '#c97a4a');
+        rect(7 + sway, 23, 6, 3, '#3d9a5a');
+        rect(9 + sway, 21, 2, 2, '#4fbf6f');
+        break;
+      }
+      case 1: // Rubber duck, for rubber-duck debugging.
+        rect(8, 27, 4, 2, '#ffd25c');
+        rect(10, 25, 2, 2, '#ffd25c');
+        rect(12, 26, 1, 1, '#ff8a3b');
+        rect(11, 25, 1, 1, '#15131f');
+        break;
+      case 2: // Stack of design docs.
+        rect(7, 27, 6, 2, '#e8e8f0');
+        rect(8, 26, 5, 1, '#d8d8e4');
+        rect(8, 28, 3, 1, '#9a98b0');
+        break;
+      case 3: // Little robot figurine with a blinking eye.
+        rect(9, 24, 3, 3, '#9aa3b8');
+        rect(10, 25, 1, 1, Math.floor(time * 1.5 + look.phase * 5) % 2 ? '#ff5c6c' : '#5a2a30');
+        rect(8, 27, 5, 2, '#7c87a0');
+        rect(10, 23, 1, 1, '#9aa3b8');
+        break;
+      case 4: // Desk lamp.
+        rect(7, 28, 4, 1, '#2a2836');
+        rect(8, 23, 1, 5, '#2a2836');
+        rect(8, 22, 4, 2, '#ffad3b');
+        rect(9, 24, 2, 1, '#ffe7a3');
+        break;
+      default: // Cactus.
+        rect(9, 27, 3, 2, '#c98b5e');
+        rect(10, 23, 1, 4, '#3d9a5a');
+        rect(9, 24, 1, 2, '#3d9a5a');
+        rect(11, 25, 1, 1, '#3d9a5a');
+        rect(10, 22, 1, 1, '#ff5c9a');
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // The studio cat
+  // -------------------------------------------------------------------------
+
+  private updateCat(dt: number, w: number) {
+    const cat = this.cat;
+    if (dt === 0 || this.reducedMotion) return;
+    cat.t += dt;
+    if (cat.mode === 'walk') {
+      cat.x += 7 * dt * cat.dir;
+      if ((cat.dir > 0 && cat.x >= cat.target) || (cat.dir < 0 && cat.x <= cat.target)) {
+        cat.x = cat.target;
+        cat.mode = Math.random() < 0.4 ? 'sleep' : 'sit';
+        cat.t = 0;
+        if (cat.mode === 'sleep' && Math.random() < 0.5) this.say(CAT_ID, '💤', 2.5);
+      }
+    } else {
+      const rest = cat.mode === 'sleep' ? 14 : 5;
+      if (cat.t > rest && Math.random() < dt * 0.5) {
+        cat.target = 4 + Math.random() * (w - 16);
+        cat.dir = cat.target > cat.x ? 1 : -1;
+        cat.mode = 'walk';
+        cat.t = 0;
+        if (Math.random() < 0.25) this.say(CAT_ID, pickLine(['Meow', '🐟?', 'Mrrp']), 1.6);
+      }
+    }
+    cat.x = Math.max(2, Math.min(w - 10, cat.x));
+  }
+
+  private drawCat(c: CanvasRenderingContext2D, y: number, time: number) {
+    const cat = this.cat;
+    const x = Math.round(cat.x);
+    const fur = '#e8913a';
+    const stripe = '#b5652a';
+    const eye = '#15131f';
+    // Mirror the sprite when walking left.
+    const R = (rx: number, ry: number, rw: number, rh: number, col: string) => {
+      c.fillStyle = col;
+      c.fillRect(x + (cat.dir > 0 ? rx : 8 - rx - rw), y + ry, rw, rh);
+    };
+    R(0, 0, 9, 1, 'rgba(0,0,0,0.25)');
+    if (cat.mode === 'sleep') {
+      const breathe = Math.floor(time * 1.5) % 2;
+      R(1, -3 - breathe, 5, 3 + breathe, fur);
+      R(2, -3 - breathe, 1, 3 + breathe, stripe);
+      R(4, -3 - breathe, 1, 3 + breathe, stripe);
+      R(0, -1, 2, 1, fur);
+      R(5, -4, 3, 3, fur);
+      R(5, -5, 1, 1, fur);
+      R(7, -5, 1, 1, fur);
+      R(6, -3, 2, 1, stripe);
+    } else if (cat.mode === 'sit') {
+      const swish = Math.floor(time * 2) % 2;
+      R(2, -5, 4, 4, fur);
+      R(3, -5, 1, 4, stripe);
+      R(4, -8, 3, 3, fur);
+      R(4, -9, 1, 1, fur);
+      R(6, -9, 1, 1, fur);
+      if (Math.floor(time * 0.7) % 5) {
+        R(5, -7, 1, 1, eye);
+        R(6, -7, 1, 1, eye);
+      }
+      R(swish, -1, 2, 1, fur);
+    } else {
+      const step = Math.floor(time * 8) % 2;
+      R(1, -4, 6, 3, fur);
+      R(2, -4, 1, 3, stripe);
+      R(4, -4, 1, 3, stripe);
+      R(6, -6, 3, 3, fur);
+      R(6, -7, 1, 1, fur);
+      R(8, -7, 1, 1, fur);
+      R(8, -5, 1, 1, eye);
+      R(1 + step, -1, 1, 1, stripe);
+      R(5 - step, -1, 1, 1, stripe);
+      R(0, -6, 1, 3, fur);
+      R(-1 + step, -7, 1, 1, fur);
+    }
+  }
+
   private drawScreen(
     c: CanvasRenderingContext2D,
     sx: number,
@@ -591,6 +1008,7 @@ export class OfficeScene {
       const indent = (seed % 4) * 2;
       const len = 3 + (seed % 11);
       let col = CODE[seed % CODE.length];
+      if (this.era === 'crt-mono') col = seed % 3 ? '#4cff7a' : '#2fbf5a';
       if (mode === 'polish') col = seed % 3 === 0 ? '#ff5c6c' : '#3ddc97';
       if (zone) col = seed % 2 ? '#ffd25c' : '#ffad3b';
       c.fillStyle = col;

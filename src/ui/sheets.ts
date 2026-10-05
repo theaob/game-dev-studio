@@ -353,7 +353,7 @@ function review(report: ReleaseReport, shown: number): string {
         ? `
       <div class="summary center">
         <div class="sub">Average score</div>
-        <div class="score ${scoreClass(g.score)}" style="margin:6px auto;width:64px;height:64px;font-size:24px">${g.score.toFixed(1)}</div>
+        <div class="score ${scoreClass(g.score)}" style="margin:6px auto;width:64px;height:64px;font-size:24px" data-countup="${g.score.toFixed(1)}">${g.score.toFixed(1)}</div>
         <div class="sub">+${report.rpEarned} RP · your team gained experience</div>
       </div>
       <h4>What we learned</h4>
