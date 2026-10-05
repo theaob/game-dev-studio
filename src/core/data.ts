@@ -290,40 +290,49 @@ export const LAST_NAMES = ['Park', 'Novak', 'Silva', 'Okafor', 'Tanaka', 'Weber'
 /**
  * Name ideas per genre: `{a}` and `{b}` are filled from the two word lists, so an
  * RPG suggests "Tales of Valdrath" while a puzzle game suggests "Gem Swap".
+ * `topicPatterns` also use `{t}`, a word for the game's topic (TOPIC_TITLE_WORDS):
+ * "Dragon Chronicles", "Zombie Rampage", "Barnyard Tycoon", "Dino Match".
  */
-export const GENRE_TITLES: Record<GenreId, { patterns: string[]; a: string[]; b: string[] }> = {
+export const GENRE_TITLES: Record<GenreId, { patterns: string[]; topicPatterns: string[]; a: string[]; b: string[] }> = {
   action: {
     patterns: ['{a} {b}', '{a} {b}', '{b}: {a} Edition'],
+    topicPatterns: ['{t} {b}', '{t} {b}', '{t} {b}: {a} Edition'],
     a: ['Blast', 'Steel', 'Thunder', 'Rapid', 'Iron', 'Venom', 'Crimson', 'Turbo', 'Overkill', 'Bullet'],
     b: ['Force', 'Assault', 'Fist', 'Rampage', 'Commando', 'Storm', 'Fury', 'Strike', 'Run', 'Brawl'],
   },
   adventure: {
     patterns: ['The {a} {b}', '{a} {b}', 'Secret of the {a} {b}'],
+    topicPatterns: ['The {t} {b}', '{t} {b}', 'Secret of the {t} {b}'],
     a: ['Lost', 'Hidden', 'Sunken', 'Forgotten', 'Golden', 'Whispering', 'Emerald', 'Silent', 'Wandering'],
     b: ['Island', 'Temple', 'Voyage', 'Expedition', 'Map', 'Lighthouse', 'Compass', 'Caverns', 'Horizon'],
   },
   rpg: {
     patterns: ['{a} of {b}', '{b}: {a}', '{a} of {b}'],
+    topicPatterns: ['{t} {a}', '{t} {a}', '{t} {a}: {b}'],
     a: ['Tales', 'Legend', 'Chronicles', 'Saga', 'Oath', 'Crown', 'Echoes', 'Heirs', 'Shards'],
     b: ['Valdrath', 'Eldoria', 'the Ashen Realm', 'the Twelve Moons', 'the Fallen Star', 'Mythara', 'Kingsreach', 'the Ember Isles'],
   },
   simulation: {
     patterns: ['{a} {b}', '{b} {a}', '{a} {b} Deluxe'],
+    topicPatterns: ['{t} {b}', '{t} {b}', '{a} {t} {b}'],
     a: ['Super', 'Pro', 'Ultimate', 'Real', 'Total', 'Busy', 'Grand', 'Little'],
     b: ['Tycoon', 'Manager', 'Simulator', 'Life', 'Builder', 'Inc.', 'Story', 'Planner'],
   },
   strategy: {
     patterns: ['{a} {b}', '{a}: {b}', 'Age of {a}'],
+    topicPatterns: ['{t} {a}', '{t} {a}: {b}', '{t} {a}'],
     a: ['Empires', 'Kingdoms', 'Dominion', 'Conquest', 'Command', 'Realms', 'Banners', 'Throne', 'Legions'],
     b: ['Ascendant', 'at War', 'Rising', 'Supreme', 'of Power', 'Total War', 'Eternal', 'Divided'],
   },
   puzzle: {
     patterns: ['{a} {b}', '{a}{b}', '{a} {b} Mania'],
+    topicPatterns: ['{t} {b}', '{t} {b}', '{t} {b} Mania'],
     a: ['Block', 'Color', 'Tile', 'Gem', 'Bubble', 'Brain', 'Pixel', 'Crystal', 'Number'],
     b: ['Drop', 'Shift', 'Swap', 'Twist', 'Logic', 'Pop', 'Stack', 'Match', 'Flip'],
   },
   casual: {
     patterns: ['{a} {b}', '{a} {b}!', '{a} {b} Party'],
+    topicPatterns: ['{a} {t} {b}', '{t} {b}', '{t} {b}!'],
     a: ['Happy', 'Tiny', 'Sunny', 'Bouncy', 'Lucky', 'Fluffy', 'Sweet', 'Snack', 'Cozy'],
     b: ['Pets', 'Garden', 'Hop', 'Friends', 'Dash', 'Bakery', 'Town', 'Paws', 'Island'],
   },
@@ -363,3 +372,31 @@ export function storeItemById(id: string): StoreItem {
   if (!item) throw new Error(`Unknown store item ${id}`);
   return item;
 }
+
+/** Words that evoke each topic, for title suggestions. */
+export const TOPIC_TITLE_WORDS: Record<string, string[]> = {
+  fantasy: ['Dragon', 'Elven', 'Arcane', 'Mythic', 'Enchanted', 'Wizard'],
+  scifi: ['Star', 'Nebula', 'Quantum', 'Galactic', 'Plasma', 'Android'],
+  racing: ['Turbo', 'Nitro', 'Asphalt', 'Grand Prix', 'Drift', 'Speedway'],
+  sports: ['Slam', 'Champion', 'League', 'Goal', 'Stadium', 'Final Whistle'],
+  medieval: ['Castle', 'Knight', 'Crown', 'Feudal', 'Royal', 'Kingdom'],
+  pirates: ['Pirate', 'Buccaneer', 'Corsair', 'Skull Island', 'Treasure', 'Seven Seas'],
+  detective: ['Noir', 'Case File', 'Gumshoe', 'Clue', 'Detective', 'Midnight'],
+  space: ['Orbit', 'Cosmic', 'Rocket', 'Lunar', 'Astro', 'Starship'],
+  horror: ['Dread', 'Haunted', 'Blood Moon', 'Nightmare', 'Grave', 'Hollow'],
+  zombies: ['Zombie', 'Undead', 'Outbreak', 'Infected', 'Dead City', 'Rotten'],
+  farming: ['Harvest', 'Barnyard', 'Meadow', 'Sunny Acres', 'Orchard', 'Crop'],
+  military: ['Strike Force', 'Battalion', 'Frontline', 'Iron Eagle', 'Warzone', 'Commander'],
+  dungeon: ['Dungeon', 'Crypt', 'Labyrinth', 'Torchlight', 'Catacomb', 'Deep Delve'],
+  music: ['Rhythm', 'Beat', 'Groove', 'Disco', 'Encore', 'Melody'],
+  mystery: ['Mystery', 'Riddle', 'Enigma', 'Cipher', 'Whispering', 'Hidden Room'],
+  school: ['Campus', 'Homeroom', 'Recess', 'Academy', 'Hall Pass', 'Class Act'],
+  ninja: ['Ninja', 'Shinobi', 'Shuriken', 'Shadow Clan', 'Silent Blade', 'Kunai'],
+  dinosaurs: ['Dino', 'Jurassic', 'Raptor', 'Rex', 'Prehistoric', 'Fossil'],
+  city: ['Metro', 'Skyline', 'Urban', 'Boom Town', 'Downtown', 'Megacity'],
+  cooking: ['Kitchen', 'Chef', 'Spice', 'Diner', 'Bistro', 'Sizzle'],
+  superheroes: ['Hero', 'Masked', 'Mighty', 'Caped', 'Justice', 'Power Squad'],
+  cyberpunk: ['Neon', 'Chrome', 'Neural', 'Synth', 'Glitch', 'Netrunner'],
+  romance: ['Heart', 'Sweetheart', 'Moonlit', 'Love Letter', 'Blossom', 'Starry Night'],
+  apocalypse: ['Wasteland', 'Ashen', 'Ruins', 'Last Light', 'Dust', 'Aftermath'],
+};

@@ -685,7 +685,7 @@ export class App {
       // New game wizard
       case 'random-name':
         if (sheet?.kind === 'newGame') {
-          if (sheet.draft.genre) sheet.draft.name = randomTitle(sheet.draft.genre, sheet.draft.name);
+          if (sheet.draft.genre) sheet.draft.name = randomTitle(sheet.draft.genre, sheet.draft.name, sheet.draft.topic || undefined);
           sheet.nameEdited = false;
           this.renderSheet();
         }
@@ -701,7 +701,7 @@ export class App {
             d.name = sequelName(original);
           } else if (d.sequelOf !== undefined) {
             d.sequelOf = undefined;
-            d.name = d.genre ? randomTitle(d.genre) : '';
+            d.name = d.genre ? randomTitle(d.genre, undefined, d.topic || undefined) : '';
             sheet.nameEdited = false;
           }
           sheet.error = undefined;
@@ -717,10 +717,14 @@ export class App {
           const d = sheet.draft;
           if (name === 'pick-genre') {
             // The title is chosen after the genre: suggest one that fits, unless the player wrote their own.
-            if (d.genre !== arg && !sheet.nameEdited) d.name = randomTitle(arg as GenreId);
+            if (d.genre !== arg && !sheet.nameEdited) d.name = randomTitle(arg as GenreId, undefined, d.topic || undefined);
             d.genre = arg as GenreId;
           }
-          if (name === 'pick-topic') d.topic = arg;
+          if (name === 'pick-topic') {
+            // ...and it picks up the topic too, once there's a genre to go with it.
+            if (d.topic !== arg && d.genre && !sheet.nameEdited) d.name = randomTitle(d.genre, d.name, arg);
+            d.topic = arg;
+          }
           if (name === 'pick-platform') d.platform = arg;
           if (name === 'pick-size') d.size = arg as SizeId;
           if (name === 'pick-marketing') d.marketing = arg as MarketingId;

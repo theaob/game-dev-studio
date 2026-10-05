@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { GENRES, GENRE_TITLES, PLATFORMS, TOPICS, platformUsers } from './data';
+import { GENRES, GENRE_TITLES, PLATFORMS, TOPICS, TOPIC_TITLE_WORDS, platformUsers } from './data';
 import { playThrough } from './bot';
 import { benchmark, evaluate, normalizeFocus, phaseAlignment, repeatMultiplier } from './scoring';
 import { SEQUEL_TOO_SOON_MULT, sequelCandidates, sequelName, sequelSalesMult } from './sequels';
@@ -277,6 +277,25 @@ describe('sequels', () => {
 });
 
 describe('title suggestions', () => {
+  it('mention the topic once one is picked', () => {
+    for (const topic of TOPICS) {
+      const words = TOPIC_TITLE_WORDS[topic.id];
+      expect(words?.length, topic.id).toBeGreaterThan(0);
+      for (const g of GENRES) {
+        // Seeded, so the check can't fail on an unlucky streak.
+        let seed = 12345;
+        const rand = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
+        let mentions = 0;
+        for (let i = 0; i < 20; i++) {
+          const t = randomTitle(g.id, undefined, topic.id, rand);
+          expect(t).not.toMatch(/[{}]|  /);
+          if (words.some((w) => t.includes(w))) mentions++;
+        }
+        expect(mentions, `${topic.id} ${g.id}`).toBeGreaterThanOrEqual(10);
+      }
+    }
+  });
+
   it('fit the genre and change on every re-roll', () => {
     for (const g of GENRES) {
       const words = [...GENRE_TITLES[g.id].a, ...GENRE_TITLES[g.id].b];

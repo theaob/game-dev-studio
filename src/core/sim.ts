@@ -11,6 +11,7 @@ import {
   SIZES,
   storeItemById,
   GENRE_TITLES,
+  TOPIC_TITLE_WORDS,
   TOPICS,
   genreById,
   isPlatformAvailable,
@@ -867,15 +868,22 @@ function refreshCandidates(state: GameState) {
 }
 
 /**
- * Suggests a title that fits the genre, avoiding `avoid` (the current suggestion)
- * so a re-roll always changes it. Uses Math.random so suggesting names doesn't
- * shift the deterministic game RNG.
+ * Suggests a title that fits the genre and, once it's chosen, the topic, avoiding
+ * `avoid` (the current suggestion) so a re-roll always changes it. Uses
+ * Math.random by default so suggesting names doesn't shift the deterministic
+ * game RNG; tests pass a seeded `rand`.
  */
-export function randomTitle(genre: GenreId, avoid?: string): string {
+export function randomTitle(genre: GenreId, avoid?: string, topic?: string, rand: () => number = Math.random): string {
   const t = GENRE_TITLES[genre];
-  const pick = <T>(list: T[]) => list[Math.floor(Math.random() * list.length)];
+  const words = topic ? TOPIC_TITLE_WORDS[topic] : undefined;
+  const pick = <T>(list: T[]) => list[Math.floor(rand() * list.length)];
   for (let i = 0; i < 10; i++) {
-    const title = pick(t.patterns).replace('{a}', pick(t.a)).replace('{b}', pick(t.b));
+    // With a topic, most suggestions mention it; the rest keep the genre's classic patterns for variety.
+    const useTopic = !!words && rand() < 0.8;
+    const pattern = pick(useTopic ? t.topicPatterns : t.patterns);
+    const raw = pattern.replace('{t}', words ? pick(words) : '').replace('{a}', pick(t.a)).replace('{b}', pick(t.b));
+    // Capitalise the start and after a colon ("the Twelve Moons: Saga" -> "The Twelve Moons: Saga").
+    const title = raw.replace(/(^|: )([a-z])/g, (_, pre: string, c: string) => pre + c.toUpperCase());
     if (title !== avoid) return title;
   }
   return avoid ?? '';
