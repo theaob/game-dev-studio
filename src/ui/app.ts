@@ -32,7 +32,6 @@ export class App {
   /** Values currently shown in the top bar; they glide towards the real ones. */
   private shownStats: Record<StatKey, number> | null = null;
   private lastStats: Record<StatKey, number> | null = null;
-  private reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
   /** Identifies the newest notice the player has seen on the News tab. */
   private newsSeen = '';
   private lastDraw = 0;
@@ -149,7 +148,7 @@ export class App {
       const el = this.els.top.querySelector<HTMLElement>(`[data-stat="${key}"]`);
       if (!el) continue;
       const diff = target[key] - shown[key];
-      if (this.reducedMotion || Math.abs(diff) < 1) shown[key] = target[key];
+      if (Math.abs(diff) < 1) shown[key] = target[key];
       else shown[key] += diff * Math.min(1, (dtMs / 1000) * 7);
       const change = target[key] - last[key];
       if (Math.abs(change) >= (key === 'cash' ? 500 : 1)) {
@@ -168,7 +167,6 @@ export class App {
 
   /** Slide freshly shown content in. */
   private animateIn(el: HTMLElement) {
-    if (this.reducedMotion) return;
     el.classList.remove('enter');
     void el.offsetWidth;
     el.classList.add('enter');
@@ -177,7 +175,7 @@ export class App {
   /** After the last review lands: count the average up, and throw confetti for a hit. */
   private onReviewsShown(score: number) {
     const el = this.els.sheet.querySelector<HTMLElement>('[data-countup]');
-    if (el && !this.reducedMotion && !el.dataset.done) {
+    if (el && !el.dataset.done) {
       el.dataset.done = '1';
       const end = Number(el.dataset.countup);
       const start = performance.now();
@@ -193,7 +191,6 @@ export class App {
   }
 
   private confetti() {
-    if (this.reducedMotion) return;
     const layer = document.createElement('div');
     layer.className = 'confetti';
     const colors = ['#7c5cff', '#ff5c9a', '#3ddc97', '#ffad3b', '#4fb3ff', '#ffd25c'];
