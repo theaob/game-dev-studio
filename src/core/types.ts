@@ -133,6 +133,10 @@ export interface GameState {
   totalRevenue: number;
   debtStrikes: number;
   over: null | 'bankrupt' | 'retired';
+  /** Active store boosts and the game-development weeks they have left. */
+  boosts?: Partial<Record<string, number>>;
+  /** Permanent store upgrades bought. */
+  upgrades?: string[];
 }
 
 /** Insight lines shown after a release. */

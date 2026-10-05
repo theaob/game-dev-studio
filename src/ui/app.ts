@@ -1,4 +1,5 @@
-import { availablePlatforms, createGame, doResearch, fire, hire, randomTitle, releaseGame, setPhaseFocus, setPolishMode, startContract, startGame, tick, train, upgradeOffice, validateGame } from '../core/sim';
+import { availablePlatforms, createGame, doResearch, fire, hire, randomTitle, buyStoreItem, releaseGame, setPhaseFocus, setPolishMode, startContract, startGame, tick, train, upgradeOffice, validateGame } from '../core/sim';
+import { storeItemById } from '../core/data';
 import { normalizeFocus } from '../core/scoring';
 import { sequelName } from '../core/sequels';
 import type { GameSpec, GameState, GenreId, MarketingId, NoticeKind, PolishMode, SimEvent, SizeId } from '../core/types';
@@ -581,6 +582,25 @@ export class App {
       case 'contracts':
         this.open({ kind: 'contracts' });
         return;
+      case 'store':
+        this.open({ kind: 'store' });
+        return;
+      case 'buy': {
+        const item = storeItemById(arg);
+        const bugsBefore = s.activity?.kind === 'game' ? s.activity.bugs : 0;
+        if (report(buyStoreItem(s, item.id))) {
+          this.office.cheer(item.cheer);
+          if (item.id === 'bugbash' && s.activity?.kind === 'game') {
+            // Close the store so the player sees the bug counter drop.
+            if (sheet?.kind === 'store') this.close();
+            const fixed = bugsBefore - s.activity.bugs;
+            window.setTimeout(() => this.bubbles(0, 0, -fixed), 250);
+          } else if (sheet?.kind === 'store') {
+            this.renderSheet();
+          }
+        }
+        return;
+      }
       case 'contract':
         if (sheet?.kind === 'contracts') this.close();
         report(startContract(s, Number(arg)));

@@ -2191,3 +2191,85 @@ nav.tabs {
   margin-top: 6px;
   font-size: 12.5px;
 }
+
+/* Store */
+.dock-actions {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+}
+
+.dock-actions .btn.tile {
+  width: 72px;
+}
+
+.dock-actions .btn.tile small {
+  font-size: 10px;
+  letter-spacing: -0.01em;
+}
+
+.dock-actions .btn.big {
+  font-size: 16.5px;
+  white-space: nowrap;
+  padding: 0 6px;
+}
+
+.boost-btn {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  border: 2px solid var(--ink);
+  background: var(--accent2);
+  box-shadow: var(--pop);
+  font-size: 18px;
+  line-height: 1.1;
+}
+
+.boost-btn small {
+  font-size: 10.5px;
+  font-weight: 800;
+}
+
+.boost-btn:active {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 var(--ink);
+}
+
+.boost-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.boost-chip {
+  padding: 2px 9px;
+  border-radius: 999px;
+  border: 1.5px solid var(--ink);
+  background: #ffe3a3;
+  font-size: 12.5px;
+  font-weight: 800;
+}
+
+.store-item {
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+
+.store-item .grow {
+  flex: 1 1 calc(100% - 50px);
+}
+
+/* The price sits under the description, right-aligned, so the text keeps its width */
+.store-item .btn.small {
+  flex: none;
+  min-width: 96px;
+  margin-left: auto;
+}
+
+.sub.warn {
+  color: var(--bad);
+}

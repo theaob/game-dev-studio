@@ -1,6 +1,7 @@
-import { OFFICES, PHASES, RESEARCH, TOPICS, genreById, platformById, sizeById, topicById } from '../core/data';
+import { OFFICES, PHASES, RESEARCH, STORE, TOPICS, genreById, platformById, sizeById, topicById } from '../core/data';
 import {
   SALES_WEEKS,
+  boostWeeks,
   monthlyCosts,
   officeCapacity,
   polishYield,
@@ -89,6 +90,7 @@ function renderActivity(state: GameState): string {
     <div class="dock-actions" id="activity">
       <button class="btn big pulse" data-action="new-game">🎮 New Game</button>
       <button class="btn tile" data-action="contracts" ${offers ? '' : 'disabled'}>📝<small>Contracts</small>${offers ? `<i class="badge">${offers}</i>` : ''}</button>
+      <button class="btn tile" data-action="store">🛒<small>Store</small></button>
     </div>`;
   }
 
@@ -121,7 +123,9 @@ function renderActivity(state: GameState): string {
         <div class="dock-title">${esc(a.name)}</div>
         <div class="sub dock-sub">${genre.name} · ${platform.name} · ${sizeById(a.size).name}${a.sequelOf !== undefined ? ' · Sequel' : ''}</div>
       </div>
+      <button class="boost-btn" data-action="store" aria-label="Store: boosts and upgrades">⚡<small>Boost</small></button>
     </div>
+    ${activeBoosts(state)}
     <div class="steps-row">
       <span class="phase-chip">${polishing ? '🧹 Polish' : `${a.phase + 1}/3 ${PHASES[a.phase].name}`}</span>
       <div class="steps">${steps.map((_, i) => `<i class="${i < a.phase ? 'done' : i === a.phase ? 'now' : ''}"></i>`).join('')}</div>
@@ -135,6 +139,14 @@ function renderActivity(state: GameState): string {
     ${polishing ? polishPicker(a) : ''}
     ${polishing ? '<button class="btn big pulse mt-s" data-action="release">🚀 Release</button>' : ''}
   </div>`;
+}
+
+/** Chips for boosts that are running, e.g. "☕ 3w". */
+function activeBoosts(state: GameState): string {
+  const chips = STORE.filter((x) => x.kind === 'boost' && boostWeeks(state, x.id) > 0).map(
+    (x) => `<span class="boost-chip" title="${x.name}">${x.icon} ${boostWeeks(state, x.id)}w</span>`,
+  );
+  return chips.length ? `<div class="boost-chips">${chips.join('')}</div>` : '';
 }
 
 /** What to polish: squash bugs, or add more design or tech points (with shrinking returns). */

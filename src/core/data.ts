@@ -325,3 +325,38 @@ export const GENRE_TITLES: Record<GenreId, { patterns: string[]; a: string[]; b:
     b: ['Pets', 'Garden', 'Hop', 'Friends', 'Dash', 'Bakery', 'Town', 'Paws', 'Island'],
   },
 };
+
+// ---------------------------------------------------------------------------
+// Store: power-ups bought with cash. Boosts last a number of game-development
+// weeks (they only count down while a game is being made); upgrades are permanent.
+
+export type StoreItemId = 'coffee' | 'pizza' | 'bugbash' | 'chairs' | 'headphones' | 'tests';
+
+export interface StoreItem {
+  id: StoreItemId;
+  name: string;
+  icon: string;
+  desc: string;
+  kind: 'boost' | 'instant' | 'upgrade';
+  /** Boosts: price per team member. Upgrades: flat price. Both rise with the years like salaries. */
+  price: number;
+  /** Boosts: how many game weeks one purchase lasts. */
+  weeks?: number;
+  /** What the team says when it arrives. */
+  cheer: string[];
+}
+
+export const STORE: StoreItem[] = [
+  { id: 'coffee', name: 'Espresso Bar', icon: '☕', desc: '+20% design and tech points.', kind: 'boost', price: 1500, weeks: 4, cheer: ['☕', 'Yum!', '⚡'] },
+  { id: 'pizza', name: 'Pizza Night', icon: '🍕', desc: 'Developers get in the zone three times as often.', kind: 'boost', price: 1200, weeks: 4, cheer: ['🍕', 'Pizza!', '😋'] },
+  { id: 'bugbash', name: 'Bug Bash', icon: '🐞', desc: 'Hire testers for a weekend: fixes 40% of the current bugs right away.', kind: 'instant', price: 900, cheer: ['🐛', 'Squash!', '🔨'] },
+  { id: 'chairs', name: 'Ergonomic Chairs', icon: '🪑', desc: 'Comfier team, more output: +5% design and tech points, forever.', kind: 'upgrade', price: 25000, cheer: ['😌', 'Ahh…', '🪑'] },
+  { id: 'headphones', name: 'Noise-cancelling Headphones', icon: '🎧', desc: 'Fewer distractions: developers get in the zone 50% more often, forever.', kind: 'upgrade', price: 35000, cheer: ['🎧', '🎶', '😎'] },
+  { id: 'tests', name: 'Test Automation', icon: '🧪', desc: 'A build server runs the tests: 15% fewer new bugs, forever.', kind: 'upgrade', price: 50000, cheer: ['🧪', '✅', '🤖'] },
+];
+
+export function storeItemById(id: string): StoreItem {
+  const item = STORE.find((x) => x.id === id);
+  if (!item) throw new Error(`Unknown store item ${id}`);
+  return item;
+}

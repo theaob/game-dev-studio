@@ -2,6 +2,7 @@ import {
   FIT_LABELS,
   GENRES,
   PHASES,
+  STORE,
   genreById,
   platformById,
   platformGenreFit,
@@ -14,13 +15,18 @@ import {
   availableMarketing,
   availablePlatforms,
   availableSizes,
+  boostWeeks,
   gameCost,
+  hasUpgrade,
   staffWeeklyPoints,
+  storeBlocker,
+  storePrice,
 } from '../core/sim';
 import { SEQUEL_TOO_SOON_WEEKS, sequelCandidates, sequelSalesMult, seriesNumber } from '../core/sequels';
 import { formatShortDate, yearFraction } from '../core/time';
 import type { GameProject, GameSpec, GameState, ReleaseReport } from '../core/types';
 import { esc, money, num, scoreClass } from './format';
+import type { StoreItem } from '../core/data';
 import { polishPicker } from './views';
 
 export type Sheet =
@@ -35,6 +41,7 @@ export type Sheet =
   | { kind: 'help' }
   | { kind: 'confirm'; text: string; action: string; arg?: string; confirmLabel: string }
   | { kind: 'contracts' }
+  | { kind: 'store' }
   | { kind: 'gameOver' };
 
 export const OUTLETS = ['Game Weekly', 'Pixel Press', 'PlayZone', 'Joystick Journal'];
@@ -72,6 +79,8 @@ export function renderSheet(state: GameState | null, sheet: Sheet): string {
       return gameOver(state);
     case 'contracts':
       return contracts(state);
+    case 'store':
+      return store(state);
   }
 }
 
@@ -95,6 +104,7 @@ function help(): string {
       <p><b>Set the focus.</b> Development has 3 phases with 3 areas each. Put your team's effort where the genre needs it. Reviews reveal what matters.</p>
       <p><b>Design vs Tech.</b> Every genre has a sweet spot between creative (design) and technical (tech) points.</p>
       <p><b>Polish.</b> After development you can keep polishing before you release: fix bugs (they hurt reviews), or add more design or tech points to fix the game's balance. Design and tech polishing gives less each week.</p>
+      <p><b>Store.</b> Spend cash on power-ups: boosts like an espresso bar or pizza night last a few weeks of development, and studio upgrades help forever. Find it next to Contracts, or tap ⚡ Boost while making a game.</p>
       <p><b>Raise the bar.</b> Players expect each game to beat your last one, and the industry keeps moving. Grow your team, train them and research better tech.</p>
       <p><b>Stay solvent.</b> Rent and salaries are paid monthly. Three months in the red and you're bankrupt. Contract work pays the bills.</p>
       <p><b>Grow.</b> Earn research points (RP) to unlock topics, bigger games and better engines. Move offices to hire more people.</p>
@@ -486,6 +496,41 @@ function contracts(state: GameState): string {
           .join('') || '<p class="muted center">No offers right now. New ones arrive every month.</p>'
       }
     </div>
+    <div class="btn-row"><button class="btn ghost" data-action="close">Close</button></div>`;
+}
+
+function storeRow(state: GameState, item: StoreItem): string {
+  const blocked = storeBlocker(state, item.id);
+  const owned = item.kind === 'upgrade' && hasUpgrade(state, item.id);
+  const left = item.kind === 'boost' ? boostWeeks(state, item.id) : 0;
+  const status = owned
+    ? '<span class="tag good">Owned</span>'
+    : left
+      ? `<span class="tag good">Active · ${left} week${left === 1 ? '' : 's'} left</span>`
+      : item.kind === 'boost'
+        ? `<span class="tag">${item.weeks} game weeks</span>`
+        : '';
+  const label = owned ? 'Owned' : `${left ? 'Extend' : 'Buy'} · ${money(storePrice(state, item.id))}`;
+  return `
+    <div class="option store-item">
+      <span class="emoji">${item.icon}</span>
+      <span class="grow"><b>${item.name}</b> ${status}<br/><span class="sub">${item.desc}</span>${
+        blocked && !owned ? `<br/><span class="sub warn">${blocked}</span>` : ''
+      }</span>
+      <button class="btn small" data-action="buy" data-arg="${item.id}" ${blocked ? 'disabled' : ''}>${label}</button>
+    </div>`;
+}
+
+function store(state: GameState): string {
+  const boosts = STORE.filter((x) => x.kind !== 'upgrade');
+  const upgrades = STORE.filter((x) => x.kind === 'upgrade');
+  return `
+    <h3>Store</h3>
+    <p class="muted">Power-ups for your team. Boosts only count down while a game is in development.</p>
+    <h4>Boosts</h4>
+    <div class="options">${boosts.map((x) => storeRow(state, x)).join('')}</div>
+    <h4>Studio upgrades</h4>
+    <div class="options">${upgrades.map((x) => storeRow(state, x)).join('')}</div>
     <div class="btn-row"><button class="btn ghost" data-action="close">Close</button></div>`;
 }
 

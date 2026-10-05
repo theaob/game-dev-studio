@@ -9,6 +9,7 @@ import {
   PLATFORMS,
   RESEARCH,
   SIZES,
+  storeItemById,
   GENRE_TITLES,
   TOPICS,
   genreById,
@@ -20,6 +21,7 @@ import {
   sizeById,
   topicById,
 } from './data';
+import type { StoreItemId } from './data';
 import { int, pick, random, range } from './rng';
 import { hasSequel, sequelSalesMult, seriesNumber } from './sequels';
 import { average, clamp, evaluate, normalizeFocus, rollReviews, scoreFactor } from './scoring';
@@ -113,7 +115,7 @@ export function techMultiplier(state: GameState): number {
   if (hasResearch(state, 'engine2')) m *= 1.15;
   if (hasResearch(state, 'engine3')) m *= 1.15;
   if (hasResearch(state, 'engine4')) m *= 1.2;
-  return m;
+  return m * storeOutputMultiplier(state);
 }
 
 export function designMultiplier(state: GameState): number {
@@ -121,14 +123,84 @@ export function designMultiplier(state: GameState): number {
   if (hasResearch(state, 'design1')) m *= 1.15;
   if (hasResearch(state, 'design2')) m *= 1.15;
   if (hasResearch(state, 'design3')) m *= 1.2;
-  return m;
+  return m * storeOutputMultiplier(state);
 }
 
 export function bugMultiplier(state: GameState): number {
   let m = 1;
   if (hasResearch(state, 'qa1')) m *= 0.7;
   if (hasResearch(state, 'qa2')) m *= 0.7;
+  if (hasUpgrade(state, 'tests')) m *= 0.85;
   return m;
+}
+
+// ---------------------------------------------------------------------------
+// Store power-ups
+
+export function hasUpgrade(state: GameState, id: StoreItemId): boolean {
+  return state.upgrades?.includes(id) ?? false;
+}
+
+/** Game-development weeks left on a boost (0 when inactive). */
+export function boostWeeks(state: GameState, id: StoreItemId): number {
+  return state.boosts?.[id] ?? 0;
+}
+
+/** Output from store items: the espresso bar boost and ergonomic chairs. */
+export function storeOutputMultiplier(state: GameState): number {
+  return (boostWeeks(state, 'coffee') > 0 ? 1.2 : 1) * (hasUpgrade(state, 'chairs') ? 1.05 : 1);
+}
+
+/** Chance per week that someone not already in the zone gets in it. */
+export function zoneChance(state: GameState): number {
+  return ZONE_CHANCE * (boostWeeks(state, 'pizza') > 0 ? 3 : 1) * (hasUpgrade(state, 'headphones') ? 1.5 : 1);
+}
+
+/** Price today: boosts scale with team size, and everything with the years like salaries. */
+export function storePrice(state: GameState, id: StoreItemId): number {
+  const item = storeItemById(id);
+  const years = yearFraction(state.week) - START_YEAR;
+  const team = item.kind === 'upgrade' ? 1 : Math.max(1, state.staff.length);
+  return Math.round((item.price * team * (1 + 0.03 * years)) / 100) * 100;
+}
+
+/** Why an item can't be bought right now, or null if it can. */
+export function storeBlocker(state: GameState, id: StoreItemId): string | null {
+  const item = storeItemById(id);
+  if (item.kind === 'upgrade' && hasUpgrade(state, id)) return 'Already owned.';
+  if (id === 'bugbash') {
+    const p = state.activity;
+    if (!p || p.kind !== 'game') return 'Only while making a game.';
+    if (p.bugs <= 0) return 'No bugs to fix.';
+  }
+  if (storePrice(state, id) > state.cash) return 'Not enough cash.';
+  return null;
+}
+
+/** Buys a store item. Returns an error message, or null on success. */
+export function buyStoreItem(state: GameState, id: StoreItemId): string | null {
+  const blocked = storeBlocker(state, id);
+  if (blocked) return blocked;
+  const item = storeItemById(id);
+  state.cash -= storePrice(state, id);
+  if (item.kind === 'boost') {
+    state.boosts = { ...state.boosts, [id]: boostWeeks(state, id) + (item.weeks ?? 0) };
+  } else if (item.kind === 'upgrade') {
+    state.upgrades = [...(state.upgrades ?? []), id];
+  } else if (id === 'bugbash' && state.activity?.kind === 'game') {
+    const p = state.activity;
+    p.bugs -= Math.min(p.bugs, Math.max(1, Math.round(p.bugs * 0.4)));
+  }
+  return null;
+}
+
+/** Boosts only count down while a game is being made. */
+function tickBoosts(state: GameState) {
+  if (!state.boosts) return;
+  for (const [id, w] of Object.entries(state.boosts)) {
+    if (!w || w <= 1) delete state.boosts[id];
+    else state.boosts[id] = w - 1;
+  }
 }
 
 export function availableSizes(state: GameState) {
@@ -472,6 +544,7 @@ export function tick(state: GameState): SimEvent[] {
 
   if (act?.kind === 'game') {
     tickProject(state, act, events);
+    tickBoosts(state);
   } else if (act?.kind === 'contract') {
     act.weeksDone++;
     state.rp = Math.floor(state.rp) + wholeNumber(state, 0.15 * state.staff.length);
@@ -527,7 +600,7 @@ function tickProject(state: GameState, p: GameProject, events: SimEvent[]) {
   // Raw (fractional) output per person and area, scaled once the week's whole-number totals are known.
   const shares: { c: { design: number; tech: number }; area: number; d: number; t: number }[] = [];
   for (const s of state.staff) {
-    if (!s.zone && random(state) < ZONE_CHANCE) {
+    if (!s.zone && random(state) < zoneChance(state)) {
       s.zone = int(state, 2, 3);
       events.push({ type: 'zone', staffId: s.id, name: s.name });
     }
