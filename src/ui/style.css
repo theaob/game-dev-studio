@@ -2273,3 +2273,9 @@ nav.tabs {
 .sub.warn {
   color: var(--bad);
 }
+
+/* The office canvases handle their own drags (carrying the cat), so no browser panning there */
+.office3d-canvas,
+canvas.office {
+  touch-action: none;
+}
