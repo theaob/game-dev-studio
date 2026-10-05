@@ -2,7 +2,7 @@
 
 A mobile-first game development tycoon. Found a studio in a 1985 garage, make games, chase great reviews and grow into a campus by 2025.
 
-Built as an installable web app (PWA) in TypeScript + Vite with no runtime dependencies. It runs in any phone browser, works offline once loaded, and can be wrapped for the App Store or Google Play with [Capacitor](https://capacitorjs.com/).
+Built as an installable web app (PWA) in TypeScript + Vite. The only runtime dependency is three.js, which renders the 3D office and loads lazily after the game starts. It runs in any phone browser, works offline once loaded, and can be wrapped for the App Store or Google Play with [Capacitor](https://capacitorjs.com/).
 
 ## Gameplay
 
@@ -10,7 +10,7 @@ Built as an installable web app (PWA) in TypeScript + Vite with no runtime depen
 - **Choose a platform**: 18 fictional platforms launch and retire over 40 years, from home computers and 8-bit consoles to handhelds, motion consoles and phones. Each has its own audience size, license cost and genre preferences.
 - **Set the focus** for each of the 3 development phases (Foundation, Content, Presentation). Each genre cares about different areas, and reviews reveal what matters.
 - **Balance design vs tech**: every genre has an ideal ratio.
-- **Watch your team work** in an animated pixel-art office that changes as you move from the garage to the campus. Day turns to night, monitors light up faces in the dark, computers change with the decades (beige CRTs in the 80s to dual widescreens later), every desk has a personal item, and a studio cat wanders around. Tap a developer or the cat to say hi. Every so often a developer gets **in the zone**: they glow, sparks fly, and for a few weeks they produce 1.8x as much with half the bugs. Staff chatter in speech bubbles (designers and tech folks say different things, and the whole team reacts to reviews and paydays) and wander off for coffee breaks. Breaks are just for show and don't affect output.
+- **Watch your team work** in a 3D low-poly office (three.js) that changes as you move from the garage to the campus. Day turns to night, monitors light up faces in the dark, computers change with the decades (beige CRTs in the 80s to dual widescreens later), every desk has a personal item, and a studio cat wanders around. Tap a developer or the cat to say hi. Every so often a developer gets **in the zone**: they glow, sparks fly, and for a few weeks they produce 1.8x as much with half the bugs. Staff chatter in speech bubbles (designers and tech folks say different things, and the whole team reacts to reviews and paydays) and wander off for coffee breaks. Breaks are just for show and don't affect output.
 - **Polish** to squash bugs one at a time (bugs are always whole numbers) before you release.
 - **Reviews** from 4 outlets decide sales and fans. The bar keeps rising: the market expects each game to beat your best work.
 - **Grow**: take contracts to pay the bills, earn research points, unlock topics, game sizes, engines and QA, hire and train staff, and move to bigger offices.
@@ -62,7 +62,9 @@ src/core/      Pure, deterministic simulation (no DOM). Seeded RNG lives in the 
   scoring.ts   Review score model
   bot.ts       Automated players used for tests and balancing
 src/ui/        DOM rendering: tabs, bottom sheets, game loop, animations
-  office.ts    Procedural pixel-art office scene (canvas)
+  office3d.ts  3D office scene (three.js), lazy-loaded
+  office.ts    2D pixel-art office, used until three.js loads or if WebGL is unavailable
+  office-common.ts  Behaviour shared by both: looks, gestures, day/night, eras
 src/save.ts    localStorage persistence
 public/        PWA manifest, icon, service worker
 ```
