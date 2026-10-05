@@ -20,9 +20,9 @@ jobs:
     name: Typecheck, test & build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -48,7 +48,7 @@ jobs:
           fi
           du -sh dist
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: web-build
           path: dist
@@ -79,12 +79,12 @@ jobs:
           [ -n "$ITCH_GAME" ] || { echo "::error::Secret ITCH_GAME is not set"; missing=1; }
           exit $missing
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           sparse-checkout: package.json
           sparse-checkout-cone-mode: false
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: web-build
           path: dist
