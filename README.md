@@ -92,11 +92,16 @@ The game is wrapped as a native Android app with [Capacitor](https://capacitorjs
 
 **CI** (`.github/workflows/ci.yml`, job *Android APK*):
 - Every run copies the web build into the Android project and builds an APK with Gradle. The APK is saved as the `android-apk` artifact.
-- On `main`, `v*` tags and manual runs, the APK is signed with your release key and pushed to itch.io on the `android` channel, so it shows up as an Android download on the game page.
-- Pull requests get a debug-signed APK for testing and never deploy.
+- On `main`, `v*` tags and manual runs, the APK is pushed to itch.io on the `android` channel, so it shows up as an Android download on the game page.
+- Pull requests build the same APK for testing and never deploy.
 - `versionCode` is the run number, so every build installs as an update. `versionName` matches the web version.
 
-**Signing (one-time setup).** Android only installs updates signed with the same key, so CI needs your release key as secrets. Create it once on your computer (needs Java):
+**Signing.** Android only installs updates signed with the same key as the installed version.
+- **Shared debug key (the default):** without release secrets, every build is signed with the debug key committed at `android/app/debug.keystore`. All builds share it, so itch.io players can install updates over older versions.
+  - It's fine for sideloading from itch.io.
+  - Because the key is public, anyone could sign an APK that installs over yours.
+  - Google Play won't accept it.
+- **Your own release key (recommended before a wider release or Google Play):** create it once on your computer (needs Java):
 
 ```bash
 keytool -genkeypair -v -keystore release.keystore -alias upload -keyalg RSA -keysize 2048 -validity 10000
@@ -112,6 +117,6 @@ Then add four repository secrets (Settings → Secrets and variables → Actions
 | `ANDROID_KEY_ALIAS` | `upload` (or the alias you used) |
 | `ANDROID_KEY_PASSWORD` | the key password (same as the keystore password if you pressed Enter) |
 
-Keep `release.keystore` and its passwords backed up somewhere safe. If you lose them, players can't install updates and have to reinstall. Until the secrets exist, CI still builds a debug APK (download it from the run's artifacts) but skips the itch.io push with a warning.
+Keep `release.keystore` and its passwords backed up somewhere safe. If you lose them, players can't install updates and have to reinstall. Switching from the shared debug key to your release key also means players reinstall once.
 
 **Local builds:** `npm run android` builds the web game, syncs it into `android/` and opens Android Studio. You need Android Studio with JDK 21 and Android SDK 36.
