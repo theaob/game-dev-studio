@@ -3,12 +3,13 @@ import {
   SALES_WEEKS,
   monthlyCosts,
   officeCapacity,
+  polishYield,
   researchBlocker,
   researchCost,
   trainingCost,
 } from '../core/sim';
 import { formatDate, formatShortDate } from '../core/time';
-import type { GameState, ReleasedGame, Staff } from '../core/types';
+import type { GameProject, GameState, PolishMode, ReleasedGame, Staff } from '../core/types';
 import { esc, money, num, scoreClass } from './format';
 
 export type Tab = 'studio' | 'games' | 'research' | 'staff' | 'news';
@@ -131,8 +132,31 @@ function renderActivity(state: GameState): string {
       <div class="counter c-tech"><b>${Math.round(a.tech)}</b><small>Tech</small></div>
       <div class="counter c-bugs"><b>${Math.round(a.bugs)}</b><small>Bugs</small></div>
     </div>
+    ${polishing ? polishPicker(a) : ''}
     ${polishing ? '<button class="btn big pulse mt-s" data-action="release">🚀 Release</button>' : ''}
   </div>`;
+}
+
+/** What to polish: squash bugs, or add more design or tech points (with shrinking returns). */
+export function polishPicker(p: GameProject): string {
+  const mode = p.polishMode ?? 'bugs';
+  const yieldPct = Math.round(polishYield(p) * 100);
+  const options: [PolishMode, string, string][] = [
+    ['bugs', '🐛', 'Bugs'],
+    ['design', '🎨', 'Design'],
+    ['tech', '⚙️', 'Tech'],
+  ];
+  const hint =
+    mode === 'bugs'
+      ? 'Squashing bugs every week.'
+      : yieldPct < 10
+        ? `Hardly adding any ${mode} now. Time to fix bugs or release.`
+        : `Adding ${mode} points at ${yieldPct}% strength · drops each week · new bugs slip in.`;
+  return `
+    <div class="polish-modes" role="radiogroup" aria-label="What to polish">
+      ${options.map(([id, icon, label]) => `<button class="polish-mode ${mode === id ? 'on' : ''}" role="radio" aria-checked="${mode === id}" data-action="polish-mode" data-arg="${id}"><span>${icon}</span>${label}</button>`).join('')}
+    </div>
+    <div class="sub polish-hint">${hint}</div>`;
 }
 
 function renderOnMarket(state: GameState): string {

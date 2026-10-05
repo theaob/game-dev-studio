@@ -29,6 +29,7 @@ import type {
   GameProject,
   GameSpec,
   GenreId,
+  PolishMode,
   GameState,
   NoticeKind,
   ReleaseReport,
@@ -473,7 +474,7 @@ export function tick(state: GameState): SimEvent[] {
     tickProject(state, act, events);
   } else if (act?.kind === 'contract') {
     act.weeksDone++;
-    state.rp += 0.15 * state.staff.length;
+    state.rp = Math.floor(state.rp) + wholeNumber(state, 0.15 * state.staff.length);
     if (act.weeksDone >= act.offer.weeks) {
       state.cash += act.offer.pay;
       state.rp += act.offer.rp;
@@ -499,15 +500,23 @@ export function tick(state: GameState): SimEvent[] {
 }
 
 function tickProject(state: GameState, p: GameProject, events: SimEvent[]) {
+  // Saves from before points were whole numbers.
+  p.bugs = Math.round(p.bugs);
+  p.design = Math.round(p.design);
+  p.tech = Math.round(p.tech);
+  state.rp = Math.floor(state.rp);
+
   if (p.phase >= 3) {
-    // Polishing: the team squashes bugs.
     p.polishWeeks++;
-    p.bugs = Math.round(p.bugs); // saves from before bugs were whole numbers
-    const fixPower = state.staff.reduce((a, s) => a + s.tech * s.speed, 0) * (hasResearch(state, 'qa2') ? 0.75 : 0.5);
-    // Bugs are squashed one whole bug at a time, at least one per week.
-    const fixed = Math.min(p.bugs, Math.max(1, Math.round(fixPower * range(state, 0.8, 1.2))));
-    p.bugs -= fixed;
-    events.push({ type: 'points', design: 0, tech: 0, bugs: -fixed });
+    if ((p.polishMode ?? 'bugs') === 'bugs') {
+      // The team squashes bugs, one whole bug at a time, at least one per week.
+      const fixPower = state.staff.reduce((a, s) => a + s.tech * s.speed, 0) * (hasResearch(state, 'qa2') ? 0.75 : 0.5);
+      const fixed = Math.min(p.bugs, Math.max(1, Math.round(fixPower * range(state, 0.8, 1.2))));
+      p.bugs -= fixed;
+      events.push({ type: 'points', design: 0, tech: 0, bugs: -fixed });
+    } else {
+      polishPoints(state, p, p.polishMode as 'design' | 'tech', events);
+    }
     return;
   }
 
@@ -515,6 +524,8 @@ function tickProject(state: GameState, p: GameProject, events: SimEvent[]) {
   let tech = 0;
   const noise = range(state, 0.85, 1.15);
   let bugWeight = 0;
+  // Raw (fractional) output per person and area, scaled once the week's whole-number totals are known.
+  const shares: { c: { design: number; tech: number }; area: number; d: number; t: number }[] = [];
   for (const s of state.staff) {
     if (!s.zone && random(state) < ZONE_CHANCE) {
       s.zone = int(state, 2, 3);
@@ -530,18 +541,26 @@ function tickProject(state: GameState, p: GameProject, events: SimEvent[]) {
       design += d;
       tech += t;
       bugWeight += (d + t) * (s.zone ? 0.5 : 1);
-      c.design += d;
-      c.tech += t;
-      p.areaPoints[p.phase * 3 + i] += d + t;
+      shares.push({ c, area: p.phase * 3 + i, d, t });
     });
     if (s.zone) s.zone--;
   }
+  // Points are gained in whole numbers; random rounding keeps the long-run average.
+  const designGain = wholeNumber(state, design);
+  const techGain = wholeNumber(state, tech);
+  const dk = design > 0 ? designGain / design : 0;
+  const tk = tech > 0 ? techGain / tech : 0;
+  for (const sh of shares) {
+    sh.c.design += sh.d * dk;
+    sh.c.tech += sh.t * tk;
+    p.areaPoints[sh.area] += sh.d * dk + sh.t * tk;
+  }
   const bugs = wholeNumber(state, bugWeight * 0.12 * bugMultiplier(state) * range(state, 0.6, 1.4));
-  p.design += design;
-  p.tech += tech;
+  p.design += designGain;
+  p.tech += techGain;
   p.bugs += bugs;
-  state.rp += 0.35 * state.staff.length;
-  events.push({ type: 'points', design, tech, bugs });
+  state.rp += wholeNumber(state, 0.35 * state.staff.length);
+  events.push({ type: 'points', design: designGain, tech: techGain, bugs });
 
   p.weekInPhase++;
   if (p.weekInPhase >= p.phaseWeeks) {
@@ -554,6 +573,50 @@ function tickProject(state: GameState, p: GameProject, events: SimEvent[]) {
       events.push({ type: 'devComplete' });
     }
   }
+}
+
+/** Share of a normal development week's output that a polishing week adds. */
+export const POLISH_RATE = 0.5;
+/** Each further design/tech polishing week yields this much of the previous one. */
+export const POLISH_DECAY = 0.8;
+
+/**
+ * Polishing design or tech: the team adds points of one kind (using the last
+ * phase's focus), with diminishing returns so polishing can't go on forever.
+ * New work brings a few new bugs and nobody is fixing them.
+ */
+function polishPoints(state: GameState, p: GameProject, kind: 'design' | 'tech', events: SimEvent[]) {
+  const n = p.pointPolishWeeks ?? 0;
+  p.pointPolishWeeks = n + 1;
+  const mult = POLISH_RATE * Math.pow(POLISH_DECAY, n) * range(state, 0.85, 1.15);
+  let raw = 0;
+  for (const s of state.staff) {
+    const skill = kind === 'design' ? s.design * designMultiplier(state) : s.tech * techMultiplier(state);
+    raw += skill * s.speed * mult;
+  }
+  const gain = wholeNumber(state, raw);
+  const bugs = wholeNumber(state, raw * 0.06 * bugMultiplier(state) * range(state, 0.6, 1.4));
+  if (kind === 'design') p.design += gain;
+  else p.tech += gain;
+  p.bugs += bugs;
+  for (const s of state.staff) {
+    const c = (p.contrib[s.id] ??= { design: 0, tech: 0 });
+    c[kind] += gain / state.staff.length;
+  }
+  events.push({ type: 'points', design: kind === 'design' ? gain : 0, tech: kind === 'tech' ? gain : 0, bugs });
+}
+
+/** Chooses what the team polishes once development is complete. */
+export function setPolishMode(state: GameState, mode: PolishMode): string | null {
+  const p = state.activity;
+  if (!p || p.kind !== 'game' || p.phase < 3) return 'Nothing to polish.';
+  p.polishMode = mode;
+  return null;
+}
+
+/** How much a design/tech polishing week adds right now, relative to the first one (1 → 0). */
+export function polishYield(p: GameProject): number {
+  return Math.pow(POLISH_DECAY, p.pointPolishWeeks ?? 0);
 }
 
 function salesWeight(week: number): number {

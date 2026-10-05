@@ -1,7 +1,7 @@
-import { availablePlatforms, createGame, doResearch, fire, hire, randomTitle, releaseGame, setPhaseFocus, startContract, startGame, tick, train, upgradeOffice, validateGame } from '../core/sim';
+import { availablePlatforms, createGame, doResearch, fire, hire, randomTitle, releaseGame, setPhaseFocus, setPolishMode, startContract, startGame, tick, train, upgradeOffice, validateGame } from '../core/sim';
 import { normalizeFocus } from '../core/scoring';
 import { sequelName } from '../core/sequels';
-import type { GameSpec, GameState, GenreId, MarketingId, NoticeKind, SimEvent, SizeId } from '../core/types';
+import type { GameSpec, GameState, GenreId, MarketingId, NoticeKind, PolishMode, SimEvent, SizeId } from '../core/types';
 import { clearSave, loadGame, saveGame } from '../save';
 import { OfficeScene } from './office';
 import { OfficeLoading, hasWebGL } from './office-loading';
@@ -419,13 +419,13 @@ export class App {
     const counters = this.els.dock.querySelectorAll<HTMLElement>('#counters .counter');
     if (counters.length !== 3) return;
     const items: [number, string, string][] = [
-      [design, `+${design.toFixed(1)}`, 'var(--design)'],
-      [tech, `+${tech.toFixed(1)}`, 'var(--tech)'],
-      // Bugs are whole numbers: shown as e.g. "+2 🐛" or "−3 🐛".
+      // All points are whole numbers: shown as e.g. "+12", "+2 🐛" or "−3 🐛".
+      [design, `+${design}`, 'var(--design)'],
+      [tech, `+${tech}`, 'var(--tech)'],
       [bugs, bugs < 0 ? `−${-bugs} 🐛` : `+${bugs} 🐛`, bugs < 0 ? 'var(--good)' : 'var(--bugs)'],
     ];
     items.forEach(([v, label, color], i) => {
-      if (Math.abs(v) < 0.05) return;
+      if (!v) return;
       const r = counters[i].getBoundingClientRect();
       const b = document.createElement('span');
       b.className = 'bubble';
@@ -584,6 +584,10 @@ export class App {
       case 'contract':
         if (sheet?.kind === 'contracts') this.close();
         report(startContract(s, Number(arg)));
+        return;
+      case 'polish-mode':
+        if (sheet?.kind === 'devComplete') this.close();
+        report(setPolishMode(s, arg as PolishMode));
         return;
       case 'release': {
         if (sheet?.kind === 'devComplete') this.sheet = null;

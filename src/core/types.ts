@@ -26,6 +26,8 @@ export interface GameSpec {
   sequelOf?: number;
 }
 
+export type PolishMode = 'bugs' | 'design' | 'tech';
+
 export interface GameProject extends GameSpec {
   kind: 'game';
   startedWeek: number;
@@ -38,6 +40,10 @@ export interface GameProject extends GameSpec {
   focus: number[][];
   awaitingFocus: boolean;
   polishWeeks: number;
+  /** What the team works on while polishing (default: fixing bugs). */
+  polishMode?: PolishMode;
+  /** Weeks spent polishing design or tech; each one yields less than the last. */
+  pointPolishWeeks?: number;
   design: number;
   tech: number;
   bugs: number;

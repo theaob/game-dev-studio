@@ -2147,3 +2147,47 @@ nav.tabs {
   bottom: calc(var(--safe-bottom) + 10px + var(--nav-h) + 14px);
   gap: 10px;
 }
+
+/* Polish focus: a three-way segmented choice */
+.polish-modes {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.polish-mode {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 52px;
+  padding: 4px;
+  line-height: 1.15;
+  border-radius: 12px;
+  border: 2px solid var(--ink);
+  background: var(--card);
+  font-size: 12.5px;
+  font-weight: 800;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.polish-mode span {
+  font-size: 18px;
+}
+
+.polish-mode.on {
+  background: #ffe3a3;
+  box-shadow: var(--pop);
+}
+
+.polish-mode:active {
+  transform: translateY(2px);
+}
+
+.polish-hint {
+  margin-top: 6px;
+  font-size: 12.5px;
+}

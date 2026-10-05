@@ -15,6 +15,7 @@ import {
   tick,
   validateGame,
   randomTitle,
+  setPolishMode,
 } from './sim';
 import { TOTAL_WEEKS, formatDate } from './time';
 import type { GameProject, GameSpec } from './types';
@@ -277,5 +278,53 @@ describe('title suggestions', () => {
         prev = t;
       }
     }
+  });
+});
+
+describe('whole-number points and polishing', () => {
+  const finishDev = (seed: number) => {
+    const s = createGame('Polish', seed);
+    s.staff.push({ ...s.candidates[0], id: 999, design: 6, tech: 6, speed: 1 });
+    startGame(s, spec, [33, 33, 33]);
+    while (s.activity?.kind === 'game' && s.activity.phase < 3) {
+      if (s.activity.awaitingFocus) setPhaseFocus(s, [33, 33, 33]);
+      const rp = s.rp;
+      for (const e of tick(s)) {
+        if (e.type === 'points') expect([e.design, e.tech, e.bugs].every(Number.isInteger)).toBe(true);
+      }
+      const p = s.activity!;
+      if (p.kind === 'game') expect([p.design, p.tech, p.bugs].every(Number.isInteger)).toBe(true);
+      expect(Number.isInteger(s.rp - rp)).toBe(true);
+    }
+    const p = s.activity!;
+    if (p.kind !== 'game') throw new Error('expected a game');
+    return { s, p };
+  };
+
+  it('polishes design or tech with shrinking returns, leaving bugs unfixed', () => {
+    for (const kind of ['design', 'tech'] as const) {
+      const { s, p } = finishDev(31);
+      expect(setPolishMode(s, kind)).toBeNull();
+      const other = kind === 'design' ? 'tech' : 'design';
+      const gains: number[] = [];
+      for (let w = 0; w < 12; w++) {
+        const before = { points: p[kind], other: p[other], bugs: p.bugs };
+        tick(s);
+        expect(Number.isInteger(p[kind])).toBe(true);
+        expect(p[other]).toBe(before.other);
+        expect(p.bugs).toBeGreaterThanOrEqual(before.bugs);
+        gains.push(p[kind] - before.points);
+      }
+      expect(gains[0]).toBeGreaterThan(0);
+      const early = gains.slice(0, 3).reduce((a, b) => a + b, 0);
+      const late = gains.slice(9).reduce((a, b) => a + b, 0);
+      expect(late).toBeLessThan(early * 0.5);
+    }
+  });
+
+  it('only allows choosing a polish focus once development is done', () => {
+    const s = createGame('Early', 5);
+    startGame(s, spec, [33, 33, 33]);
+    expect(setPolishMode(s, 'design')).not.toBeNull();
   });
 });

@@ -19,8 +19,9 @@ import {
 } from '../core/sim';
 import { SEQUEL_TOO_SOON_WEEKS, sequelCandidates, sequelSalesMult, seriesNumber } from '../core/sequels';
 import { formatShortDate, yearFraction } from '../core/time';
-import type { GameSpec, GameState, ReleaseReport } from '../core/types';
+import type { GameProject, GameSpec, GameState, ReleaseReport } from '../core/types';
 import { esc, money, num, scoreClass } from './format';
+import { polishPicker } from './views';
 
 export type Sheet =
   | { kind: 'welcome'; name: string }
@@ -93,7 +94,7 @@ function help(): string {
       <p><b>Choose a platform.</b> Platforms come and go over the decades. Bigger audiences sell more, and some platforms suit some genres better. Consoles need a one-time dev kit license.</p>
       <p><b>Set the focus.</b> Development has 3 phases with 3 areas each. Put your team's effort where the genre needs it. Reviews reveal what matters.</p>
       <p><b>Design vs Tech.</b> Every genre has a sweet spot between creative (design) and technical (tech) points.</p>
-      <p><b>Polish.</b> Bugs hurt reviews. After development you can keep polishing before you release.</p>
+      <p><b>Polish.</b> After development you can keep polishing before you release: fix bugs (they hurt reviews), or add more design or tech points to fix the game's balance. Design and tech polishing gives less each week.</p>
       <p><b>Raise the bar.</b> Players expect each game to beat your last one, and the industry keeps moving. Grow your team, train them and research better tech.</p>
       <p><b>Stay solvent.</b> Rent and salaries are paid monthly. Three months in the red and you're bankrupt. Contract work pays the bills.</p>
       <p><b>Grow.</b> Earn research points (RP) to unlock topics, bigger games and better engines. Move offices to hire more people.</p>
@@ -381,10 +382,23 @@ function devComplete(state: GameState): string {
         ? 'There are still quite a few bugs. Reviewers will notice. Polishing for a few weeks will help.'
         : 'The game is in decent shape. You can release now or polish it a bit more.'
     }</p>
+    <p class="muted">${esc(balanceAdvice(p))}</p>
+    <h4>Keep polishing</h4>
+    ${polishPicker(p)}
     <div class="btn-row">
-      <button class="btn ghost" data-action="close">🧹 Keep polishing</button>
-      <button class="btn" data-action="release">🚀 Release now</button>
+      <button class="btn big" data-action="release">🚀 Release now</button>
     </div>`;
+}
+
+/** How the design/tech split compares to what the genre's players like. */
+function balanceAdvice(p: GameProject): string {
+  const genre = genreById(p.genre);
+  const total = p.design + p.tech;
+  const share = total ? Math.round((p.design / total) * 100) : 50;
+  const target = Math.round(genre.designTarget * 100);
+  if (Math.abs(share - target) <= 5) return `The design/tech balance (${share}% design) suits ${genre.name} players.`;
+  const more = share < target ? 'design' : 'tech';
+  return `${genre.name} players like about ${target}% design; this game is ${share}%. Polishing ${more} would help.`;
 }
 
 function review(report: ReleaseReport, shown: number): string {
