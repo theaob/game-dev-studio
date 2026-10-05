@@ -13,6 +13,37 @@ const MAX_COLS = 4;
 
 type Mode = 'idle' | 'work' | 'polish';
 
+interface Bubble {
+  text: string;
+  age: number;
+  life: number;
+}
+
+/** A coffee break: walk to the machine, sip, walk back. */
+interface CoffeeBreak {
+  stage: 'out' | 'sip' | 'back';
+  t: number;
+  slot: number;
+  /** Seconds to walk between desk and machine. */
+  trip: number;
+}
+
+const WALK_SPEED = 18; // logical px per second
+const SIP_TIME = 3.5;
+
+const LINES = {
+  design: ['💡', '🎨', '✏️', '🤔', 'Ooh!', 'What if…'],
+  tech: ['⌨️', '{ }', '⚙️', '🤔', 'Compiles!', '01101'],
+  polish: ['🐛!', 'Fixed!', '🔨', 'Found one', '✅', 'Why?!'],
+  idle: ['💤', '🎮', '😴', '📺', '🍕', 'Lunch?'],
+  zone: ['🔥', '⚡', 'Flow!', '🤯', 'Unstoppable'],
+  sip: ['☕', 'Ahh…', '😌', 'Mmm'],
+};
+
+function pickLine(list: string[]): string {
+  return list[Math.floor(Math.random() * list.length)];
+}
+
 interface Particle {
   x: number;
   y: number;
@@ -64,6 +95,11 @@ export class OfficeScene {
   private reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
   /** When each staff member got in the zone (scene time), for the entrance burst. */
   private zoneStart = new Map<number, number>();
+  /** Scene clock in seconds; only advances while the game is running. */
+  private clock = 0;
+  private bubbles = new Map<number, Bubble>();
+  private breaks = new Map<number, CoffeeBreak>();
+  private staffIds: number[] = [];
 
   constructor() {
     this.el = document.createElement('canvas');
@@ -75,7 +111,28 @@ export class OfficeScene {
 
   /** Called when the simulation reports someone got in the zone. */
   celebrate(staffId: number) {
-    this.zoneStart.set(staffId, this.lastT);
+    this.zoneStart.set(staffId, this.lastT / 1000);
+    // Inspiration strikes: rush back from the coffee machine.
+    const b = this.breaks.get(staffId);
+    if (b && b.stage !== 'back') {
+      // Turn around from wherever they are on the way out.
+      b.t = b.stage === 'out' ? Math.max(0, b.trip - b.t) : 0;
+      b.stage = 'back';
+    }
+    this.say(staffId, '🔥', 2.5);
+  }
+
+  /** Shows a speech bubble above someone. */
+  say(staffId: number, text: string, life = 2.4) {
+    this.bubbles.set(staffId, { text, age: 0, life });
+  }
+
+  /** Everyone reacts at once, e.g. to reviews or a paid contract. */
+  cheer(lines: string[]) {
+    this.staffIds.forEach((id, i) => {
+      // Stagger slightly so it doesn't look robotic.
+      this.bubbles.set(id, { text: pickLine(lines), age: -i * 0.15, life: 2.8 });
+    });
   }
 
   draw(state: GameState, t: number, running: boolean) {
@@ -98,17 +155,49 @@ export class OfficeScene {
     const c = this.lc;
     this.drawRoom(c, state.officeLevel, lw, lh, time);
 
+    if (running) this.clock += dt;
+    const tick = running ? dt : 0;
+    this.staffIds = state.staff.map((x) => x.id);
+    for (const id of [...this.breaks.keys()]) if (!this.staffIds.includes(id)) this.breaks.delete(id);
+    for (const id of [...this.bubbles.keys()]) if (!this.staffIds.includes(id)) this.bubbles.delete(id);
+
     const offsetX = Math.floor((lw - cols * CELL_W) / 2);
+    const deskAt = (i: number) => ({ x: offsetX + (i % cols) * CELL_W, y: WALL_H - 10 + Math.floor(i / cols) * CELL_H });
+    const machine = { x: lw - 12, y: WALL_H - 14 };
+    this.drawCoffeeMachine(c, machine.x, machine.y, time);
+
     const zoners: { x: number; y: number; s: Staff }[] = [];
+    const anchors = new Map<number, { x: number; y: number }>();
+    const walkers: { s: Staff; x: number; y: number; stage: CoffeeBreak['stage']; t: number }[] = [];
     for (let i = 0; i < desks; i++) {
-      const x = offsetX + (i % cols) * CELL_W;
-      const y = WALL_H - 10 + Math.floor(i / cols) * CELL_H;
+      const { x, y } = deskAt(i);
       const s = state.staff[i];
       const inZone = !!s?.zone && act?.kind === 'game' && mode === 'work';
+      const from = { x: x + 24, y: y + 42 };
+      const spot = (slot: number) => ({ x: machine.x - 2 - slot * 7, y: WALL_H + 3 });
+      const tripFor = (slot: number) => Math.hypot(spot(slot).x - from.x, spot(slot).y - from.y) / WALK_SPEED;
+      const brk = s ? this.updateBreak(s, mode, inZone, tick, state.staff.length, tripFor) : undefined;
+      if (brk) {
+        // Away from the desk: empty chair, locked screen, a figure walking about.
+        this.drawDesk(c, x, y, s, 'idle', false, false, time, true);
+        const to = spot(brk.slot);
+        const f = brk.stage === 'sip' ? 1 : Math.min(1, brk.t / brk.trip);
+        const p = brk.stage === 'back' ? 1 - f : f;
+        const wx = from.x + (to.x - from.x) * p;
+        const wy = from.y + (to.y - from.y) * p;
+        walkers.push({ s: s!, x: wx, y: wy, stage: brk.stage, t: brk.t });
+        anchors.set(s!.id, { x: wx + 3, y: wy - 16 });
+        continue;
+      }
       this.drawDesk(c, x, y, s, mode, animating, inZone, time);
-      if (s && inZone) zoners.push({ x, y, s });
-      if (s && animating && !this.reducedMotion) this.emitWork(x, y, inZone, mode, dt);
+      if (!s) continue;
+      anchors.set(s.id, { x: x + 30, y: y + 19 });
+      if (inZone) zoners.push({ x, y, s });
+      if (animating && !this.reducedMotion) this.emitWork(x, y, inZone, mode, dt);
+      this.maybeChatter(s, mode, inZone, tick, state.staff.length);
     }
+    // Walkers go on top of the desks, back-to-front.
+    walkers.sort((a, b) => a.y - b.y).forEach((w) => this.drawWalker(c, w.s, w.x, w.y, w.stage, w.t, time));
 
     this.updateParticles(c, dt);
 
@@ -122,7 +211,7 @@ export class OfficeScene {
     const k = this.el.width / lw;
     for (const z of zoners) {
       const since = time - (this.zoneStart.get(z.s.id) ?? -10);
-      const pop = since < 0.4 ? 0.6 + since : 1;
+      const pop = since >= 0 && since < 0.4 ? 0.6 + since : 1;
       const bob = Math.sin(time * 6) * 1.2;
       ctx.save();
       ctx.translate((z.x + CELL_W / 2) * k, (z.y + 6 + bob) * k);
@@ -137,11 +226,13 @@ export class OfficeScene {
       ctx.fillText('IN THE ZONE', 0, 0);
       ctx.restore();
     }
+    this.drawBubbles(ctx, anchors, k, tick);
 
     const working = state.staff.filter((s) => s.zone && act?.kind === 'game').map((s) => s.name);
+    const onBreak = state.staff.filter((s) => this.breaks.has(s.id)).map((s) => s.name);
     this.el.setAttribute(
       'aria-label',
-      `${OFFICES[state.officeLevel].name} with ${state.staff.length} ${state.staff.length === 1 ? 'person' : 'people'} ${mode === 'idle' ? 'relaxing' : 'working'}${working.length ? `. In the zone: ${working.join(', ')}` : ''}.`,
+      `${OFFICES[state.officeLevel].name} with ${state.staff.length} ${state.staff.length === 1 ? 'person' : 'people'} ${mode === 'idle' ? 'relaxing' : 'working'}${working.length ? `. In the zone: ${working.join(', ')}` : ''}${onBreak.length ? `. On a coffee break: ${onBreak.join(', ')}` : ''}.`,
     );
   }
 
@@ -197,9 +288,9 @@ export class OfficeScene {
       rect(wx + 1, 4, 26, 10, '#7ec8f2');
       rect(wx + 4 + ((time * 2) % 22), 6, 5, 2, '#ffffff');
       rect(wx + 13, 4, 1, 10, '#e8dccf');
-      rect(w - 10, floorY - 6, 6, 6, '#b5653a');
-      rect(w - 11, floorY - 13, 8, 7, '#3d9a5a');
-      rect(w - 9, floorY - 15, 4, 3, '#4fbf6f');
+      rect(4, floorY - 6, 6, 6, '#b5653a');
+      rect(3, floorY - 13, 8, 7, '#3d9a5a');
+      rect(5, floorY - 15, 4, 3, '#4fbf6f');
     } else if (level === 2) {
       // Studio floor: purple wall, posters, a clock.
       rect(0, 0, w, floorY, '#3c2f63');
@@ -213,7 +304,7 @@ export class OfficeScene {
         rect(px + 1, 5, 7, 10, col);
         rect(px + 2, 7, 3, 3, '#ffffff88');
       });
-      const cx = w - 8;
+      const cx = w - 22;
       rect(cx - 3, 3, 7, 7, '#e8e8f0');
       const a = time * 0.5;
       rect(cx + Math.round(Math.cos(a) * 2), 6 + Math.round(Math.sin(a) * 2), 1, 1, '#222');
@@ -244,7 +335,7 @@ export class OfficeScene {
   // Desk & person
   // -------------------------------------------------------------------------
 
-  private drawDesk(c: CanvasRenderingContext2D, x: number, y: number, s: Staff | undefined, mode: Mode, animating: boolean, zone: boolean, time: number) {
+  private drawDesk(c: CanvasRenderingContext2D, x: number, y: number, s: Staff | undefined, mode: Mode, animating: boolean, zone: boolean, time: number, away = false) {
     const rect = (rx: number, ry: number, rw: number, rh: number, col: string) => {
       c.fillStyle = col;
       c.fillRect(x + rx, y + ry, rw, rh);
@@ -267,10 +358,12 @@ export class OfficeScene {
     rect(8, 34, 2, 8, '#5e3c27');
     rect(38, 34, 2, 8, '#5e3c27');
 
-    // Mug on the desk
-    rect(36, 27, 3, 3, '#e8e8f0');
-    rect(39, 28, 1, 1, '#e8e8f0');
-    if (s && Math.sin(time * 1.3 + (look?.phase ?? 0) * 10) > 0.4) rect(37, 25 - Math.floor((time * 3) % 2), 1, 1, '#ffffff66');
+    // Mug on the desk (it goes with them on a coffee break)
+    if (!away) {
+      rect(36, 27, 3, 3, '#e8e8f0');
+      rect(39, 28, 1, 1, '#e8e8f0');
+    }
+    if (s && !away && Math.sin(time * 1.3 + (look?.phase ?? 0) * 10) > 0.4) rect(37, 25 - Math.floor((time * 3) % 2), 1, 1, '#ffffff66');
 
     // Monitor
     rect(13, 10, 22, 16, '#15131f');
@@ -278,7 +371,12 @@ export class OfficeScene {
     rect(19, 29, 10, 1, '#15131f');
     this.drawScreen(c, x + 14, y + 11, 20, 13, s, mode, animating, zone, time, look);
 
-    if (!s || !look) {
+    if (away) {
+      // Sticky note on the monitor while they're away.
+      rect(30, 11, 4, 4, '#ffd25c');
+      rect(31, 12, 2, 1, '#8a6a1a');
+    }
+    if (!s || !look || away) {
       // Empty chair
       rect(17, 32, 14, 9, '#2a2836');
       rect(23, 41, 2, 2, '#1b1a24');
@@ -407,6 +505,167 @@ export class OfficeScene {
   }
 
   // -------------------------------------------------------------------------
+  // Coffee breaks
+  // -------------------------------------------------------------------------
+
+  /** Advances (or maybe starts) someone's coffee break. Returns it while they're away. */
+  private updateBreak(s: Staff, mode: Mode, zone: boolean, dt: number, people: number, tripFor: (slot: number) => number): CoffeeBreak | undefined {
+    let b = this.breaks.get(s.id);
+    if (!b) {
+      if (this.reducedMotion || zone || dt === 0) return undefined;
+      const perSecond = mode === 'idle' ? 1 / 20 : mode === 'polish' ? 1 / 55 : 1 / 40;
+      const maxAway = Math.max(1, Math.floor(people / 3));
+      if (this.breaks.size >= maxAway || Math.random() > perSecond * dt) return undefined;
+      const used = new Set([...this.breaks.values()].map((x) => x.slot));
+      let slot = 0;
+      while (used.has(slot)) slot++;
+      b = { stage: 'out', t: 0, slot, trip: Math.max(0.5, tripFor(slot)) };
+      this.breaks.set(s.id, b);
+      if (Math.random() < 0.5) this.say(s.id, '☕?', 1.6);
+      return b;
+    }
+    b.t += dt;
+    if (b.stage === 'out' && b.t >= b.trip) {
+      b.stage = 'sip';
+      b.t = 0;
+      this.say(s.id, pickLine(LINES.sip), 2);
+    } else if (b.stage === 'sip' && b.t >= SIP_TIME) {
+      b.stage = 'back';
+      b.t = 0;
+    } else if (b.stage === 'back' && b.t >= b.trip) {
+      this.breaks.delete(s.id);
+      return undefined;
+    }
+    return b;
+  }
+
+  private drawCoffeeMachine(c: CanvasRenderingContext2D, x: number, y: number, time: number) {
+    const rect = (rx: number, ry: number, rw: number, rh: number, col: string) => {
+      c.fillStyle = col;
+      c.fillRect(x + rx, y + ry, rw, rh);
+    };
+    rect(-2, 12, 12, 2, '#6d5545'); // counter
+    rect(0, 0, 8, 12, '#3a3a48');
+    rect(0, 0, 8, 2, '#22222c');
+    rect(2, 4, 4, 2, '#15131f');
+    rect(1, 3, 1, 1, Math.floor(time * 2) % 2 ? '#ff5c6c' : '#5a2a30');
+    rect(3, 8, 2, 3, '#22222c');
+    rect(3, 10, 2, 1, '#e8e8f0');
+  }
+
+  private drawWalker(c: CanvasRenderingContext2D, s: Staff, x: number, y: number, stage: CoffeeBreak['stage'], t: number, time: number) {
+    const look = lookFor(s);
+    const px = Math.round(x) - 3;
+    const py = Math.round(y);
+    const rect = (rx: number, ry: number, rw: number, rh: number, col: string) => {
+      c.fillStyle = col;
+      c.fillRect(px + rx, py + ry, rw, rh);
+    };
+    const walking = stage !== 'sip';
+    const step = walking ? Math.floor(t * 8) % 2 : 0;
+    const facingCamera = stage !== 'out';
+    // Shadow
+    c.fillStyle = 'rgba(0,0,0,0.25)';
+    c.fillRect(px - 1, py, 8, 1);
+    // Legs
+    rect(1, -3 + step, 2, 3 - step, '#2a2836');
+    rect(4, -3 + (1 - step), 2, 3 - (1 - step), '#2a2836');
+    // Body
+    rect(0, -9, 7, 6, look.shirt);
+    // Head
+    rect(1, -15, 6, 6, look.skin);
+    rect(1, -16, 6, 2, look.hair);
+    if (!facingCamera) rect(1, -15, 6, 4, look.hair);
+    if (look.style === 1) {
+      rect(0, -15, 1, 5, look.hair);
+      rect(7, -15, 1, 5, look.hair);
+    }
+    if (look.style === 2) rect(3, -18, 2, 2, look.hair);
+    if (facingCamera) {
+      rect(2, -12, 1, 1, '#15131f');
+      rect(5, -12, 1, 1, '#15131f');
+    }
+    // Mug in hand
+    if (stage === 'sip') {
+      const lift = Math.sin(t * 2.2) > 0.3 ? 3 : 0;
+      rect(7, -7 - lift, 2, 2, look.shirt);
+      rect(7, -9 - lift, 3, 2, '#e8e8f0');
+      if (Math.floor(time * 3) % 2) rect(8, -11 - lift, 1, 1, '#ffffff88');
+    } else if (stage === 'back') {
+      rect(7, -7, 2, 2, '#e8e8f0');
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Speech bubbles
+  // -------------------------------------------------------------------------
+
+  /** Occasional context-aware chatter from people at their desks. */
+  private maybeChatter(s: Staff, mode: Mode, zone: boolean, dt: number, people: number) {
+    if (dt === 0 || this.bubbles.has(s.id)) return;
+    const maxBubbles = Math.max(2, Math.ceil(people / 3));
+    if (this.bubbles.size >= maxBubbles) return;
+    const perSecond = zone ? 1 / 5 : mode === 'idle' ? 1 / 14 : 1 / 16;
+    if (Math.random() > perSecond * dt) return;
+    const list = zone ? LINES.zone : mode === 'idle' ? LINES.idle : mode === 'polish' ? LINES.polish : s.design >= s.tech ? LINES.design : LINES.tech;
+    this.say(s.id, pickLine(list));
+  }
+
+  private drawBubbles(ctx: CanvasRenderingContext2D, anchors: Map<number, { x: number; y: number }>, k: number, dt: number) {
+    const size = Math.max(11, 4.8 * k);
+    ctx.font = `700 ${size}px system-ui, 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif`;
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'center';
+    for (const [id, b] of this.bubbles) {
+      b.age += dt;
+      if (b.age >= b.life) {
+        this.bubbles.delete(id);
+        continue;
+      }
+      const a = anchors.get(id);
+      if (!a || b.age < 0) continue;
+      const pop = this.reducedMotion ? 1 : Math.min(1, 0.4 + b.age / 0.18);
+      const alpha = Math.min(1, (b.life - b.age) / 0.3);
+      const pad = size * 0.45;
+      const w = ctx.measureText(b.text).width + pad * 2;
+      const h = size + pad * 1.2;
+      // Anchor is the tail tip; the bubble sits above and to the right, kept inside the canvas.
+      const tipX = a.x * k;
+      const tipY = a.y * k;
+      let bx = tipX - size * 0.3;
+      bx = Math.max(2, Math.min(this.el.width - w - 2, bx));
+      const by = Math.max(2, tipY - h - size * 0.5);
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.translate(tipX, tipY);
+      ctx.scale(pop, pop);
+      ctx.translate(-tipX, -tipY);
+      ctx.fillStyle = '#ffffff';
+      ctx.strokeStyle = '#15131f';
+      ctx.lineWidth = Math.max(1.5, k * 0.5);
+      roundedRect(ctx, bx, by, w, h, h / 2.4);
+      ctx.fill();
+      ctx.stroke();
+      // Tail
+      const tx = Math.max(bx + h / 2.4, Math.min(bx + w - h / 2.4, tipX));
+      ctx.beginPath();
+      ctx.moveTo(tx - size * 0.3, by + h - 1);
+      ctx.lineTo(tipX, tipY);
+      ctx.lineTo(tx + size * 0.15, by + h - 1);
+      ctx.closePath();
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(tx - size * 0.3, by + h);
+      ctx.lineTo(tipX, tipY);
+      ctx.lineTo(tx + size * 0.15, by + h);
+      ctx.stroke();
+      ctx.fillStyle = '#1d1a2d';
+      ctx.fillText(b.text, bx + w / 2, by + h / 2 + 1);
+      ctx.restore();
+    }
+  }
+
+  // -------------------------------------------------------------------------
   // Particles
   // -------------------------------------------------------------------------
 
@@ -440,4 +699,15 @@ export class OfficeScene {
     c.globalAlpha = 1;
     this.particles = alive.slice(-300);
   }
+}
+
+/** Rounded rectangle path (CanvasRenderingContext2D.roundRect is missing on older iOS). */
+function roundedRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
 }

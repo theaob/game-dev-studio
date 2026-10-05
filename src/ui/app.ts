@@ -103,6 +103,7 @@ export class App {
         this.vibrate(25);
         break;
       case 'contractDone':
+        this.office.cheer(['💰', 'Paid!', '💵']);
         this.vibrate(15);
         break;
     }
@@ -354,6 +355,9 @@ export class App {
         }
         this.vibrate(20);
         this.save();
+        // The team reacts once the review screen closes.
+        const sc = r.game.score;
+        this.office.cheer(sc >= 8 ? ['🎉', '🥳', 'Yes!', '🏆'] : sc >= 6 ? ['🙂', 'Not bad', '👍'] : sc >= 4 ? ['😐', 'Meh', '🤷'] : ['😩', 'Ouch', '💔']);
         this.replace({ kind: 'review', report: r, shown: 0 });
         this.render();
         this.reviewTimer = window.setInterval(() => {
@@ -448,7 +452,7 @@ export class App {
         report(doResearch(s, arg));
         return;
       case 'hire':
-        report(hire(s, Number(arg)));
+        if (report(hire(s, Number(arg)))) this.office.say(Number(arg), '👋 Hi!', 3);
         return;
       case 'fire': {
         const who = s.staff.find((x) => x.id === Number(arg));
