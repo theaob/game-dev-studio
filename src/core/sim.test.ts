@@ -21,6 +21,11 @@ import {
   storePrice,
   zoneChance,
   ZONE_CHANCE,
+  CAT_COOLDOWN_WEEKS,
+  CAT_LAP_BOOST,
+  catLeaveLap,
+  fire,
+  placeCatOnLap,
 } from './sim';
 import { TOTAL_WEEKS, formatDate } from './time';
 import type { GameProject, GameSpec } from './types';
@@ -382,5 +387,73 @@ describe('store', () => {
     expect(p.bugs).toBe(6);
     s.cash = 0;
     expect(buyStoreItem(s, 'coffee')).toBe('Not enough cash.');
+  });
+});
+
+describe('studio cat', () => {
+  const team = (seed: number) => {
+    const s = createGame('Cat', seed);
+    s.cash = 1e7;
+    s.staff.push({ ...s.candidates[0], id: 501, design: 5, tech: 5, speed: 1 });
+    s.staff.push({ ...s.candidates[1], id: 502, design: 5, tech: 5, speed: 1 });
+    return s;
+  };
+
+  it('picks laps by itself during development, then wants alone time', () => {
+    const s = team(61);
+    startGame(s, spec, [33, 33, 33]);
+    const laps: number[] = [];
+    let left = 0;
+    for (let w = 0; w < 120; w++) {
+      const a = s.activity;
+      if (a?.kind !== 'game') break;
+      if (a.awaitingFocus) setPhaseFocus(s, [33, 33, 33]);
+      for (const e of tick(s)) {
+        if (e.type === 'catLap') laps.push(e.staffId);
+        if (e.type === 'catLeft') {
+          left++;
+          expect(s.cat?.cooldown).toBe(CAT_COOLDOWN_WEEKS);
+        }
+      }
+      if (s.cat?.lap) expect(s.cat.cooldown).toBeUndefined();
+    }
+    expect(laps.length).toBeGreaterThan(0);
+    expect(laps.every((id) => s.staff.some((x) => x.id === id))).toBe(true);
+    expect(left).toBeGreaterThan(0);
+  });
+
+  it('boosts whoever has the cat on their lap', () => {
+    const run = (withCat: boolean) => {
+      const s = team(62);
+      startGame(s, spec, [33, 33, 33]);
+      // Keep the zone and random laps out of it.
+      s.staff.forEach((x) => (x.zone = 0));
+      if (withCat) expect(placeCatOnLap(s, 502)).toBeNull();
+      const a0 = s.activity;
+      const before = a0?.kind === 'game' ? (a0.contrib[502]?.design ?? 0) + (a0.contrib[502]?.tech ?? 0) : 0;
+      tick(s);
+      const p = s.activity!;
+      if (p.kind !== 'game') throw new Error('expected a game');
+      return (p.contrib[502]?.design ?? 0) + (p.contrib[502]?.tech ?? 0) - before;
+    };
+    const plain = run(false);
+    const purring = run(true);
+    // Whole-number rounding of the week's totals blurs it a little.
+    expect(purring / plain).toBeGreaterThan(CAT_LAP_BOOST - 0.12);
+    expect(purring / plain).toBeLessThan(CAT_LAP_BOOST + 0.12);
+  });
+
+  it('can be moved by the player, but not while it wants alone time', () => {
+    const s = team(63);
+    expect(placeCatOnLap(s, 501)).toBeNull();
+    expect(s.cat?.lap?.staffId).toBe(501);
+    expect(placeCatOnLap(s, 502)).toBeNull(); // moving it between laps is fine
+    catLeaveLap(s);
+    expect(s.cat?.lap).toBeUndefined();
+    expect(placeCatOnLap(s, 501)).toBe('The cat wants some alone time.');
+    for (let w = 0; w < CAT_COOLDOWN_WEEKS; w++) tick(s);
+    expect(placeCatOnLap(s, 501)).toBeNull();
+    expect(fire(s, 501)).toBeNull();
+    expect(s.cat?.lap).toBeUndefined();
   });
 });

@@ -1,4 +1,4 @@
-import { availablePlatforms, createGame, doResearch, fire, hire, randomTitle, buyStoreItem, releaseGame, setPhaseFocus, setPolishMode, startContract, startGame, tick, train, upgradeOffice, validateGame } from '../core/sim';
+import { availablePlatforms, createGame, doResearch, fire, hire, randomTitle, buyStoreItem, catLeaveLap, placeCatOnLap, releaseGame, setPhaseFocus, setPolishMode, startContract, startGame, tick, train, upgradeOffice, validateGame } from '../core/sim';
 import { storeItemById } from '../core/data';
 import { normalizeFocus } from '../core/scoring';
 import { sequelName } from '../core/sequels';
@@ -6,6 +6,7 @@ import type { GameSpec, GameState, GenreId, MarketingId, NoticeKind, PolishMode,
 import { clearSave, loadGame, saveGame } from '../save';
 import { OfficeScene } from './office';
 import { OfficeLoading, hasWebGL } from './office-loading';
+import { CAT_ID } from './office-common';
 import type { OfficeView } from './office-view';
 import { money, num } from './format';
 import { focusLean, renderSheet, type Sheet } from './sheets';
@@ -54,6 +55,7 @@ export class App {
     this.enableSwipeToClose();
 
     this.els.scene.appendChild(this.office.el);
+    this.wireOffice(this.office);
     this.loadOffice3D();
     root.addEventListener('click', (e) => this.onClick(e));
     root.addEventListener('input', (e) => this.onInput(e));
@@ -129,6 +131,13 @@ export class App {
         this.office.celebrate(ev.staffId);
         this.toast(ev.name === 'You' ? "🔥 You're in the zone!" : `🔥 ${ev.name} is in the zone!`, 'good');
         this.vibrate(25);
+        break;
+      case 'catLap': {
+        const whose = ev.name === 'You' ? 'your' : `${ev.name.split(' ')[0]}'s`;
+        this.toast(`🐈 The cat curled up on ${whose} lap: +30% output while it stays.`, 'good');
+        break;
+      }
+      case 'catLeft':
         break;
       case 'contractDone':
         this.office.cheer(['💰', 'Paid!', '💵']);
@@ -295,7 +304,33 @@ export class App {
   private swapOffice(view: OfficeView) {
     this.office.el.replaceWith(view.el);
     this.office = view;
+    this.wireOffice(view);
     this.lastDraw = 0;
+  }
+
+  /** Lets the office tell the game when the player moves the cat on or off a lap. */
+  private wireOffice(view: OfficeView) {
+    view.onCatLap = (staffId) => {
+      const s = this.state;
+      if (!s) return false;
+      const err = placeCatOnLap(s, staffId);
+      if (err) {
+        this.office.say(CAT_ID, '😾', 1.6);
+        this.toast(err, 'info');
+        return false;
+      }
+      const who = s.staff.find((x) => x.id === staffId);
+      if (who) this.toast(`🐈 The cat curled up on ${who.name === 'You' ? 'your' : who.name.split(' ')[0] + "'s"} lap: +30% output while it stays.`, 'good');
+      this.save();
+      this.render();
+      return true;
+    };
+    view.onCatLeave = () => {
+      if (!this.state) return;
+      catLeaveLap(this.state);
+      this.save();
+      this.render();
+    };
   }
 
   private noticeKey(i: number): string {

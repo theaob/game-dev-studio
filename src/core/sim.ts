@@ -194,6 +194,69 @@ export function buyStoreItem(state: GameState, id: StoreItemId): string | null {
   return null;
 }
 
+// ---------------------------------------------------------------------------
+// The studio cat. Now and then, while a game is being made, it curls up on
+// someone's lap, and a purring cat makes that developer work faster.
+
+/** Output multiplier for whoever has the cat on their lap. */
+export const CAT_LAP_BOOST = 1.3;
+/** Weekly chance, during development, that the cat picks a lap. */
+export const CAT_LAP_CHANCE = 0.15;
+/** Weeks the cat wants to itself after a lap visit. */
+export const CAT_COOLDOWN_WEEKS = 3;
+/** How long the cat stays when the player puts it on a lap. */
+export const CAT_PLACED_WEEKS = 3;
+
+export function catBoost(state: GameState, staffId: number): number {
+  return state.cat?.lap?.staffId === staffId ? CAT_LAP_BOOST : 1;
+}
+
+/** Who has the cat on their lap, if anyone. */
+export function catLapStaff(state: GameState): Staff | undefined {
+  const id = state.cat?.lap?.staffId;
+  return id === undefined ? undefined : state.staff.find((s) => s.id === id);
+}
+
+/** The player puts the cat on someone's lap. Returns an error message, or null on success. */
+export function placeCatOnLap(state: GameState, staffId: number): string | null {
+  const s = state.staff.find((x) => x.id === staffId);
+  if (!s) return 'Staff member not found.';
+  if (state.cat?.lap?.staffId === staffId) return null;
+  if ((state.cat?.cooldown ?? 0) > 0) return 'The cat wants some alone time.';
+  state.cat = { lap: { staffId, weeks: CAT_PLACED_WEEKS } };
+  return null;
+}
+
+/** The player lifts the cat off a lap: the boost ends and the cat wants some space. */
+export function catLeaveLap(state: GameState): void {
+  if (!state.cat?.lap) return;
+  state.cat = { cooldown: CAT_COOLDOWN_WEEKS };
+}
+
+function tickCat(state: GameState, events: SimEvent[]) {
+  const cat = (state.cat ??= {});
+  if (cat.lap) {
+    const owner = state.staff.find((s) => s.id === cat.lap!.staffId);
+    cat.lap.weeks--;
+    if (!owner || cat.lap.weeks <= 0) {
+      events.push({ type: 'catLeft', staffId: cat.lap.staffId });
+      state.cat = { cooldown: CAT_COOLDOWN_WEEKS };
+    }
+    return;
+  }
+  if (cat.cooldown) {
+    cat.cooldown--;
+    if (!cat.cooldown) delete cat.cooldown;
+    return;
+  }
+  // Only working laps are warm enough: the cat picks someone while a game is in development.
+  if (state.activity?.kind !== 'game' || !state.staff.length) return;
+  if (random(state) >= CAT_LAP_CHANCE) return;
+  const s = pick(state, state.staff);
+  state.cat = { lap: { staffId: s.id, weeks: int(state, 2, 4) } };
+  events.push({ type: 'catLap', staffId: s.id, name: s.name });
+}
+
 /** Boosts only count down while a game is being made. */
 function tickBoosts(state: GameState) {
   if (!state.boosts) return;
@@ -361,6 +424,7 @@ export function fire(state: GameState, staffId: number): string | null {
   if (!s) return 'Staff member not found.';
   if (s.founder) return "You can't fire yourself.";
   state.staff = state.staff.filter((x) => x.id !== staffId);
+  if (state.cat?.lap?.staffId === staffId) state.cat = { cooldown: CAT_COOLDOWN_WEEKS };
   notify(state, `${s.name} left the studio.`, 'info');
   return null;
 }
@@ -557,6 +621,7 @@ export function tick(state: GameState): SimEvent[] {
     }
   }
 
+  tickCat(state, events);
   tickSales(state);
 
   if (state.week % WEEKS_PER_MONTH === 0) monthly(state);
@@ -583,7 +648,7 @@ function tickProject(state: GameState, p: GameProject, events: SimEvent[]) {
     p.polishWeeks++;
     if ((p.polishMode ?? 'bugs') === 'bugs') {
       // The team squashes bugs, one whole bug at a time, at least one per week.
-      const fixPower = state.staff.reduce((a, s) => a + s.tech * s.speed, 0) * (hasResearch(state, 'qa2') ? 0.75 : 0.5);
+      const fixPower = state.staff.reduce((a, s) => a + s.tech * s.speed * catBoost(state, s.id), 0) * (hasResearch(state, 'qa2') ? 0.75 : 0.5);
       const fixed = Math.min(p.bugs, Math.max(1, Math.round(fixPower * range(state, 0.8, 1.2))));
       p.bugs -= fixed;
       events.push({ type: 'points', design: 0, tech: 0, bugs: -fixed });
@@ -604,8 +669,8 @@ function tickProject(state: GameState, p: GameProject, events: SimEvent[]) {
       s.zone = int(state, 2, 3);
       events.push({ type: 'zone', staffId: s.id, name: s.name });
     }
-    // In the zone: much more output, and focused work makes fewer bugs.
-    const boost = s.zone ? ZONE_BOOST : 1;
+    // In the zone: much more output, and focused work makes fewer bugs. A cat on the lap helps too.
+    const boost = (s.zone ? ZONE_BOOST : 1) * catBoost(state, s.id);
     const pts = staffWeeklyPoints(state, s, p.phase, p.focus[p.phase]);
     const c = (p.contrib[s.id] ??= { design: 0, tech: 0 });
     pts.forEach((a, i) => {
@@ -665,7 +730,7 @@ function polishPoints(state: GameState, p: GameProject, kind: 'design' | 'tech',
   let raw = 0;
   for (const s of state.staff) {
     const skill = kind === 'design' ? s.design * designMultiplier(state) : s.tech * techMultiplier(state);
-    raw += skill * s.speed * mult;
+    raw += skill * s.speed * mult * catBoost(state, s.id);
   }
   const gain = wholeNumber(state, raw);
   const bugs = wholeNumber(state, raw * 0.06 * bugMultiplier(state) * range(state, 0.6, 1.4));

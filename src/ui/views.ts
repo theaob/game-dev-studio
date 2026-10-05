@@ -2,6 +2,7 @@ import { OFFICES, PHASES, RESEARCH, STORE, TOPICS, genreById, platformById, size
 import {
   SALES_WEEKS,
   boostWeeks,
+  catLapStaff,
   monthlyCosts,
   officeCapacity,
   polishYield,
@@ -146,6 +147,11 @@ function activeBoosts(state: GameState): string {
   const chips = STORE.filter((x) => x.kind === 'boost' && boostWeeks(state, x.id) > 0).map(
     (x) => `<span class="boost-chip" title="${x.name}">${x.icon} ${boostWeeks(state, x.id)}w</span>`,
   );
+  const lap = catLapStaff(state);
+  if (lap && state.cat?.lap) {
+    const who = lap.name === 'You' ? 'You' : lap.name.split(' ')[0];
+    chips.push(`<span class="boost-chip" title="The cat is on ${esc(lap.name)}'s lap: +30% output">🐈 ${esc(who)} ${state.cat.lap.weeks}w</span>`);
+  }
   return chips.length ? `<div class="boost-chips">${chips.join('')}</div>` : '';
 }
 

@@ -14,4 +14,8 @@ export interface OfficeView {
   cheer(lines: string[]): void;
   /** Pixels covered by the HUD (top) and the dock and tab bar (bottom), so the office is framed between them. */
   setInsets?(top: number, bottom: number): void;
+  /** The player dropped the cat on someone: returns whether the cat agrees to stay on that lap. */
+  onCatLap?: (staffId: number) => boolean;
+  /** The player lifted the cat off a lap. */
+  onCatLeave?: () => void;
 }

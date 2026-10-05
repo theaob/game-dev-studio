@@ -49,6 +49,18 @@ export class OfficeScene {
   /** After being let go: falling height above its landing row, and speed. */
   private fall: { h: number; v: number } | null = null;
   private suppressClick = false;
+  onCatLap?: (staffId: number) => boolean;
+  onCatLeave?: () => void;
+  /** Where each desk is (logical px) and who sits at which desk, from the last frame. */
+  private deskPos: { x: number; y: number }[] = [];
+  private deskOf = new Map<number, number>();
+  /** Whose lap the game says the cat is on. */
+  private lapWanted: number | undefined;
+  /** Up off the floor: on a lap or a computer. */
+  private catPerch: { kind: 'lap'; staffId: number } | { kind: 'desk'; index: number; stay: number } | null = null;
+  /** Heading somewhere: floor row it's walking to and what it does there. */
+  private catGoal: { ty: number; then?: { kind: 'lap'; staffId: number } | { kind: 'desk'; index: number } } | null = null;
+  private catHop: { fx: number; fy: number; tx: number; ty: number; t: number; then: 'lap' | 'desk' | 'floor' } | null = null;
   /** Where each person (and the cat) is on screen, for taps. Logical pixels. */
   private hitboxes: { id: number; x: number; y: number; w: number; h: number; name: string }[] = [];
   private era: Era = 'crt-mono';
@@ -193,7 +205,11 @@ export class OfficeScene {
     // Walkers go on top of the desks, back-to-front.
     walkers.sort((a, b) => a.y - b.y).forEach((w) => this.drawWalker(c, w.s, w.x, w.y, w.stage, w.t, time));
 
-    // The studio cat roams the strip of floor in front of the desks.
+    // The studio cat roams the strip of floor in front of the desks, and now and then
+    // hops onto a computer or (when the game says so) curls up on someone's lap.
+    this.deskPos = Array.from({ length: desks }, (_, i) => deskAt(i));
+    this.deskOf = new Map(state.staff.map((x, i) => [x.id, i] as [number, number]));
+    this.lapWanted = state.cat?.lap?.staffId;
     const home = lh - 3;
     const top = WALL_H + 6;
     if (!this.catY) this.catY = home;
@@ -201,6 +217,12 @@ export class OfficeScene {
     if (this.carry?.lifted) {
       this.drawHeldCat(c, this.carry, time);
       anchors.set(CAT_ID, { x: this.carry.x + 2, y: this.carry.y - 1 });
+    } else if (this.catHop || this.catPerch) {
+      const at = this.catHop ? this.hopPoint(this.catHop) : this.perchPoint()!;
+      const sprite = this.catHop ? 'walk' : this.catPerch!.kind === 'lap' ? 'sleep' : (this.catPerch as { stay: number }).stay > 11 ? 'sleep' : 'sit';
+      this.drawCat(c, Math.round(at.y), time, this.catHop ? 0 : 1, Math.round(at.x), sprite);
+      anchors.set(CAT_ID, { x: at.x + 3, y: at.y - 6 });
+      this.hitboxes.push({ id: CAT_ID, x: at.x - 2, y: at.y - 8, w: 11, h: 9, name: 'cat' });
     } else {
       const y = Math.round(this.catY - (this.fall?.h ?? 0));
       this.drawCat(c, y, time, this.fall ? 0 : 1);
@@ -811,30 +833,138 @@ export class OfficeScene {
       }
       return;
     }
+    if (this.catHop) {
+      this.stepHop(this.catHop, realDt, top, bottom);
+      return;
+    }
+    // The game decides laps: head for the right one, or hop off when it's over.
+    const want = this.lapWanted !== undefined && this.deskOf.has(this.lapWanted) ? this.lapWanted : undefined;
+    const perch = this.catPerch;
+    if (perch?.kind === 'lap' && perch.staffId !== want) return this.hopDown(top, bottom);
+    if (want !== undefined && perch?.kind !== 'lap') {
+      if (perch) return this.hopDown(top, bottom);
+      if (this.catGoal?.then?.kind !== 'lap' || this.catGoal.then.staffId !== want) {
+        const d = this.deskPos[this.deskOf.get(want)!];
+        this.walkCatTo(d.x + 40, Math.min(bottom - 1, d.y + 42), { kind: 'lap', staffId: want });
+      }
+    }
+    if (perch) {
+      if (perch.kind === 'desk') {
+        perch.stay -= dt;
+        if (perch.stay <= 0) this.hopDown(top, bottom);
+      }
+      return;
+    }
+
     this.catY = Math.max(top, Math.min(bottom - 1, this.catY));
     if (dt === 0) return;
     cat.t += dt;
     if (cat.mode === 'walk') {
-      cat.x += 7 * dt * cat.dir;
-      // Wander back to the strip of floor in front of the desks.
-      this.catY += Math.sign(home - this.catY) * Math.min(Math.abs(home - this.catY), 5 * dt);
+      const goal = this.catGoal;
+      const ty = goal ? goal.ty : home;
+      const speed = goal?.then ? 12 : 7;
+      cat.x += speed * dt * cat.dir;
+      // Wander back to the strip of floor in front of the desks (or to where it's going).
+      this.catY += Math.sign(ty - this.catY) * Math.min(Math.abs(ty - this.catY), (goal?.then ? 10 : 5) * dt);
       if ((cat.dir > 0 && cat.x >= cat.target) || (cat.dir < 0 && cat.x <= cat.target)) {
         cat.x = cat.target;
-        cat.mode = Math.random() < 0.4 ? 'sleep' : 'sit';
         cat.t = 0;
-        if (cat.mode === 'sleep' && Math.random() < 0.5) this.say(CAT_ID, '💤', 2.5);
+        const then = goal?.then;
+        this.catGoal = null;
+        if (then?.kind === 'lap' && then.staffId === this.lapWanted && this.deskOf.has(then.staffId)) {
+          this.startHop(this.lapPoint(then.staffId), 'lap', then);
+        } else if (then?.kind === 'desk' && this.deskPos[then.index]) {
+          this.startHop(this.deskPoint(then.index), 'desk', then);
+        } else {
+          cat.mode = Math.random() < 0.4 ? 'sleep' : 'sit';
+          if (cat.mode === 'sleep' && Math.random() < 0.5) this.say(CAT_ID, '💤', 2.5);
+        }
       }
     } else {
       const rest = cat.mode === 'sleep' ? 14 : 5;
       if (cat.t > rest && Math.random() < dt * 0.5) {
-        cat.target = 4 + Math.random() * (w - 16);
-        cat.dir = cat.target > cat.x ? 1 : -1;
-        cat.mode = 'walk';
-        cat.t = 0;
-        if (Math.random() < 0.25) this.say(CAT_ID, pickLine(['Meow', '🐟?', 'Mrrp']), 1.6);
+        if (this.deskPos.length && Math.random() < 0.3) {
+          // Up onto a computer.
+          const index = Math.floor(Math.random() * this.deskPos.length);
+          const d = this.deskPos[index];
+          this.walkCatTo(d.x + 44, Math.min(bottom - 1, d.y + 40), { kind: 'desk', index });
+        } else {
+          this.walkCatTo(4 + Math.random() * (w - 16), home);
+          if (Math.random() < 0.25) this.say(CAT_ID, pickLine(['Meow', '🐟?', 'Mrrp']), 1.6);
+        }
       }
     }
     cat.x = Math.max(2, Math.min(w - 10, cat.x));
+  }
+
+  private walkCatTo(x: number, y: number, then?: { kind: 'lap'; staffId: number } | { kind: 'desk'; index: number }) {
+    const cat = this.cat;
+    cat.target = Math.max(2, Math.min(this.lw - 10, x));
+    cat.dir = cat.target >= cat.x ? 1 : -1;
+    cat.mode = 'walk';
+    cat.t = 0;
+    this.catGoal = { ty: y, then };
+  }
+
+  /** Curled across the lap, sticking out beside the person (we see them from behind). */
+  private lapPoint(staffId: number) {
+    const d = this.deskPos[this.deskOf.get(staffId) ?? 0];
+    return { x: d.x + 30, y: d.y + 41 };
+  }
+
+  /** On top of a chunky CRT, or on the desk beside a flat screen. */
+  private deskPoint(index: number) {
+    const d = this.deskPos[index];
+    return this.era === 'crt' || this.era === 'crt-mono' ? { x: d.x + 20, y: d.y + 9 } : { x: d.x + 31, y: d.y + 29 };
+  }
+
+  private perchPoint() {
+    const p = this.catPerch;
+    if (!p) return null;
+    return p.kind === 'lap' ? this.lapPoint(p.staffId) : this.deskPoint(p.index);
+  }
+
+  private hopPoint(h: NonNullable<OfficeScene['catHop']>) {
+    const arc = Math.sin(h.t * Math.PI) * (6 + Math.abs(h.ty - h.fy) * 0.3);
+    return { x: h.fx + (h.tx - h.fx) * h.t, y: h.fy + (h.ty - h.fy) * h.t - arc };
+  }
+
+  private startHop(to: { x: number; y: number }, then: 'lap' | 'desk' | 'floor', perch?: { kind: 'lap'; staffId: number } | { kind: 'desk'; index: number }) {
+    const from = this.catPerch ? this.perchPoint()! : { x: this.cat.x, y: this.catY };
+    this.cat.dir = to.x >= from.x ? 1 : -1;
+    this.catHop = { fx: from.x, fy: from.y, tx: to.x, ty: to.y, t: 0, then };
+    this.catPerch = null;
+    this.pendingPerch = perch ?? null;
+  }
+  private pendingPerch: { kind: 'lap'; staffId: number } | { kind: 'desk'; index: number } | null = null;
+
+  private hopDown(top: number, bottom: number) {
+    const from = this.perchPoint() ?? { x: this.cat.x, y: this.catY };
+    const to = { x: Math.max(2, Math.min(this.lw - 10, from.x + 8)), y: Math.max(top, Math.min(bottom - 1, from.y + 12)) };
+    this.startHop(to, 'floor');
+  }
+
+  private stepHop(h: NonNullable<OfficeScene['catHop']>, realDt: number, top: number, bottom: number) {
+    h.t = Math.min(1, h.t + realDt / 0.45);
+    if (h.t < 1) return;
+    this.catHop = null;
+    const cat = this.cat;
+    cat.t = 0;
+    const perch = this.pendingPerch;
+    this.pendingPerch = null;
+    if (h.then === 'lap' && perch?.kind === 'lap') {
+      this.catPerch = perch;
+      this.say(CAT_ID, pickLine(['😽', 'Purr…', '💤']), 1.8);
+      window.setTimeout(() => this.say(perch.staffId, pickLine(['Aww 😻', '🥰', 'Hi, kitty!', 'Best coworker']), 2.2), 500);
+    } else if (h.then === 'desk' && perch?.kind === 'desk') {
+      this.catPerch = { ...perch, stay: 6 + Math.random() * 10 };
+      const owner = [...this.deskOf.entries()].find(([, i]) => i === perch.index)?.[0];
+      if (owner !== undefined) window.setTimeout(() => this.say(owner, pickLine(['Hey!', 'Move, cat!', '😹', 'My screen!']), 2), 400);
+    } else {
+      cat.x = h.tx;
+      this.catY = Math.max(top, Math.min(bottom - 1, h.ty));
+      cat.mode = 'sit';
+    }
   }
 
   /** Dangling by the scruff from the finger: head up, legs limp, tail tucked, swinging. */
@@ -880,7 +1010,7 @@ export class OfficeScene {
   }
 
   private onPointerDown(e: PointerEvent) {
-    if (this.carry || this.fall) return;
+    if (this.carry || this.fall || this.catHop) return;
     const p = this.toLogical(e);
     const hb = this.hitboxes.find((h) => h.id === CAT_ID);
     if (!hb || p.x < hb.x || p.x > hb.x + hb.w || p.y < hb.y || p.y > hb.y + hb.h) return;
@@ -894,9 +1024,34 @@ export class OfficeScene {
 
   private liftCat() {
     if (!this.carry) return;
+    // Lifting it off a lap ends the visit; off a computer, it just comes along.
+    if (this.catPerch?.kind === 'lap') {
+      this.lapWanted = undefined;
+      this.onCatLeave?.();
+    }
+    this.catPerch = null;
+    this.catGoal = null;
     this.carry.lifted = true;
     this.el.style.cursor = 'grabbing';
     this.say(CAT_ID, pickLine(['Mew!', '🙀', 'Mrrr?', '😿']), 1.4);
+  }
+
+  /** A seated staff member at or near this logical point (forgiving drops on small screens). */
+  private staffNear(x: number, y: number): number | undefined {
+    const hit = this.hitboxes.find((h) => h.id !== CAT_ID && x >= h.x - 4 && x <= h.x + h.w + 4 && y >= h.y - 4 && y <= h.y + h.h + 6);
+    if (hit) return hit.id;
+    let best: number | undefined;
+    let bestD = 12;
+    for (const [id, i] of this.deskOf) {
+      const d = this.deskPos[i];
+      if (!d) continue;
+      const dist = Math.hypot(d.x + 24 - x, d.y + 36 - y);
+      if (dist < bestD) {
+        bestD = dist;
+        best = id;
+      }
+    }
+    return best;
   }
 
   private onPointerMove(e: PointerEvent) {
@@ -921,6 +1076,16 @@ export class OfficeScene {
     if (!c.lifted) return; // a quick tap: the click handler makes it purr
     this.suppressClick = true;
     window.setTimeout(() => (this.suppressClick = false), 400);
+    // Dropped onto someone: the cat may agree to settle on their lap.
+    const p = this.toLogical(e);
+    const onto = this.staffNear(p.x, p.y + 8);
+    if (onto !== undefined && this.onCatLap?.(onto)) {
+      this.lapWanted = onto;
+      this.cat.x = c.x - 3;
+      this.catY = c.y + 11;
+      this.startHop(this.lapPoint(onto), 'lap', { kind: 'lap', staffId: onto });
+      return;
+    }
     // Drop: it lands on the floor row under its feet and falls from where it dangled.
     const land = Math.max(WALL_H + 6, Math.min(this.lh - 3, c.y + 14));
     this.cat.x = Math.max(2, Math.min(this.lw - 10, c.x - 3));
@@ -929,9 +1094,8 @@ export class OfficeScene {
     this.fall = { h: 5, v: 0 };
   }
 
-  private drawCat(c: CanvasRenderingContext2D, y: number, time: number, shadow = 1) {
+  private drawCat(c: CanvasRenderingContext2D, y: number, time: number, shadow = 1, x = Math.round(this.cat.x), sprite: Cat['mode'] = this.cat.mode) {
     const cat = this.cat;
-    const x = Math.round(cat.x);
     const fur = '#e8913a';
     const stripe = '#b5652a';
     const eye = '#15131f';
@@ -941,7 +1105,7 @@ export class OfficeScene {
       c.fillRect(x + (cat.dir > 0 ? rx : 8 - rx - rw), y + ry, rw, rh);
     };
     if (shadow) R(0, 0, 9, 1, 'rgba(0,0,0,0.25)');
-    if (cat.mode === 'sleep') {
+    if (sprite === 'sleep') {
       const breathe = Math.floor(time * 1.5) % 2;
       R(1, -3 - breathe, 5, 3 + breathe, fur);
       R(2, -3 - breathe, 1, 3 + breathe, stripe);
@@ -951,7 +1115,7 @@ export class OfficeScene {
       R(5, -5, 1, 1, fur);
       R(7, -5, 1, 1, fur);
       R(6, -3, 2, 1, stripe);
-    } else if (cat.mode === 'sit') {
+    } else if (sprite === 'sit') {
       const swish = Math.floor(time * 2) % 2;
       R(2, -5, 4, 4, fur);
       R(3, -5, 1, 4, stripe);
