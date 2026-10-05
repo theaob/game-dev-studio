@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { GENRES, PLATFORMS, TOPICS, platformUsers } from './data';
+import { GENRES, GENRE_TITLES, PLATFORMS, TOPICS, platformUsers } from './data';
 import { playThrough } from './bot';
 import { benchmark, evaluate, normalizeFocus, phaseAlignment, repeatMultiplier } from './scoring';
 import { SEQUEL_TOO_SOON_MULT, sequelCandidates, sequelName, sequelSalesMult } from './sequels';
@@ -14,6 +14,7 @@ import {
   startGame,
   tick,
   validateGame,
+  randomTitle,
 } from './sim';
 import { TOTAL_WEEKS, formatDate } from './time';
 import type { GameProject, GameSpec } from './types';
@@ -260,5 +261,21 @@ describe('sequels', () => {
     expect(evaluate(s, s.activity as GameProject).repeatMult).toBe(1);
     (s.activity as GameProject).sequelOf = undefined;
     expect(evaluate(s, s.activity as GameProject).repeatMult).toBe(0.85);
+  });
+});
+
+describe('title suggestions', () => {
+  it('fit the genre and change on every re-roll', () => {
+    for (const g of GENRES) {
+      const words = [...GENRE_TITLES[g.id].a, ...GENRE_TITLES[g.id].b];
+      let prev = '';
+      for (let i = 0; i < 20; i++) {
+        const t = randomTitle(g.id, prev);
+        expect(t).not.toBe(prev);
+        expect(t).not.toMatch(/[{}]/);
+        expect(words.some((w) => t.includes(w))).toBe(true);
+        prev = t;
+      }
+    }
   });
 });

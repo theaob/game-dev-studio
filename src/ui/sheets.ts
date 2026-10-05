@@ -24,7 +24,8 @@ import { esc, money, num, scoreClass } from './format';
 
 export type Sheet =
   | { kind: 'welcome'; name: string }
-  | { kind: 'newGame'; step: 1 | 2; draft: GameSpec; error?: string }
+  /** `nameEdited`: the player typed their own title, so picking a genre won't replace it. */
+  | { kind: 'newGame'; step: 1 | 2; draft: GameSpec; error?: string; nameEdited?: boolean }
   | { kind: 'focus'; phase: number; values: number[]; spec?: GameSpec; error?: string }
   | { kind: 'devComplete' }
   | { kind: 'review'; report: ReleaseReport; shown: number }
@@ -198,11 +199,6 @@ function newGameStep1(state: GameState, d: GameSpec, error?: string): string {
     <h3>New game</h3>
     <p class="muted">Step 1 of 3 · Concept</p>
     ${sequelPicker(state, d)}
-    <h4>Title</h4>
-    <div class="row">
-      <input class="text-input grow" data-bind="name" maxlength="32" value="${esc(d.name)}" placeholder="Game title" autocomplete="off" />
-      <button class="icon-btn" data-action="random-name" aria-label="Random name">🎲</button>
-    </div>
     ${
       sequel
         ? '<p class="sub mt">A sequel keeps the original\'s topic and genre.</p>'
@@ -224,6 +220,16 @@ function newGameStep1(state: GameState, d: GameSpec, error?: string): string {
     </div>`
     }
     ${d.topic && d.genre ? receptionPreview(state, d) : '<p class="sub mt">Coloured dots show combinations you have already discovered.</p>'}
+    ${
+      d.genre
+        ? `
+    <h4>Title</h4>
+    <div class="row">
+      <input class="text-input grow" data-bind="name" maxlength="32" value="${esc(d.name)}" placeholder="Game title" autocomplete="off" />
+      <button class="icon-btn" data-action="random-name" aria-label="Suggest another ${genreById(d.genre).name} title">🎲</button>
+    </div>`
+        : ''
+    }
     ${error ? `<div class="error">${esc(error)}</div>` : ''}
     <div class="btn-row">
       <button class="btn ghost" data-action="close">Cancel</button>

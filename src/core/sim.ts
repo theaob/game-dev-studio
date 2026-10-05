@@ -9,8 +9,7 @@ import {
   PLATFORMS,
   RESEARCH,
   SIZES,
-  TITLE_WORDS_A,
-  TITLE_WORDS_B,
+  GENRE_TITLES,
   TOPICS,
   genreById,
   isPlatformAvailable,
@@ -29,6 +28,7 @@ import type {
   ContractOffer,
   GameProject,
   GameSpec,
+  GenreId,
   GameState,
   NoticeKind,
   ReleaseReport,
@@ -655,11 +655,19 @@ function refreshCandidates(state: GameState) {
   });
 }
 
-/** Uses Math.random so suggesting names doesn't shift the deterministic game RNG. */
-export function randomTitle(): string {
-  const a = TITLE_WORDS_A[Math.floor(Math.random() * TITLE_WORDS_A.length)];
-  const b = TITLE_WORDS_B[Math.floor(Math.random() * TITLE_WORDS_B.length)];
-  return `${a} ${b}`;
+/**
+ * Suggests a title that fits the genre, avoiding `avoid` (the current suggestion)
+ * so a re-roll always changes it. Uses Math.random so suggesting names doesn't
+ * shift the deterministic game RNG.
+ */
+export function randomTitle(genre: GenreId, avoid?: string): string {
+  const t = GENRE_TITLES[genre];
+  const pick = <T>(list: T[]) => list[Math.floor(Math.random() * list.length)];
+  for (let i = 0; i < 10; i++) {
+    const title = pick(t.patterns).replace('{a}', pick(t.a)).replace('{b}', pick(t.b));
+    if (title !== avoid) return title;
+  }
+  return avoid ?? '';
 }
 
 export function notify(state: GameState, text: string, kind: NoticeKind) {

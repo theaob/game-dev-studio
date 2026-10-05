@@ -439,7 +439,10 @@ export class App {
     const sheet = this.sheet;
     if (!sheet) return;
     if (el.dataset.bind === 'studio' && sheet.kind === 'welcome') sheet.name = el.value;
-    if (el.dataset.bind === 'name' && sheet.kind === 'newGame') sheet.draft.name = el.value;
+    if (el.dataset.bind === 'name' && sheet.kind === 'newGame') {
+      sheet.draft.name = el.value;
+      sheet.nameEdited = el.value.trim() !== '';
+    }
     if (el.dataset.focus !== undefined && sheet.kind === 'focus') {
       sheet.values[Number(el.dataset.focus)] = Number(el.value);
       this.updateFocusLabels(sheet);
@@ -555,7 +558,7 @@ export class App {
     switch (name) {
       // Studio
       case 'new-game': {
-        const draft: GameSpec = { name: randomTitle(), topic: '', genre: '' as GenreId, platform: 'pc', size: 'small', marketing: 'none' };
+        const draft: GameSpec = { name: '', topic: '', genre: '' as GenreId, platform: 'pc', size: 'small', marketing: 'none' };
         this.open({ kind: 'newGame', step: 1, draft });
         return;
       }
@@ -607,7 +610,8 @@ export class App {
       // New game wizard
       case 'random-name':
         if (sheet?.kind === 'newGame') {
-          sheet.draft.name = randomTitle();
+          if (sheet.draft.genre) sheet.draft.name = randomTitle(sheet.draft.genre, sheet.draft.name);
+          sheet.nameEdited = false;
           this.renderSheet();
         }
         return;
@@ -622,7 +626,8 @@ export class App {
             d.name = sequelName(original);
           } else if (d.sequelOf !== undefined) {
             d.sequelOf = undefined;
-            d.name = randomTitle();
+            d.name = d.genre ? randomTitle(d.genre) : '';
+            sheet.nameEdited = false;
           }
           sheet.error = undefined;
           this.renderSheet();
@@ -635,7 +640,11 @@ export class App {
       case 'pick-marketing':
         if (sheet?.kind === 'newGame') {
           const d = sheet.draft;
-          if (name === 'pick-genre') d.genre = arg as GenreId;
+          if (name === 'pick-genre') {
+            // The title is chosen after the genre: suggest one that fits, unless the player wrote their own.
+            if (d.genre !== arg && !sheet.nameEdited) d.name = randomTitle(arg as GenreId);
+            d.genre = arg as GenreId;
+          }
           if (name === 'pick-topic') d.topic = arg;
           if (name === 'pick-platform') d.platform = arg;
           if (name === 'pick-size') d.size = arg as SizeId;
