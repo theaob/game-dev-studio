@@ -125,12 +125,74 @@ interface Rig {
   rHip: THREE.Group;
   rKnee: THREE.Group;
   handMug: THREE.Mesh;
-  fire: THREE.Mesh[];
+  /** Flame sprites around the body, shown while in the zone. */
+  fire: Flame[];
+  fireGroup: THREE.Group;
   aura: THREE.Sprite;
   pose: Pose;
 }
 
 const PANTS = ['#2a2f45', '#3a3a44', '#4a3a2a', '#1f3a4a'];
+
+/** One flickering tongue of flame: it rises, shrinks and fades, then starts over. */
+interface Flame {
+  sprite: THREE.Sprite;
+  base: THREE.Vector3;
+  size: number;
+  speed: number;
+  phase: number;
+  rise: number;
+}
+
+/** A teardrop flame: white-hot core fading through yellow and orange to transparent red. */
+let flameTexture: THREE.CanvasTexture | null = null;
+function flame(): THREE.CanvasTexture {
+  if (flameTexture) return flameTexture;
+  const c = document.createElement('canvas');
+  c.width = 64;
+  c.height = 128;
+  const g = c.getContext('2d')!;
+  g.translate(32, 86);
+  g.scale(1, 1.9);
+  const grad = g.createRadialGradient(0, 4, 0, 0, 0, 30);
+  grad.addColorStop(0, 'rgba(255,255,240,1)');
+  grad.addColorStop(0.22, 'rgba(255,236,140,0.95)');
+  grad.addColorStop(0.5, 'rgba(255,150,40,0.75)');
+  grad.addColorStop(0.8, 'rgba(230,60,10,0.35)');
+  grad.addColorStop(1, 'rgba(200,30,0,0)');
+  g.fillStyle = grad;
+  g.beginPath();
+  g.arc(0, 0, 30, 0, Math.PI * 2);
+  g.fill();
+  flameTexture = new THREE.CanvasTexture(c);
+  flameTexture.colorSpace = THREE.SRGBColorSpace;
+  return flameTexture;
+}
+
+/** Flames hugging the shoulders, arms and head (in torso space), plus a tall crown of fire. */
+function buildFire(torso: THREE.Group): { group: THREE.Group; flames: Flame[] } {
+  const group = new THREE.Group();
+  torso.add(group);
+  const flames: Flame[] = [];
+  const add = (x: number, y: number, z: number, size: number, rise: number) => {
+    const sprite = new THREE.Sprite(
+      new THREE.SpriteMaterial({ map: flame(), transparent: true, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending }),
+    );
+    sprite.renderOrder = 20;
+    group.add(sprite);
+    flames.push({ sprite, base: new THREE.Vector3(x, y, z), size, speed: 1.3 + Math.random() * 1.2, phase: Math.random(), rise });
+  };
+  // A ring of flames around the body...
+  for (let i = 0; i < 12; i++) {
+    const a = (i / 12) * Math.PI * 2;
+    add(Math.cos(a) * 0.34, 0.1 + (i % 3) * 0.22, 0.08 + Math.sin(a) * 0.14, 0.7 + (i % 2) * 0.25, 0.7);
+  }
+  // ...a crown of fire on the head, and one tall plume.
+  for (let i = 0; i < 7; i++) add((i - 3) * 0.09, 0.95, 0.04, 0.85 + (i % 2) * 0.3, 0.9);
+  add(0, 1.1, 0.05, 1.4, 1.1);
+  group.visible = false;
+  return { group, flames };
+}
 
 function buildRig(s: Staff): Rig {
   const look = lookFor(s);
@@ -183,14 +245,7 @@ function buildRig(s: Staff): Rig {
       part(head, 0.05, 0.14, 0.12, '#15131f', 0.18, 0.18, 0);
   }
 
-  const fire = [0, 1, 2].map((i) => {
-    const m = part(head, 0.08, 0.16, 0.08, i === 1 ? '#ff6b4a' : '#ffad3b', (i - 1) * 0.1, 0.42, 0.02, {
-      geo: CONE,
-      material: new THREE.MeshBasicMaterial({ color: i === 1 ? '#ff6b4a' : '#ffc23b' }),
-    });
-    m.visible = false;
-    return m;
-  });
+  const { group: fireGroup, flames: fire } = buildFire(torso);
 
   const arm = (x: number) => {
     const up = group(torso, x, 0.47, 0);
@@ -210,7 +265,7 @@ function buildRig(s: Staff): Rig {
   aura.position.set(0, 1.0, -0.4);
   root.add(aura);
 
-  return { id: s.id, name: s.name, look, root, torso, head, lUp: la.up, lFo: la.fo, rUp: ra.up, rFo: ra.fo, lHip: l.hip, lKnee: l.knee, rHip: r.hip, rKnee: r.knee, handMug, fire, aura, pose: { ...ZERO_POSE } };
+  return { id: s.id, name: s.name, look, root, torso, head, lUp: la.up, lFo: la.fo, rUp: ra.up, rFo: ra.fo, lHip: l.hip, lKnee: l.knee, rHip: r.hip, rKnee: r.knee, handMug, fire, fireGroup, aura, pose: { ...ZERO_POSE } };
 }
 
 /** Base pose for a gesture (angles in radians; arms hang down at 0, point forward at π/2). */
@@ -323,7 +378,7 @@ export class Office3D implements OfficeView {
   private sun = new THREE.DirectionalLight('#ffffff', 2);
   private hemi = new THREE.HemisphereLight('#cfe3ff', '#3a3046', 0.8);
   private lamps: THREE.PointLight[] = [];
-  private zoneLight = new THREE.PointLight('#ffb050', 0, 4, 1.5);
+  private zoneLight = new THREE.PointLight('#ff9a3a', 0, 5, 1.4);
 
   // Layout
   private roomW = 6;
@@ -437,10 +492,12 @@ export class Office3D implements OfficeView {
   draw(state: GameState, t: number, running: boolean) {
     const dt = Math.min(0.1, (t - (this.lastT || t)) / 1000);
     this.lastT = t;
-    const time = this.reducedMotion ? 0 : t / 1000;
+    // Reduce Motion tones the scene down (no particles, walks or roaming cat)
+    // but characters keep their small animations so the office doesn't look frozen.
+    const time = t / 1000;
     if (running) this.clock += dt;
     const tick = running ? dt : 0;
-    const gt = this.reducedMotion ? 0 : this.clock;
+    const gt = this.clock;
 
     this.era = eraFor(yearOf(state.week));
     const capacity = OFFICES[state.officeLevel].capacity;
@@ -496,10 +553,8 @@ export class Office3D implements OfficeView {
       if (rig.aura.visible) {
         (rig.aura.material as THREE.SpriteMaterial).opacity = 0.3 + Math.sin(time * 7 + rig.look.phase * 6) * 0.1;
       }
-      rig.fire.forEach((f, k) => {
-        f.visible = inZone && !walk;
-        if (f.visible) f.scale.y = 0.14 + Math.abs(Math.sin(time * 14 + k * 2)) * 0.1;
-      });
+      rig.fireGroup.visible = inZone && !walk;
+      if (rig.fireGroup.visible) this.animateFire(rig, time);
     });
     // Empty desks: dark screens.
     for (let i = state.staff.length; i < this.desks.length; i++) {
@@ -509,7 +564,7 @@ export class Office3D implements OfficeView {
     if (zoneRig) {
       (zoneRig as Rig).root.getWorldPosition(this.zoneLight.position);
       this.zoneLight.position.y += 1.4;
-      this.zoneLight.intensity = 3 + Math.sin(time * 9) * 0.6;
+      this.zoneLight.intensity = 5 + Math.sin(time * 17) * 1.2 + Math.sin(time * 7.3) * 0.8;
     } else {
       this.zoneLight.intensity = 0;
     }
@@ -541,7 +596,7 @@ export class Office3D implements OfficeView {
     }
     for (const r of this.rigs.values()) {
       (r.aura.material as THREE.Material).dispose();
-      r.fire.forEach((f) => (f.material as THREE.Material).dispose());
+      r.fire.forEach((f) => (f.sprite.material as THREE.Material).dispose());
     }
     this.desks = [];
     this.rigs.clear();
@@ -982,25 +1037,39 @@ export class Office3D implements OfficeView {
     const target = poseFor(g);
     if (mode === 'idle' && g === 'type') Object.assign(target, poseFor('relax'));
     // Ease towards the target pose so gestures blend smoothly.
-    const k = this.reducedMotion ? 1 : 0.18;
+    const k = 0.18;
     for (const key of Object.keys(target) as (keyof Pose)[]) r.pose[key] += (target[key] - r.pose[key]) * k;
 
-    const typing = (g === 'type' || g === 'lean' || g === 'look') && (animating || this.reducedMotion);
-    const speed = zone ? 22 : g === 'lean' ? 16 : 11;
-    const beat = Math.sin(gt * speed * Math.PI + r.look.phase * 10);
+    const typing = (g === 'type' || g === 'lean' || g === 'look') && animating;
     const extra: Partial<Pose> = {};
     if (typing) {
-      extra.lFoX = beat * 0.09;
-      extra.rFoX = -beat * 0.09;
-      extra.lUpZ = Math.sin(gt * 2.1 + r.look.phase * 4) * 0.08;
-      extra.rUpZ = -extra.lUpZ;
-      extra.headX = Math.max(0, Math.sin(gt * speed * 0.25 * Math.PI)) * 0.08; // nod along
-      extra.torsoZ = Math.sin(gt * 0.9 + r.look.phase * 6) * 0.03;
+      // Big enough to read on a phone: hands take turns hopping on the keys,
+      // drift across the keyboard, and every few seconds slam Enter.
+      const tempo = zone ? 2.3 : g === 'lean' ? 1.5 : 1;
+      const ph = gt * 7.5 * tempo + r.look.phase * 10;
+      extra.lFoX = Math.max(0, Math.sin(ph)) * 0.55;
+      extra.rFoX = Math.max(0, -Math.sin(ph)) * 0.55;
+      extra.lUpZ = Math.sin(ph * 0.21) * 0.2;
+      extra.rUpZ = Math.sin(ph * 0.21 + 1.3) * 0.2;
+      extra.lUpX = Math.abs(Math.sin(ph * 0.5)) * 0.12;
+      extra.rUpX = Math.abs(Math.cos(ph * 0.5)) * 0.12;
+      const slam = (gt * 0.35 * tempo + r.look.phase * 3) % 1;
+      if (slam < 0.14) {
+        // Wind up and hit Enter with the right hand.
+        extra.rFoX = Math.sin((slam / 0.14) * Math.PI) * 1.1;
+        extra.rUpX = Math.sin((slam / 0.14) * Math.PI) * 0.35;
+      }
+      extra.headX = Math.max(0, Math.sin(ph * 0.25)) * 0.16; // nod along
+      extra.headY = Math.sin(ph * 0.09 + r.look.phase * 5) * 0.18; // read across the screen
+      extra.torsoZ = Math.sin(ph * 0.5) * 0.06; // shoulders shift with the hands
+      extra.torsoX = Math.abs(Math.sin(ph)) * 0.04;
     }
     if (g === 'look') extra.headY = p < 0.5 ? 0.7 : -0.7;
-    if (g === 'think') extra.rFoX = Math.sin(gt * 25) * 0.1; // scratch scratch
-    if (g === 'point') extra.rUpX = Math.max(0, Math.sin(gt * 12)) * 0.08;
-    if (zone) extra.torsoX = Math.sin(gt * 20) * 0.03;
+    if (g === 'think') extra.rFoX = Math.sin(gt * 18) * 0.3; // scratch scratch
+    if (g === 'point') extra.rUpX = Math.max(0, Math.sin(gt * 9)) * 0.25; // tap the screen
+    if (g === 'stretch') extra.lUpZ = -(extra.rUpZ = Math.sin(gt * 3) * 0.15);
+    if (g === 'relax') extra.torsoX = Math.sin(gt * 1.6 + r.look.phase * 3) * 0.04; // breathing
+    if (zone) extra.torsoX = (extra.torsoX ?? 0) - 0.12 + Math.sin(gt * 20) * 0.04; // hunched in, buzzing
     if (g === 'sip') {
       r.handMug.visible = true;
       extra.rFoX = p > 0.25 && p < 0.75 ? 0.25 : 0;
@@ -1052,6 +1121,19 @@ export class Office3D implements OfficeView {
     applyPose(r, pose);
   }
 
+  private animateFire(r: Rig, time: number) {
+    for (const f of r.fire) {
+      const life = (time * f.speed + f.phase) % 1;
+      const wobble = Math.sin(time * 11 + f.phase * 20) * 0.04;
+      f.sprite.position.set(f.base.x + wobble, f.base.y + life * f.rise, f.base.z);
+      const s = f.size * (1 - life * 0.65) * (0.9 + Math.sin(time * 23 + f.phase * 9) * 0.1);
+      f.sprite.scale.set(s * 0.6, s, 1);
+      const m = f.sprite.material as THREE.SpriteMaterial;
+      m.opacity = Math.sin(life * Math.PI) * 0.95;
+      m.color.setRGB(1, 0.85 - life * 0.45, 0.6 - life * 0.55);
+    }
+  }
+
   // -------------------------------------------------------------------------
   // Coffee breaks (same rules as the 2D scene)
   // -------------------------------------------------------------------------
@@ -1059,7 +1141,7 @@ export class Office3D implements OfficeView {
   private updateWalk(r: Rig, desk: Desk, mode: Mode, zone: boolean, dt: number, people: number): Walk | undefined {
     let w = this.walks.get(r.id);
     if (!w) {
-      if (this.reducedMotion || zone || dt === 0) return undefined;
+      if (this.reducedMotion || zone || dt === 0) return undefined; // no strolling with Reduce Motion
       const perSecond = mode === 'idle' ? 1 / 20 : mode === 'polish' ? 1 / 55 : 1 / 40;
       const maxAway = Math.max(1, Math.floor(people / 3));
       if (this.walks.size >= maxAway || Math.random() > perSecond * dt) return undefined;
@@ -1187,8 +1269,8 @@ export class Office3D implements OfficeView {
     const colors = zone ? ['#ffd25c', '#ffad3b', '#ff6b4a', '#ffffff'] : mode === 'polish' ? ['#3ddc97'] : ['#4fb3ff', '#ffad3b'];
     const base = desk.seat.clone();
     this.particles.push({
-      pos: new THREE.Vector3(base.x + (Math.random() - 0.5) * 0.6, zone ? 0.9 + Math.random() * 0.6 : 1.4, base.z - (zone ? 0.1 : 0.85)),
-      vel: new THREE.Vector3((Math.random() - 0.5) * (zone ? 0.8 : 0.15), zone ? 0.9 + Math.random() * 0.8 : 0.35, 0),
+      pos: new THREE.Vector3(base.x + (Math.random() - 0.5) * 0.6, zone ? 1.0 + Math.random() * 0.8 : 1.4, base.z - (zone ? 0.05 : 0.85)),
+      vel: new THREE.Vector3((Math.random() - 0.5) * (zone ? 0.6 : 0.15), zone ? 1.4 + Math.random() * 1.2 : 0.35, 0),
       life: 0,
       max: zone ? 0.7 + Math.random() * 0.5 : 1.3,
       color: new THREE.Color(colors[Math.floor(Math.random() * colors.length)]),

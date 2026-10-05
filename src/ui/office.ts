@@ -104,7 +104,8 @@ export class OfficeScene {
   draw(state: GameState, t: number, running: boolean) {
     const dt = Math.min(0.1, (t - (this.lastT || t)) / 1000);
     this.lastT = t;
-    const time = this.reducedMotion ? 0 : t / 1000;
+    // Reduce Motion turns off particles, walks and the roaming cat; small character animations stay.
+    const time = t / 1000;
 
     const capacity = OFFICES[state.officeLevel].capacity;
     const desks = Math.max(capacity, state.staff.length);
@@ -123,7 +124,7 @@ export class OfficeScene {
     const tick = running ? dt : 0;
     this.era = eraFor(yearOf(state.week));
     this.level = state.officeLevel;
-    const light = daylight(this.reducedMotion ? 0 : this.clock);
+    const light = daylight(this.clock);
     this.drawRoom(c, state.officeLevel, lw, lh, time, light);
     this.hitboxes = [];
     this.staffIds = state.staff.map((x) => x.id);
@@ -432,7 +433,7 @@ export class OfficeScene {
     };
     const look = s ? lookFor(s) : null;
     // Body language runs on the scene clock, so everyone freezes mid-motion when the game is paused.
-    const gt = this.reducedMotion ? 0 : this.clock;
+    const gt = this.clock;
     const gesture = s && look && !away ? gestureFor(s.id, look, gt, mode, zone) : null;
 
     // Zone aura behind everything at this desk.
