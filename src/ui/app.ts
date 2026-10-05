@@ -1,9 +1,11 @@
-import { availablePlatforms, createGame, doResearch, fire, hire, randomTitle, releaseGame, setPhaseFocus, startContract, startGame, tick, train, upgradeOffice, validateGame } from '../core/sim';
+import { availablePlatforms, createGame, doResearch, fire, hire, randomTitle, buyStoreItem, releaseGame, setPhaseFocus, setPolishMode, startContract, startGame, tick, train, upgradeOffice, validateGame } from '../core/sim';
+import { storeItemById } from '../core/data';
 import { normalizeFocus } from '../core/scoring';
 import { sequelName } from '../core/sequels';
-import type { GameSpec, GameState, GenreId, MarketingId, NoticeKind, SimEvent, SizeId } from '../core/types';
+import type { GameSpec, GameState, GenreId, MarketingId, NoticeKind, PolishMode, SimEvent, SizeId } from '../core/types';
 import { clearSave, loadGame, saveGame } from '../save';
 import { OfficeScene } from './office';
+import { OfficeLoading, hasWebGL } from './office-loading';
 import type { OfficeView } from './office-view';
 import { money, num } from './format';
 import { focusLean, renderSheet, type Sheet } from './sheets';
@@ -16,6 +18,9 @@ const WEEK_MS = 1500;
 
 /** Sheets that must be answered and can't be dismissed by tapping outside. */
 const BLOCKING: Sheet['kind'][] = ['welcome', 'focus', 'review', 'gameOver'];
+
+/** How long to wait for the 3D office before settling on the 2D one. */
+const OFFICE3D_TIMEOUT_MS = 10_000;
 
 export class App {
   private state: GameState | null;
@@ -31,7 +36,7 @@ export class App {
   /** Speed to resume at when un-pausing. */
   private lastSpeed = 1;
   /** Starts as the 2D office and upgrades to 3D once three.js has loaded (if WebGL works). */
-  private office: OfficeView = new OfficeScene();
+  private office: OfficeView = hasWebGL() ? new OfficeLoading() : new OfficeScene();
   /** Values currently shown in the top bar; they glide towards the real ones. */
   private shownStats: Record<StatKey, number> | null = null;
   private lastStats: Record<StatKey, number> | null = null;
@@ -261,17 +266,29 @@ export class App {
     });
   }
 
-  /** Loads the three.js office in the background and swaps it in; keeps the 2D office if that fails. */
+  /**
+   * Loads the three.js office while a loading card shows. The 2D office is only a
+   * fallback (no WebGL, download failed or too slow), and once it's on screen it
+   * stays for the session, so the office never visibly switches style mid-game.
+   */
   private loadOffice3D() {
+    if (!(this.office instanceof OfficeLoading)) return;
+    const fallback = () => {
+      if (this.office instanceof OfficeLoading) this.swapOffice(new OfficeScene());
+    };
+    const timer = window.setTimeout(fallback, OFFICE3D_TIMEOUT_MS);
     import('./office3d')
       .then(({ createOffice3D }) => {
+        window.clearTimeout(timer);
+        if (!(this.office instanceof OfficeLoading)) return;
         const view = createOffice3D();
-        if (!view) return;
+        if (!view) return fallback();
         view.onLost = () => this.swapOffice(new OfficeScene());
         this.swapOffice(view);
       })
       .catch(() => {
-        // Offline or blocked: the 2D office keeps working.
+        window.clearTimeout(timer);
+        fallback();
       });
   }
 
@@ -403,13 +420,13 @@ export class App {
     const counters = this.els.dock.querySelectorAll<HTMLElement>('#counters .counter');
     if (counters.length !== 3) return;
     const items: [number, string, string][] = [
-      [design, `+${design.toFixed(1)}`, 'var(--design)'],
-      [tech, `+${tech.toFixed(1)}`, 'var(--tech)'],
-      // Bugs are whole numbers: shown as e.g. "+2 🐛" or "−3 🐛".
+      // All points are whole numbers: shown as e.g. "+12", "+2 🐛" or "−3 🐛".
+      [design, `+${design}`, 'var(--design)'],
+      [tech, `+${tech}`, 'var(--tech)'],
       [bugs, bugs < 0 ? `−${-bugs} 🐛` : `+${bugs} 🐛`, bugs < 0 ? 'var(--good)' : 'var(--bugs)'],
     ];
     items.forEach(([v, label, color], i) => {
-      if (Math.abs(v) < 0.05) return;
+      if (!v) return;
       const r = counters[i].getBoundingClientRect();
       const b = document.createElement('span');
       b.className = 'bubble';
@@ -565,9 +582,32 @@ export class App {
       case 'contracts':
         this.open({ kind: 'contracts' });
         return;
+      case 'store':
+        this.open({ kind: 'store' });
+        return;
+      case 'buy': {
+        const item = storeItemById(arg);
+        const bugsBefore = s.activity?.kind === 'game' ? s.activity.bugs : 0;
+        if (report(buyStoreItem(s, item.id))) {
+          this.office.cheer(item.cheer);
+          if (item.id === 'bugbash' && s.activity?.kind === 'game') {
+            // Close the store so the player sees the bug counter drop.
+            if (sheet?.kind === 'store') this.close();
+            const fixed = bugsBefore - s.activity.bugs;
+            window.setTimeout(() => this.bubbles(0, 0, -fixed), 250);
+          } else if (sheet?.kind === 'store') {
+            this.renderSheet();
+          }
+        }
+        return;
+      }
       case 'contract':
         if (sheet?.kind === 'contracts') this.close();
         report(startContract(s, Number(arg)));
+        return;
+      case 'polish-mode':
+        if (sheet?.kind === 'devComplete') this.close();
+        report(setPolishMode(s, arg as PolishMode));
         return;
       case 'release': {
         if (sheet?.kind === 'devComplete') this.sheet = null;

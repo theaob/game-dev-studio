@@ -1342,12 +1342,45 @@ textarea {
 }
 
 .stage canvas.office {
+  /* Position and size are set by OfficeScene to fit between the HUD and the dock. */
   position: absolute;
-  left: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  border-radius: 0;
-  box-shadow: none;
+  border-radius: 14px;
+  /* Ink outline and hard shadow without changing the canvas box (keeps pixels square). */
+  box-shadow: 0 0 0 2px var(--ink), 0 5px 0 2px var(--ink);
+  background: var(--card);
+  animation: fade 0.35s ease-out;
+}
+
+/* Shown while three.js downloads, instead of flashing the 2D office first. */
+.office-loading {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+
+.office-loading span {
+  padding: 8px 16px;
+  border-radius: 999px;
+  font-weight: 800;
+  font-size: 14px;
+  color: var(--muted);
+  background: var(--card);
+  border: 2px solid var(--ink);
+  box-shadow: var(--pop);
+  animation: loading-bob 1.2s ease-in-out infinite;
+}
+
+@keyframes loading-bob {
+  50% {
+    transform: translateY(-4px);
+  }
+}
+
+/* The 3D office fades in once its first frame is ready. */
+.stage .office3d {
+  animation: fade 0.35s ease-out;
 }
 
 /* HUD */
@@ -2113,4 +2146,136 @@ nav.tabs {
 .dock {
   bottom: calc(var(--safe-bottom) + 10px + var(--nav-h) + 14px);
   gap: 10px;
+}
+
+/* Polish focus: a three-way segmented choice */
+.polish-modes {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.polish-mode {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 52px;
+  padding: 4px;
+  line-height: 1.15;
+  border-radius: 12px;
+  border: 2px solid var(--ink);
+  background: var(--card);
+  font-size: 12.5px;
+  font-weight: 800;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.polish-mode span {
+  font-size: 18px;
+}
+
+.polish-mode.on {
+  background: #ffe3a3;
+  box-shadow: var(--pop);
+}
+
+.polish-mode:active {
+  transform: translateY(2px);
+}
+
+.polish-hint {
+  margin-top: 6px;
+  font-size: 12.5px;
+}
+
+/* Store */
+.dock-actions {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+}
+
+.dock-actions .btn.tile {
+  width: 72px;
+}
+
+.dock-actions .btn.tile small {
+  font-size: 10px;
+  letter-spacing: -0.01em;
+}
+
+.dock-actions .btn.big {
+  font-size: 16.5px;
+  white-space: nowrap;
+  padding: 0 6px;
+}
+
+.boost-btn {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  border: 2px solid var(--ink);
+  background: var(--accent2);
+  box-shadow: var(--pop);
+  font-size: 18px;
+  line-height: 1.1;
+}
+
+.boost-btn small {
+  font-size: 10.5px;
+  font-weight: 800;
+}
+
+.boost-btn:active {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 var(--ink);
+}
+
+.boost-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.boost-chip {
+  padding: 2px 9px;
+  border-radius: 999px;
+  border: 1.5px solid var(--ink);
+  background: #ffe3a3;
+  font-size: 12.5px;
+  font-weight: 800;
+}
+
+.store-item {
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+
+.store-item .grow {
+  flex: 1 1 calc(100% - 50px);
+}
+
+/* The price sits under the description, right-aligned, so the text keeps its width */
+.store-item .btn.small {
+  flex: none;
+  min-width: 96px;
+  margin-left: auto;
+}
+
+.sub.warn {
+  color: var(--bad);
+}
+
+/* The office canvases handle their own drags (carrying the cat), so no browser panning there */
+.office3d-canvas,
+canvas.office {
+  touch-action: none;
 }

@@ -349,10 +349,37 @@ interface Walk {
 
 interface CatState {
   x: number;
+  /** Depth on the floor; the cat drifts back to the front strip when it walks. */
+  z?: number;
   dir: 1 | -1;
-  mode: 'walk' | 'sit' | 'sleep';
+  /** held: dangling by the scruff from the player's finger; falling: just let go. */
+  mode: 'walk' | 'sit' | 'sleep' | 'held' | 'falling';
   t: number;
   target: number;
+}
+
+/** Where the cat is grabbed, in its own coordinates (the back of the neck). */
+const SCRUFF = new THREE.Vector3(0.17, 0.4, 0);
+/** How high the cat dangles above the floor point under the finger. */
+const CARRY_HEIGHT = 0.75;
+/** How far the finger moves (px) or how long it presses (ms) before a press becomes a pick-up. */
+const PICKUP_MOVE_PX = 6;
+const PICKUP_HOLD_MS = 180;
+
+/** The player carrying the cat around like a mother cat carries a kitten. */
+interface CatCarry {
+  pointerId: number;
+  startX: number;
+  startY: number;
+  startT: number;
+  lifted: boolean;
+  /** Floor point under the finger (world space). */
+  target: THREE.Vector3;
+  /** Smoothed carry point, so the cat trails the finger slightly. */
+  pos: THREE.Vector3;
+  vel: THREE.Vector3;
+  /** Pendulum swing angles (around z for sideways motion, x for depth) and their speeds. */
+  swing: { z: number; x: number; vz: number; vx: number };
 }
 
 interface Overlay {
@@ -400,6 +427,12 @@ export class Office3D implements OfficeView {
   // Cat
   private cat = new THREE.Group();
   private catParts: { body: THREE.Mesh; head: THREE.Group; tail: THREE.Group; legs: THREE.Mesh[] } | null = null;
+  private carry: CatCarry | null = null;
+  /** Set after a pick-up so the click that follows the release isn't treated as a tap. */
+  private suppressClick = false;
+  /** Height of the cat while it falls after being let go. */
+  private catY = 0;
+  private catVy = 0;
   private catState: CatState = { x: 0, dir: 1, mode: 'sleep', t: 0, target: 0 };
 
   // Particles
@@ -458,6 +491,10 @@ export class Office3D implements OfficeView {
 
     this.buildCat();
     renderer.domElement.addEventListener('click', (e) => this.onTap(e));
+    renderer.domElement.addEventListener('pointerdown', (e) => this.onPointerDown(e));
+    renderer.domElement.addEventListener('pointermove', (e) => this.onPointerMove(e));
+    renderer.domElement.addEventListener('pointerup', (e) => this.onPointerUp(e));
+    renderer.domElement.addEventListener('pointercancel', (e) => this.onPointerUp(e));
     renderer.domElement.addEventListener('webglcontextlost', (e) => {
       e.preventDefault();
       this.onLost?.();
@@ -572,7 +609,7 @@ export class Office3D implements OfficeView {
       this.zoneLight.intensity = 0;
     }
 
-    this.updateCat(tick, time);
+    this.updateCat(tick, time, dt);
     this.updateParticles(dt);
     this.renderer.render(this.scene, this.camera);
     this.updateOverlays(zoners, tick, time);
@@ -1234,15 +1271,58 @@ export class Office3D implements OfficeView {
     this.catParts = { body, head, tail, legs };
   }
 
-  private updateCat(dt: number, time: number) {
+  private catBounds() {
+    return {
+      minX: -this.roomW / 2 + 0.4,
+      maxX: this.roomW / 2 - 0.4,
+      minZ: -this.roomD / 2 + 0.5,
+      maxZ: this.roomD / 2 - 0.3,
+      homeZ: this.roomD / 2 - 0.45,
+    };
+  }
+
+  /**
+   * `dt` is game time (0 while paused); `realDt` keeps the carry and the fall
+   * moving even when the game is paused.
+   */
+  private updateCat(dt: number, time: number, realDt: number) {
     const cat = this.catState;
     const parts = this.catParts!;
-    const minX = -this.roomW / 2 + 0.5;
+    const b = this.catBounds();
+    const minX = b.minX + 0.1;
     const maxX = this.roomW / 2 - 1.2;
+    cat.z ??= b.homeZ;
+
+    if (cat.mode === 'held' && this.carry) {
+      this.poseHeld(this.carry, time, realDt);
+      return;
+    }
+    if (cat.mode === 'falling') {
+      // Cats land on their feet: it rights itself on the way down.
+      this.catVy -= 9.8 * realDt;
+      this.catY += this.catVy * realDt;
+      const right = 1 - Math.exp(-realDt * 14);
+      this.cat.rotation.x += (0 - this.cat.rotation.x) * right;
+      this.cat.rotation.z += (0 - this.cat.rotation.z) * right;
+      if (this.catY <= 0) {
+        this.catY = 0;
+        cat.mode = 'sit';
+        cat.t = 0;
+        this.say(CAT_ID, pickLine(['😾', 'Hmph.', 'Mrrp!', '…', '😼']), 1.8);
+      }
+      this.cat.position.set(cat.x, this.catY, cat.z);
+      this.poseUpright(parts, 'sit', time);
+      // Squash a little on landing.
+      if (cat.mode === 'sit') parts.body.scale.y *= 0.8;
+      return;
+    }
+
     if (dt > 0) {
       cat.t += dt;
       if (cat.mode === 'walk') {
         cat.x += 0.45 * dt * cat.dir;
+        // Wander back towards its usual spot in front of the desks.
+        cat.z += Math.sign(b.homeZ - cat.z) * Math.min(Math.abs(b.homeZ - cat.z), 0.3 * dt);
         if ((cat.dir > 0 && cat.x >= cat.target) || (cat.dir < 0 && cat.x <= cat.target)) {
           cat.x = cat.target;
           cat.mode = Math.random() < 0.4 ? 'sleep' : 'sit';
@@ -1257,20 +1337,29 @@ export class Office3D implements OfficeView {
         if (Math.random() < 0.25) this.say(CAT_ID, pickLine(['Meow', '🐟?', 'Mrrp']), 1.6);
       }
     }
-    cat.x = Math.max(minX, Math.min(maxX, cat.x));
-    this.cat.position.set(cat.x, 0, this.roomD / 2 - 0.45);
-    this.cat.rotation.y = cat.dir > 0 ? 0 : Math.PI;
-    const step = cat.mode === 'walk' ? Math.sin(time * 12) * 0.5 : 0;
-    parts.legs.forEach((l, i) => (l.rotation.z = i % 2 ? step : -step));
-    parts.legs.forEach((l) => (l.visible = cat.mode !== 'sleep'));
-    if (cat.mode === 'sleep') {
+    cat.x = Math.max(b.minX, Math.min(b.maxX, cat.x));
+    cat.z = Math.max(b.minZ, Math.min(b.maxZ, cat.z));
+    this.cat.position.set(cat.x, 0, cat.z);
+    this.cat.rotation.set(0, cat.dir > 0 ? 0 : Math.PI, 0);
+    this.poseUpright(parts, cat.mode as 'walk' | 'sit' | 'sleep', time);
+  }
+
+  private poseUpright(parts: NonNullable<Office3D['catParts']>, mode: 'walk' | 'sit' | 'sleep', time: number) {
+    const step = mode === 'walk' ? Math.sin(time * 12) * 0.5 : 0;
+    parts.legs.forEach((l, i) => {
+      l.rotation.set(0, 0, i % 2 ? step : -step);
+      l.position.y = 0.07;
+      l.visible = mode !== 'sleep';
+    });
+    if (mode === 'sleep') {
       parts.body.position.y = 0.1 + Math.sin(time * 2.5) * 0.008;
       parts.body.scale.set(0.42, 0.16, 0.24);
+      parts.body.rotation.z = 0;
       parts.head.position.set(0.22, 0.14, 0);
       parts.head.rotation.set(0, 0, -0.3);
       parts.tail.rotation.set(HALF_PI, 0, 0.2);
       parts.tail.position.set(-0.18, 0.08, 0.08);
-    } else if (cat.mode === 'sit') {
+    } else if (mode === 'sit') {
       parts.body.position.y = 0.22;
       parts.body.scale.set(0.32, 0.26, 0.2);
       parts.body.rotation.z = 0.5;
@@ -1287,6 +1376,134 @@ export class Office3D implements OfficeView {
       parts.tail.position.set(-0.2, 0.28, 0);
       parts.tail.rotation.set(0, 0, 0.4 + Math.sin(time * 4) * 0.2);
     }
+  }
+
+  /**
+   * Dangling by the scruff: head up, legs hanging limp, tail curled under, and
+   * the whole cat swinging like a pendulum as the finger moves it around.
+   */
+  private poseHeld(c: CatCarry, time: number, dt: number) {
+    const parts = this.catParts!;
+    const cat = this.catState;
+    // The carry point trails the finger a little.
+    const prev = c.pos.clone();
+    c.pos.lerp(c.target, 1 - Math.exp(-dt * 16));
+    if (dt > 0) c.vel.copy(c.pos).sub(prev).divideScalar(dt);
+    // Face the way it's being carried.
+    if (Math.abs(c.vel.x) > 0.3) cat.dir = c.vel.x > 0 ? 1 : -1;
+    // Damped pendulum: motion pushes the hanging body back the other way.
+    const sw = c.swing;
+    const k = 60;
+    const damp = 5;
+    sw.vz += ((c.vel.x * 0.18 * cat.dir - sw.z) * k - sw.vz * damp) * dt;
+    sw.vx += ((-c.vel.z * 0.18 - sw.x) * k - sw.vx * damp) * dt;
+    sw.z = Math.max(-0.9, Math.min(0.9, sw.z + sw.vz * dt));
+    sw.x = Math.max(-0.9, Math.min(0.9, sw.x + sw.vx * dt));
+
+    // Hang head-up: the body tilts nose to the sky, plus the swing.
+    const tilt = 1.15;
+    this.cat.rotation.set(sw.x, cat.dir > 0 ? 0 : Math.PI, tilt + sw.z);
+    // Put the scruff exactly at the carry point.
+    const grab = c.pos.clone().add(new THREE.Vector3(0, CARRY_HEIGHT, 0));
+    const offset = SCRUFF.clone().applyEuler(this.cat.rotation);
+    this.cat.position.copy(grab.sub(offset));
+
+    parts.body.position.y = 0.22;
+    parts.body.scale.set(0.4, 0.19, 0.2);
+    parts.body.rotation.z = 0;
+    parts.head.position.set(0.25, 0.34, 0);
+    parts.head.rotation.set(0, 0, -0.35 + Math.sin(time * 2) * 0.05);
+    // Legs hang straight down whatever the tilt, paws paddling a little.
+    parts.legs.forEach((l, i) => {
+      l.visible = true;
+      l.position.y = 0.1;
+      l.rotation.set(0, 0, -tilt - sw.z + Math.sin(time * 9 + i * 1.7) * 0.12);
+    });
+    // Tail tucked: curled down between the back legs.
+    parts.tail.position.set(-0.2, 0.18, 0);
+    parts.tail.rotation.set(0, 0, Math.PI - tilt * 0.6 + Math.sin(time * 3) * 0.15);
+  }
+
+  // -------------------------------------------------------------------------
+  // Carrying the cat
+  // -------------------------------------------------------------------------
+
+  private ndcFor(e: { clientX: number; clientY: number }): THREE.Vector2 {
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    return new THREE.Vector2(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
+  }
+
+  /** The floor point under the finger, clamped to the room, in world-group coordinates. */
+  private floorPointFor(e: { clientX: number; clientY: number }): THREE.Vector3 | null {
+    this.raycaster.setFromCamera(this.ndcFor(e), this.camera);
+    // Aim for the carry height so the cat hangs right under the finger.
+    const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -CARRY_HEIGHT);
+    const hit = new THREE.Vector3();
+    if (!this.raycaster.ray.intersectPlane(plane, hit)) return null;
+    this.world.worldToLocal(hit);
+    const b = this.catBounds();
+    return new THREE.Vector3(Math.max(b.minX, Math.min(b.maxX, hit.x)), 0, Math.max(b.minZ, Math.min(b.maxZ, hit.z)));
+  }
+
+  private onPointerDown(e: PointerEvent) {
+    if (this.carry || this.catState.mode === 'falling') return;
+    this.raycaster.setFromCamera(this.ndcFor(e), this.camera);
+    if (!this.raycaster.intersectObject(this.cat, true).length) return;
+    const start = this.cat.position.clone();
+    start.y = 0;
+    this.carry = {
+      pointerId: e.pointerId,
+      startX: e.clientX,
+      startY: e.clientY,
+      startT: performance.now(),
+      lifted: false,
+      target: start.clone(),
+      pos: start,
+      vel: new THREE.Vector3(),
+      swing: { z: 0, x: 0, vz: 0, vx: 0 },
+    };
+    this.renderer.domElement.setPointerCapture(e.pointerId);
+    e.preventDefault();
+    // A press that's held still also picks the cat up.
+    window.setTimeout(() => {
+      if (this.carry && !this.carry.lifted && this.carry.pointerId === e.pointerId) this.liftCat();
+    }, PICKUP_HOLD_MS);
+  }
+
+  private liftCat() {
+    if (!this.carry) return;
+    this.carry.lifted = true;
+    this.catState.mode = 'held';
+    this.catState.t = 0;
+    this.renderer.domElement.style.cursor = 'grabbing';
+    this.say(CAT_ID, pickLine(['Mew!', '🙀', 'Mrrr?', '😿']), 1.4);
+  }
+
+  private onPointerMove(e: PointerEvent) {
+    const c = this.carry;
+    if (!c || e.pointerId !== c.pointerId) return;
+    if (!c.lifted && Math.hypot(e.clientX - c.startX, e.clientY - c.startY) > PICKUP_MOVE_PX) this.liftCat();
+    if (!c.lifted) return;
+    const p = this.floorPointFor(e);
+    if (p) c.target.copy(p);
+  }
+
+  private onPointerUp(e: PointerEvent) {
+    const c = this.carry;
+    if (!c || e.pointerId !== c.pointerId) return;
+    this.carry = null;
+    this.renderer.domElement.style.cursor = '';
+    if (!c.lifted) return; // a quick tap: the click handler makes it purr
+    this.suppressClick = true;
+    window.setTimeout(() => (this.suppressClick = false), 400);
+    // Let go: drop from where it dangles, landing on the spot under the finger.
+    const cat = this.catState;
+    cat.x = c.pos.x;
+    cat.z = c.pos.z;
+    cat.target = cat.x;
+    cat.mode = 'falling';
+    this.catY = Math.max(0.05, this.cat.position.y);
+    this.catVy = 0;
   }
 
   // -------------------------------------------------------------------------
@@ -1344,7 +1561,11 @@ export class Office3D implements OfficeView {
   }
 
   private anchorFor(id: number): THREE.Vector3 | null {
-    if (id === CAT_ID) return this.cat.position.clone().add(new THREE.Vector3(0.2, 0.55, 0));
+    if (id === CAT_ID) {
+      const v = new THREE.Vector3();
+      this.catParts?.head.getWorldPosition(v);
+      return v.add(new THREE.Vector3(0.05, 0.25, 0));
+    }
     const r = this.rigs.get(id);
     if (!r) return null;
     const v = new THREE.Vector3();
@@ -1392,6 +1613,10 @@ export class Office3D implements OfficeView {
   }
 
   private onTap(e: MouseEvent) {
+    if (this.suppressClick) {
+      this.suppressClick = false;
+      return;
+    }
     const rect = this.renderer.domElement.getBoundingClientRect();
     const ndc = new THREE.Vector2(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
     this.raycaster.setFromCamera(ndc, this.camera);

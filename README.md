@@ -13,9 +13,10 @@ The UI is laid out like a mobile game, not a web page. The office fills the scre
 - **Choose a platform**: 18 fictional platforms launch and retire over 40 years, from home computers and 8-bit consoles to handhelds, motion consoles and phones. Each has its own audience size, license cost and genre preferences.
 - **Set the focus** for each of the 3 development phases (Foundation, Content, Presentation). Each genre cares about different areas, and reviews reveal what matters.
 - **Balance design vs tech**: every genre has an ideal ratio.
-- **Watch your team work** in a 3D low-poly office (three.js) that changes as you move from the garage to the campus. Day turns to night, monitors light up faces in the dark, computers change with the decades (beige CRTs in the 80s to dual widescreens later), every desk has a personal item, and a studio cat wanders around. Tap a developer or the cat to say hi. Every so often a developer gets **in the zone**: they glow, sparks fly, and for a few weeks they produce 1.8x as much with half the bugs. Staff chatter in speech bubbles (designers and tech folks say different things, and the whole team reacts to reviews and paydays) and wander off for coffee breaks. Breaks are just for show and don't affect output.
-- **Polish** to squash bugs one at a time (bugs are always whole numbers) before you release.
+- **Watch your team work** in a 3D low-poly office (three.js) that changes as you move from the garage to the campus. Day turns to night, monitors light up faces in the dark, computers change with the decades (beige CRTs in the 80s to dual widescreens later), every desk has a personal item, and a studio cat wanders around. Tap a developer or the cat to say hi. Press and drag the cat to carry it around the room by the scruff, like a mother cat carries a kitten: it dangles and swings as you move, then lands on its feet (a little offended) wherever you let go. Every so often a developer gets **in the zone**: they glow, sparks fly, and for a few weeks they produce 1.8x as much with half the bugs. Staff chatter in speech bubbles (designers and tech folks say different things, and the whole team reacts to reviews and paydays) and wander off for coffee breaks. Breaks are just for show and don't affect output.
+- **Polish** before you release. Fix bugs one at a time, or add more design or tech points to fix the game's balance for its genre. Design and tech polishing gives less each week, and new bugs slip in while nobody is fixing them. All points (design, tech, bugs, research) are gained in whole numbers.
 - **Reviews** from 4 outlets decide sales and fans. The bar keeps rising: the market expects each game to beat your best work.
+- **Store**: spend cash on power-ups. Boosts last a few game-development weeks: the Espresso Bar adds 20% more points, Pizza Night triples the chance of getting in the zone, and a Bug Bash fixes 40% of bugs at once. Permanent studio upgrades are Ergonomic Chairs (+5% points), Noise-cancelling Headphones (zone 50% more often) and Test Automation (15% fewer bugs). Boost prices scale with team size, and all prices rise over the years like salaries.
 - **Grow**: take contracts to pay the bills, earn research points, unlock topics, game sizes, engines and QA, hire and train staff, and move to bigger offices.
 - Monthly rent and salaries apply, and three months in the red means bankruptcy.
 
@@ -66,7 +67,8 @@ src/core/      Pure, deterministic simulation (no DOM). Seeded RNG lives in the 
   bot.ts       Automated players used for tests and balancing
 src/ui/        DOM rendering: tabs, bottom sheets, game loop, animations
   office3d.ts  3D office scene (three.js), lazy-loaded
-  office.ts    2D pixel-art office, used until three.js loads or if WebGL is unavailable
+  office.ts    2D pixel-art office: fallback when WebGL is unavailable or three.js can't load
+  office-loading.ts  Loading card shown while three.js downloads
   office-common.ts  Behaviour shared by both: looks, gestures, day/night, eras
 src/save.ts    localStorage persistence
 public/        PWA manifest, icon, service worker

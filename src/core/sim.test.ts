@@ -15,6 +15,12 @@ import {
   tick,
   validateGame,
   randomTitle,
+  setPolishMode,
+  boostWeeks,
+  buyStoreItem,
+  storePrice,
+  zoneChance,
+  ZONE_CHANCE,
 } from './sim';
 import { TOTAL_WEEKS, formatDate } from './time';
 import type { GameProject, GameSpec } from './types';
@@ -277,5 +283,104 @@ describe('title suggestions', () => {
         prev = t;
       }
     }
+  });
+});
+
+describe('whole-number points and polishing', () => {
+  const finishDev = (seed: number) => {
+    const s = createGame('Polish', seed);
+    s.staff.push({ ...s.candidates[0], id: 999, design: 6, tech: 6, speed: 1 });
+    startGame(s, spec, [33, 33, 33]);
+    while (s.activity?.kind === 'game' && s.activity.phase < 3) {
+      if (s.activity.awaitingFocus) setPhaseFocus(s, [33, 33, 33]);
+      const rp = s.rp;
+      for (const e of tick(s)) {
+        if (e.type === 'points') expect([e.design, e.tech, e.bugs].every(Number.isInteger)).toBe(true);
+      }
+      const p = s.activity!;
+      if (p.kind === 'game') expect([p.design, p.tech, p.bugs].every(Number.isInteger)).toBe(true);
+      expect(Number.isInteger(s.rp - rp)).toBe(true);
+    }
+    const p = s.activity!;
+    if (p.kind !== 'game') throw new Error('expected a game');
+    return { s, p };
+  };
+
+  it('polishes design or tech with shrinking returns, leaving bugs unfixed', () => {
+    for (const kind of ['design', 'tech'] as const) {
+      const { s, p } = finishDev(31);
+      expect(setPolishMode(s, kind)).toBeNull();
+      const other = kind === 'design' ? 'tech' : 'design';
+      const gains: number[] = [];
+      for (let w = 0; w < 12; w++) {
+        const before = { points: p[kind], other: p[other], bugs: p.bugs };
+        tick(s);
+        expect(Number.isInteger(p[kind])).toBe(true);
+        expect(p[other]).toBe(before.other);
+        expect(p.bugs).toBeGreaterThanOrEqual(before.bugs);
+        gains.push(p[kind] - before.points);
+      }
+      expect(gains[0]).toBeGreaterThan(0);
+      const early = gains.slice(0, 3).reduce((a, b) => a + b, 0);
+      const late = gains.slice(9).reduce((a, b) => a + b, 0);
+      expect(late).toBeLessThan(early * 0.5);
+    }
+  });
+
+  it('only allows choosing a polish focus once development is done', () => {
+    const s = createGame('Early', 5);
+    startGame(s, spec, [33, 33, 33]);
+    expect(setPolishMode(s, 'design')).not.toBeNull();
+  });
+});
+
+describe('store', () => {
+  const devWeek = (seed: number, buy: string[]) => {
+    const s = createGame('Store', seed);
+    s.cash = 1e7;
+    s.staff.push({ ...s.candidates[0], id: 999, design: 6, tech: 6, speed: 1 });
+    for (const id of buy) expect(buyStoreItem(s, id as never)).toBeNull();
+    startGame(s, spec, [33, 33, 33]);
+    let design = 0;
+    let tech = 0;
+    for (let w = 0; w < 3; w++) {
+      if (s.activity?.kind === 'game' && s.activity.awaitingFocus) setPhaseFocus(s, [33, 33, 33]);
+      for (const e of tick(s)) if (e.type === 'points') { design += e.design; tech += e.tech; }
+    }
+    return { s, total: design + tech };
+  };
+
+  it('charges the price and boosts output while the boost lasts', () => {
+    const plain = devWeek(41, []);
+    const boosted = devWeek(41, ['coffee']);
+    expect(boosted.total).toBeGreaterThan(plain.total * 1.1);
+    // Bought 4 weeks, 3 game weeks used.
+    expect(boostWeeks(boosted.s, 'coffee')).toBe(1);
+    expect(plain.s.cash - boosted.s.cash).toBe(storePrice(createGame('x', 1), 'coffee') * 2);
+  });
+
+  it('only counts boosts down during game development', () => {
+    const s = createGame('Idle', 3);
+    s.cash = 1e6;
+    expect(buyStoreItem(s, 'pizza')).toBeNull();
+    expect(zoneChance(s)).toBeCloseTo(ZONE_CHANCE * 3);
+    for (let w = 0; w < 10; w++) tick(s);
+    expect(boostWeeks(s, 'pizza')).toBe(4);
+  });
+
+  it('sells upgrades once and bug bashes only with bugs to fix', () => {
+    const s = createGame('Once', 4);
+    s.cash = 1e6;
+    expect(buyStoreItem(s, 'chairs')).toBeNull();
+    expect(buyStoreItem(s, 'chairs')).not.toBeNull();
+    expect(buyStoreItem(s, 'bugbash')).not.toBeNull();
+    startGame(s, spec, [33, 33, 33]);
+    const p = s.activity!;
+    if (p.kind !== 'game') throw new Error('expected a game');
+    p.bugs = 10;
+    expect(buyStoreItem(s, 'bugbash')).toBeNull();
+    expect(p.bugs).toBe(6);
+    s.cash = 0;
+    expect(buyStoreItem(s, 'coffee')).toBe('Not enough cash.');
   });
 });

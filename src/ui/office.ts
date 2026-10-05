@@ -13,6 +13,8 @@ const CELL_W = 48;
 const CELL_H = 40;
 const WALL_H = 22;
 const MAX_COLS = 4;
+/** Space between the framed room and the HUD, dock and screen edges (CSS px). */
+const FRAME_GAP = 16;
 
 interface Particle {
   x: number;
@@ -40,10 +42,18 @@ export class OfficeScene {
   private breaks = new Map<number, CoffeeBreak>();
   private staffIds: number[] = [];
   private cat: Cat = { x: 20, dir: 1, mode: 'sleep', t: 0, target: 20 };
+  /** Floor row the cat is on (logical px); it drifts back to the front strip when it walks. */
+  private catY = 0;
+  /** Carrying the cat by the scruff: finger position (logical px), swing, and whether it's lifted yet. */
+  private carry: { pointerId: number; sx: number; sy: number; lifted: boolean; x: number; y: number; vx: number; swing: number; swingV: number } | null = null;
+  /** After being let go: falling height above its landing row, and speed. */
+  private fall: { h: number; v: number } | null = null;
+  private suppressClick = false;
   /** Where each person (and the cat) is on screen, for taps. Logical pixels. */
   private hitboxes: { id: number; x: number; y: number; w: number; h: number; name: string }[] = [];
   private era: Era = 'crt-mono';
   private level = 0;
+  private insets = { top: 0, bottom: 0 };
 
   constructor() {
     this.el = document.createElement('canvas');
@@ -52,10 +62,18 @@ export class OfficeScene {
     this.ctx = this.el.getContext('2d')!;
     this.lc = this.low.getContext('2d')!;
     this.el.addEventListener('click', (e) => this.onTap(e));
+    this.el.addEventListener('pointerdown', (e) => this.onPointerDown(e));
+    this.el.addEventListener('pointermove', (e) => this.onPointerMove(e));
+    this.el.addEventListener('pointerup', (e) => this.onPointerUp(e));
+    this.el.addEventListener('pointercancel', (e) => this.onPointerUp(e));
   }
 
   /** Tapping someone makes them wave; tapping the cat gets a purr. */
   private onTap(e: MouseEvent) {
+    if (this.suppressClick) {
+      this.suppressClick = false;
+      return;
+    }
     const r = this.el.getBoundingClientRect();
     const x = ((e.clientX - r.left) / r.width) * this.lw;
     const y = ((e.clientY - r.top) / r.height) * this.lh;
@@ -176,11 +194,19 @@ export class OfficeScene {
     walkers.sort((a, b) => a.y - b.y).forEach((w) => this.drawWalker(c, w.s, w.x, w.y, w.stage, w.t, time));
 
     // The studio cat roams the strip of floor in front of the desks.
-    const catY = lh - 3;
-    this.updateCat(tick, lw);
-    this.drawCat(c, catY, time);
-    anchors.set(CAT_ID, { x: this.cat.x + 3, y: catY - 6 });
-    this.hitboxes.push({ id: CAT_ID, x: this.cat.x - 2, y: catY - 8, w: 11, h: 9, name: 'cat' });
+    const home = lh - 3;
+    const top = WALL_H + 6;
+    if (!this.catY) this.catY = home;
+    this.updateCat(tick, lw, dt, home, top, lh);
+    if (this.carry?.lifted) {
+      this.drawHeldCat(c, this.carry, time);
+      anchors.set(CAT_ID, { x: this.carry.x + 2, y: this.carry.y - 1 });
+    } else {
+      const y = Math.round(this.catY - (this.fall?.h ?? 0));
+      this.drawCat(c, y, time, this.fall ? 0 : 1);
+      anchors.set(CAT_ID, { x: this.cat.x + 3, y: y - 6 });
+      this.hitboxes.push({ id: CAT_ID, x: this.cat.x - 2, y: y - 8, w: 11, h: 9, name: 'cat' });
+    }
 
     this.updateParticles(c, dt);
     this.drawLighting(c, lw, lh, light, glows, time);
@@ -229,15 +255,40 @@ export class OfficeScene {
     );
   }
 
+  /** Pixels covered by the HUD (top) and the dock and tab bar (bottom). */
+  setInsets(top: number, bottom: number) {
+    this.insets = { top, bottom };
+  }
+
+  /**
+   * Sizes the canvas to fit the free band between the HUD and the dock (as large
+   * as fits, keeping the room's aspect ratio), centred in that band.
+   */
   private resize(lw: number, lh: number) {
     const dpr = Math.min(window.devicePixelRatio || 1, 3);
-    const cssW = this.el.clientWidth || 360;
+    const stage = this.el.parentElement;
+    const sw = stage?.clientWidth || window.innerWidth;
+    const sh = stage?.clientHeight || window.innerHeight;
+    const gap = FRAME_GAP;
+    const bandW = sw - gap * 2;
+    const bandH = Math.max(80, sh - this.insets.top - this.insets.bottom - gap * 2);
+    const scale = Math.min(bandW / lw, bandH / lh);
+    const cssW = Math.floor(lw * scale);
+    const cssH = Math.floor(lh * scale);
+    const left = Math.round((sw - cssW) / 2);
+    const top = Math.round(this.insets.top + gap + (bandH - cssH) / 2);
+    const st = this.el.style;
+    if (st.width !== `${cssW}px` || st.height !== `${cssH}px` || st.left !== `${left}px` || st.top !== `${top}px`) {
+      st.width = `${cssW}px`;
+      st.height = `${cssH}px`;
+      st.left = `${left}px`;
+      st.top = `${top}px`;
+    }
     const w = Math.round(cssW * dpr);
-    const h = Math.round((cssW * lh * dpr) / lw);
+    const h = Math.round(cssH * dpr);
     if (lw !== this.lw || lh !== this.lh) {
       this.low.width = this.lw = lw;
       this.low.height = this.lh = lh;
-      this.el.style.aspectRatio = `${lw} / ${lh}`;
       this.particles = [];
     }
     if (this.el.width !== w || this.el.height !== h) {
@@ -301,11 +352,11 @@ export class OfficeScene {
     const floorY = WALL_H;
     if (level === 0) {
       // Garage: concrete, roll-up door ribs, a bare bulb.
-      rect(0, 0, w, floorY, '#5b5868');
-      for (let y = 2; y < floorY - 2; y += 3) rect(6, y, w - 12, 1, '#4a4757');
-      rect(0, floorY, w, h - floorY, '#3d3a46');
-      rect(Math.floor(w * 0.7), h - 8, 10, 3, '#34313b');
-      rect(Math.floor(w * 0.15), floorY + 4, 6, 2, '#47434f');
+      rect(0, 0, w, floorY, '#9a8c7a');
+      for (let y = 2; y < floorY - 2; y += 3) rect(6, y, w - 12, 1, '#8b7e6d');
+      rect(0, floorY, w, h - floorY, '#6e655a');
+      rect(Math.floor(w * 0.7), h - 8, 10, 3, '#635a50');
+      rect(Math.floor(w * 0.15), floorY + 4, 6, 2, '#655c51');
       rect(Math.floor(w / 2), 0, 1, 4, '#222');
       const glow = 0.18 + Math.sin(time * 3) * 0.02;
       c.fillStyle = `rgba(255, 220, 140, ${glow})`;
@@ -329,14 +380,14 @@ export class OfficeScene {
       rect(5, floorY - 15, 4, 3, '#4fbf6f');
     } else if (level === 2) {
       // Studio floor: purple wall, posters, a clock.
-      rect(0, 0, w, floorY, '#3c2f63');
-      rect(0, floorY - 2, w, 2, '#2c2249');
-      rect(0, floorY, w, h - floorY, '#2a2440');
-      for (let x = 0; x < w; x += 6) for (let y = floorY; y < h; y += 6) rect(x + ((y / 6) % 2) * 3, y, 1, 1, '#332c4d');
-      const posters = ['#ff5c9a', '#3ddc97', '#ffad3b', '#4fb3ff'];
+      rect(0, 0, w, floorY, '#56707a');
+      rect(0, floorY - 2, w, 2, '#46606a');
+      rect(0, floorY, w, h - floorY, '#3f4a52');
+      for (let x = 0; x < w; x += 6) for (let y = floorY; y < h; y += 6) rect(x + ((y / 6) % 2) * 3, y, 1, 1, '#4a565e');
+      const posters = ['#dc4b2a', '#23877d', '#f2b33d', '#2f7fc1'];
       posters.forEach((col, i) => {
         const px = 8 + i * Math.floor((w - 16) / 4);
-        rect(px, 4, 9, 12, '#1d1830');
+        rect(px, 4, 9, 12, '#2b2622');
         rect(px + 1, 5, 7, 10, col);
         rect(px + 2, 7, 3, 3, '#ffffff88');
       });
@@ -357,12 +408,12 @@ export class OfficeScene {
           if (lit) rect(x + 2, wy, 1, 1, '#ffe7a3');
         }
       }
-      for (let x = 0; x < w; x += 24) rect(x, 0, 1, floorY, '#3a4670');
-      rect(0, floorY - 1, w, 1, '#3a4670');
-      rect(0, floorY, w, h - floorY, '#232a3d');
-      for (let x = 0; x < w; x += 12) rect(x, floorY, 6, h - floorY, '#262e43');
+      for (let x = 0; x < w; x += 24) rect(x, 0, 1, floorY, '#5a6478');
+      rect(0, floorY - 1, w, 1, '#5a6478');
+      rect(0, floorY, w, h - floorY, '#3a4054');
+      for (let x = 0; x < w; x += 12) rect(x, floorY, 6, h - floorY, '#3f4559');
       const on = Math.sin(time * 2) > -0.8;
-      c.fillStyle = on ? '#ff5c9a' : '#5a2a44';
+      c.fillStyle = on ? '#dc4b2a' : '#5a3328';
       c.fillRect(4, 3, 14, 1);
       c.fillRect(4, 7, 14, 1);
       c.fillRect(4, 3, 1, 5);
@@ -374,7 +425,7 @@ export class OfficeScene {
       for (let i = 0; i < n; i++) {
         const lx = Math.round(((i + 0.5) * w) / n);
         rect(lx, 0, 1, 2, '#15131f');
-        rect(lx - 2, 2, 5, 1, level === 3 ? '#c8c3e6' : '#2a2836');
+        rect(lx - 2, 2, 5, 1, level === 3 ? '#d8d2c4' : '#2a2836');
         rect(lx - 1, 3, 3, 1, '#ffe7a3');
       }
     }
@@ -738,12 +789,35 @@ export class OfficeScene {
   // The studio cat
   // -------------------------------------------------------------------------
 
-  private updateCat(dt: number, w: number) {
+  /** `dt` is game time (0 while paused); `realDt` keeps carrying and falling working while paused. */
+  private updateCat(dt: number, w: number, realDt: number, home: number, top: number, bottom: number) {
     const cat = this.cat;
+    const carry = this.carry;
+    if (carry?.lifted) {
+      // Damped pendulum: moving the finger swings the dangling body the other way.
+      carry.swingV += ((-carry.vx * 0.04 - carry.swing) * 60 - carry.swingV * 6) * realDt;
+      carry.swing = Math.max(-3, Math.min(3, carry.swing + carry.swingV * realDt));
+      carry.vx *= Math.exp(-realDt * 10);
+      return;
+    }
+    if (this.fall) {
+      this.fall.v += 160 * realDt;
+      this.fall.h -= this.fall.v * realDt;
+      if (this.fall.h <= 0) {
+        this.fall = null;
+        cat.mode = 'sit';
+        cat.t = 0;
+        this.say(CAT_ID, pickLine(['😾', 'Hmph.', 'Mrrp!', '…', '😼']), 1.8);
+      }
+      return;
+    }
+    this.catY = Math.max(top, Math.min(bottom - 1, this.catY));
     if (dt === 0) return;
     cat.t += dt;
     if (cat.mode === 'walk') {
       cat.x += 7 * dt * cat.dir;
+      // Wander back to the strip of floor in front of the desks.
+      this.catY += Math.sign(home - this.catY) * Math.min(Math.abs(home - this.catY), 5 * dt);
       if ((cat.dir > 0 && cat.x >= cat.target) || (cat.dir < 0 && cat.x <= cat.target)) {
         cat.x = cat.target;
         cat.mode = Math.random() < 0.4 ? 'sleep' : 'sit';
@@ -763,7 +837,99 @@ export class OfficeScene {
     cat.x = Math.max(2, Math.min(w - 10, cat.x));
   }
 
-  private drawCat(c: CanvasRenderingContext2D, y: number, time: number) {
+  /** Dangling by the scruff from the finger: head up, legs limp, tail tucked, swinging. */
+  private drawHeldCat(c: CanvasRenderingContext2D, carry: NonNullable<OfficeScene['carry']>, time: number) {
+    const fur = '#e8913a';
+    const stripe = '#b5652a';
+    const eye = '#15131f';
+    const gx = Math.round(carry.x);
+    const gy = Math.round(carry.y);
+    const sw = Math.round(carry.swing);
+    const R = (x: number, y: number, w: number, h: number, col: string) => {
+      c.fillStyle = col;
+      c.fillRect(x, y, w, h);
+    };
+    // Shadow on the floor below.
+    R(gx - 2 + sw, Math.min(this.lh - 2, gy + 14), 6, 1, 'rgba(0,0,0,0.22)');
+    // Head hangs from the scruff, ears up.
+    R(gx - 1, gy, 4, 3, fur);
+    R(gx - 1, gy - 1, 1, 1, fur);
+    R(gx + 2, gy - 1, 1, 1, fur);
+    R(gx, gy + 1, 1, 1, eye);
+    R(gx + 2, gy + 1, 1, 1, eye);
+    // Body dangles below and swings.
+    const bx = gx - 1 + Math.round(sw / 2);
+    R(bx, gy + 3, 4, 5, fur);
+    R(bx, gy + 5, 4, 1, stripe);
+    R(bx + Math.round(sw / 2), gy + 7, 4, 1, stripe);
+    // Limp legs, paddling a little.
+    const paddle = Math.floor(time * 6) % 2;
+    R(bx + sw, gy + 8, 1, 2 + paddle, fur);
+    R(bx + 3 + sw, gy + 8, 1, 3 - paddle, fur);
+    // Tail tucked under.
+    R(bx + 1 + sw, gy + 9, 1, 2, stripe);
+  }
+
+  // -------------------------------------------------------------------------
+  // Carrying the cat
+  // -------------------------------------------------------------------------
+
+  private toLogical(e: PointerEvent) {
+    const r = this.el.getBoundingClientRect();
+    return { x: ((e.clientX - r.left) / r.width) * this.lw, y: ((e.clientY - r.top) / r.height) * this.lh };
+  }
+
+  private onPointerDown(e: PointerEvent) {
+    if (this.carry || this.fall) return;
+    const p = this.toLogical(e);
+    const hb = this.hitboxes.find((h) => h.id === CAT_ID);
+    if (!hb || p.x < hb.x || p.x > hb.x + hb.w || p.y < hb.y || p.y > hb.y + hb.h) return;
+    this.carry = { pointerId: e.pointerId, sx: e.clientX, sy: e.clientY, lifted: false, x: p.x, y: p.y, vx: 0, swing: 0, swingV: 0 };
+    this.el.setPointerCapture(e.pointerId);
+    e.preventDefault();
+    window.setTimeout(() => {
+      if (this.carry && !this.carry.lifted && this.carry.pointerId === e.pointerId) this.liftCat();
+    }, 180);
+  }
+
+  private liftCat() {
+    if (!this.carry) return;
+    this.carry.lifted = true;
+    this.el.style.cursor = 'grabbing';
+    this.say(CAT_ID, pickLine(['Mew!', '🙀', 'Mrrr?', '😿']), 1.4);
+  }
+
+  private onPointerMove(e: PointerEvent) {
+    const c = this.carry;
+    if (!c || e.pointerId !== c.pointerId) return;
+    if (!c.lifted && Math.hypot(e.clientX - c.sx, e.clientY - c.sy) > 6) this.liftCat();
+    if (!c.lifted) return;
+    const p = this.toLogical(e);
+    const x = Math.max(2, Math.min(this.lw - 6, p.x));
+    const y = Math.max(WALL_H - 4, Math.min(this.lh - 12, p.y));
+    if (Math.abs(x - c.x) > 0.3) this.cat.dir = x > c.x ? 1 : -1;
+    c.vx = c.vx * 0.5 + (x - c.x) * 30;
+    c.x = x;
+    c.y = y;
+  }
+
+  private onPointerUp(e: PointerEvent) {
+    const c = this.carry;
+    if (!c || e.pointerId !== c.pointerId) return;
+    this.carry = null;
+    this.el.style.cursor = '';
+    if (!c.lifted) return; // a quick tap: the click handler makes it purr
+    this.suppressClick = true;
+    window.setTimeout(() => (this.suppressClick = false), 400);
+    // Drop: it lands on the floor row under its feet and falls from where it dangled.
+    const land = Math.max(WALL_H + 6, Math.min(this.lh - 3, c.y + 14));
+    this.cat.x = Math.max(2, Math.min(this.lw - 10, c.x - 3));
+    this.cat.target = this.cat.x;
+    this.catY = land;
+    this.fall = { h: 5, v: 0 };
+  }
+
+  private drawCat(c: CanvasRenderingContext2D, y: number, time: number, shadow = 1) {
     const cat = this.cat;
     const x = Math.round(cat.x);
     const fur = '#e8913a';
@@ -774,7 +940,7 @@ export class OfficeScene {
       c.fillStyle = col;
       c.fillRect(x + (cat.dir > 0 ? rx : 8 - rx - rw), y + ry, rw, rh);
     };
-    R(0, 0, 9, 1, 'rgba(0,0,0,0.25)');
+    if (shadow) R(0, 0, 9, 1, 'rgba(0,0,0,0.25)');
     if (cat.mode === 'sleep') {
       const breathe = Math.floor(time * 1.5) % 2;
       R(1, -3 - breathe, 5, 3 + breathe, fur);
@@ -837,7 +1003,7 @@ export class OfficeScene {
       c.fillRect(sx, sy, w, h);
       const px = Math.abs(((time * 6 + (look?.phase ?? 0) * 40) % (2 * (w - 2))) - (w - 2));
       const py = Math.abs(((time * 4 + (look?.phase ?? 0) * 20) % (2 * (h - 2))) - (h - 2));
-      c.fillStyle = '#7c5cff';
+      c.fillStyle = '#23877d';
       c.fillRect(sx + Math.floor(px), sy + Math.floor(py), 2, 2);
       return;
     }
@@ -1010,8 +1176,8 @@ export class OfficeScene {
       ctx.translate(tipX, tipY);
       ctx.scale(pop, pop);
       ctx.translate(-tipX, -tipY);
-      ctx.fillStyle = '#ffffff';
-      ctx.strokeStyle = '#15131f';
+      ctx.fillStyle = '#fff8ea';
+      ctx.strokeStyle = '#2b2622';
       ctx.lineWidth = Math.max(1.5, k * 0.5);
       roundedRect(ctx, bx, by, w, h, h / 2.4);
       ctx.fill();
@@ -1029,7 +1195,7 @@ export class OfficeScene {
       ctx.lineTo(tipX, tipY);
       ctx.lineTo(tx + size * 0.15, by + h);
       ctx.stroke();
-      ctx.fillStyle = '#1d1a2d';
+      ctx.fillStyle = '#2b2622';
       ctx.fillText(b.text, bx + w / 2, by + h / 2 + 1);
       ctx.restore();
     }
