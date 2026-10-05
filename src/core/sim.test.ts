@@ -108,8 +108,9 @@ describe('simulation', () => {
     s.cash = 100000;
     const nova = { ...spec, platform: 'nova8' };
     expect(gameCost(s, nova).license).toBe(20000);
+    const total = gameCost(s, nova).total;
     startGame(s, nova, [1, 1, 1]);
-    expect(s.cash).toBe(80000);
+    expect(s.cash).toBe(100000 - total);
     expect(gameCost(s, nova).license).toBe(0);
   });
 

@@ -1,6 +1,6 @@
 export type GenreId = 'action' | 'adventure' | 'rpg' | 'simulation' | 'strategy' | 'puzzle' | 'casual';
 export type SizeId = 'small' | 'medium' | 'large';
-export type MarketingId = 'none' | 'ads' | 'campaign';
+export type MarketingId = 'none' | 'ads' | 'campaign' | 'global';
 
 export interface Staff {
   id: number;

@@ -28,6 +28,7 @@ import type { GameProject, GameSpec, GameState, ReleaseReport } from '../core/ty
 import { esc, money, num, scoreClass } from './format';
 import type { StoreItem } from '../core/data';
 import { polishPicker } from './views';
+import { marketingCost, sizeCost } from '../core/economy';
 
 export type Sheet =
   | { kind: 'welcome'; name: string }
@@ -284,7 +285,7 @@ function newGameStep2(state: GameState, d: GameSpec, error?: string): string {
         .map(
           (s) => `
         <button class="option ${d.size === s.id ? 'on' : ''}" data-action="pick-size" data-arg="${s.id}">
-          <span class="grow"><b>${s.name}</b><br/><span class="sub">${s.phaseWeeks * 3} weeks · ${s.cost ? money(s.cost) : 'no extra cost'} · ${s.minStaff > 1 ? `best with ${s.minStaff}+ staff` : 'solo friendly'}</span></span>
+          <span class="grow"><b>${s.name}</b><br/><span class="sub">${s.phaseWeeks * 3} weeks · ${money(sizeCost(state, s.id))} · ${s.minStaff > 1 ? `best with ${s.minStaff}+ staff` : 'solo friendly'}</span></span>
         </button>`,
         )
         .join('')}
@@ -296,7 +297,7 @@ function newGameStep2(state: GameState, d: GameSpec, error?: string): string {
             .map(
               (m) => `
         <button class="option ${d.marketing === m.id ? 'on' : ''}" data-action="pick-marketing" data-arg="${m.id}">
-          <span class="grow"><b>${m.name}</b><br/><span class="sub">${m.cost ? `${money(m.cost)} · ` : ''}${m.salesMult > 1 ? `+${Math.round((m.salesMult - 1) * 100)}% sales` : 'word of mouth only'}</span></span>
+          <span class="grow"><b>${m.name}</b><br/><span class="sub">${m.cost ? `${money(marketingCost(state, m.id))} · ` : ''}${m.salesMult > 1 ? `+${Math.round((m.salesMult - 1) * 100)}% sales` : 'word of mouth only'}</span></span>
         </button>`,
             )
             .join('')}</div>`

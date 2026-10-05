@@ -22,6 +22,7 @@ import {
   topicById,
 } from './data';
 import type { StoreItemId } from './data';
+import { founderSalary, friendly, marketingCost, officeCost, officeRent, priceIndex, reachableUsers, sizeCost } from './economy';
 import { int, pick, random, range } from './rng';
 import { hasSequel, sequelSalesMult, seriesNumber } from './sequels';
 import { average, clamp, evaluate, normalizeFocus, rollReviews, scoreFactor } from './scoring';
@@ -99,7 +100,12 @@ export function availablePlatforms(state: GameState) {
 }
 
 export function monthlyCosts(state: GameState): number {
-  return OFFICES[state.officeLevel].rent + state.staff.reduce((a, s) => a + s.salary, 0);
+  return officeRent(state, state.officeLevel) + state.staff.reduce((a, s) => a + staffSalary(state, s), 0);
+}
+
+/** What someone costs per month; the founder's wage follows the price index. */
+export function staffSalary(state: GameState, s: Staff): number {
+  return s.founder ? founderSalary(state) : s.salary;
 }
 
 export function officeCapacity(state: GameState): number {
@@ -159,9 +165,8 @@ export function zoneChance(state: GameState): number {
 /** Price today: boosts scale with team size, and everything with the years like salaries. */
 export function storePrice(state: GameState, id: StoreItemId): number {
   const item = storeItemById(id);
-  const years = yearFraction(state.week) - START_YEAR;
   const team = item.kind === 'upgrade' ? 1 : Math.max(1, state.staff.length);
-  return Math.round((item.price * team * (1 + 0.03 * years)) / 100) * 100;
+  return friendly(item.price * team * priceIndex(state.week));
 }
 
 /** Why an item can't be bought right now, or null if it can. */
@@ -271,7 +276,7 @@ export function availableSizes(state: GameState) {
 }
 
 export function availableMarketing(state: GameState) {
-  return MARKETING.filter((m) => !m.research || hasResearch(state, m.research));
+  return MARKETING.filter((m) => (!m.research || hasResearch(state, m.research)) && (!m.fromYear || yearOf(state.week) >= m.fromYear));
 }
 
 export interface CostBreakdown {
@@ -283,14 +288,13 @@ export interface CostBreakdown {
 
 export function gameCost(state: GameState, spec: Pick<GameSpec, 'platform' | 'size' | 'marketing'>): CostBreakdown {
   const license = state.licenses.includes(spec.platform) ? 0 : platformById(spec.platform).license;
-  const size = sizeById(spec.size).cost;
-  const marketing = marketingById(spec.marketing).cost;
+  const size = sizeCost(state, spec.size);
+  const marketing = marketingCost(state, spec.marketing);
   return { license, size, marketing, total: license + size + marketing };
 }
 
 export function salaryFor(state: GameState, design: number, tech: number): number {
-  const years = yearFraction(state.week) - START_YEAR;
-  return Math.round(((800 + (design + tech) * 350) * (1 + 0.03 * years)) / 50) * 50;
+  return Math.round(((800 + (design + tech) * 350) * priceIndex(state.week)) / 50) * 50;
 }
 
 // ---------------------------------------------------------------------------
@@ -450,8 +454,9 @@ export function train(state: GameState, staffId: number, skill: 'design' | 'tech
 export function upgradeOffice(state: GameState): string | null {
   const next = OFFICES[state.officeLevel + 1];
   if (!next) return 'You already have the biggest office.';
-  if (state.cash < next.cost) return `Moving costs $${next.cost.toLocaleString('en-US')}.`;
-  state.cash -= next.cost;
+  const cost = officeCost(state, state.officeLevel + 1);
+  if (state.cash < cost) return `Moving costs $${cost.toLocaleString('en-US')}.`;
+  state.cash -= cost;
   state.officeLevel++;
   notify(state, `Moved into a ${next.name}! Room for ${next.capacity} people.`, 'good');
   return null;
@@ -476,7 +481,7 @@ export function releaseGame(state: GameState): ReleaseReport | string {
   const original = p.sequelOf !== undefined ? state.released.find((g) => g.id === p.sequelOf) : undefined;
   // A sequel sells to the original's fans (or suffers from its reputation).
   const sequelMult = original ? sequelSalesMult(original) : 1;
-  const audience = (users * 1e6 * 0.0008 + 3000) * sf * platformGenreFit(platform, p.genre) * size.unitMult * market.salesMult;
+  const audience = (reachableUsers(users) * 1e6 * 0.0008 + 3000) * sf * platformGenreFit(platform, p.genre) * size.unitMult * market.salesMult;
   const fanBuyers = state.fans * 0.2 * (score / 10) * Math.sqrt(size.unitMult);
   const targetUnits = Math.round((audience * range(state, 0.85, 1.15) + fanBuyers) * sequelMult);
   const unitPrice = size.price * platform.priceMult * (1 + 0.025 * years);
@@ -801,6 +806,8 @@ function monthly(state: GameState) {
 
 function yearly(state: GameState) {
   const year = yearOf(state.week);
+  // Yearly pay review: salaries keep up with the market rate for each person's skills.
+  for (const s of state.staff) if (!s.founder) s.salary = Math.max(s.salary, salaryFor(state, s.design, s.tech));
   for (const p of PLATFORMS) {
     if (p.start === year) notify(state, `New platform: the ${p.name} (${p.kind}) has launched!`, 'good');
     if (p.end === year) notify(state, `The ${p.name} has been discontinued.`, 'info');
@@ -822,8 +829,10 @@ const CONTRACT_TEMPLATES = [
 ];
 const BUSINESSES = ['bakery', 'bank', 'car dealer', 'museum', 'pizza chain', 'school', 'gym', 'airline'];
 
+/** Contract pay covers this multiple of the studio's running costs for the contract's weeks. */
+const CONTRACT_MARGIN = 1.3;
+
 function refreshContracts(state: GameState) {
-  const years = yearFraction(state.week) - START_YEAR;
   const platforms = availablePlatforms(state);
   state.contractOffers = [0, 1, 2].map(() => {
     const weeks = int(state, 2, 6);
@@ -831,7 +840,8 @@ function refreshContracts(state: GameState) {
       .replace('{biz}', pick(state, BUSINESSES))
       .replace('{topic}', topicById(pick(state, state.topics)).name)
       .replace('{platform}', pick(state, platforms).name);
-    const pay = Math.round((weeks * (2500 + years * 600) * range(state, 0.8, 1.3) * (1 + 0.25 * (state.staff.length - 1))) / 100) * 100;
+    // Contracts pay the bills with a little to spare: a safety net, not a way to get rich.
+    const pay = friendly(weeks * ((monthlyCosts(state) / WEEKS_PER_MONTH) * CONTRACT_MARGIN + 500 * priceIndex(state.week)) * range(state, 0.85, 1.2));
     const offer: ContractOffer = { id: state.nextId++, title, weeks, pay, rp: Math.max(1, Math.round(weeks * 0.6 * range(state, 0.7, 1.4))) };
     return offer;
   });
