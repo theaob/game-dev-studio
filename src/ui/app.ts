@@ -7,7 +7,7 @@ import { OfficeScene } from './office';
 import type { OfficeView } from './office-view';
 import { money, num } from './format';
 import { focusLean, renderSheet, type Sheet } from './sheets';
-import { SPEEDS, renderGames, renderNav, renderNews, renderResearch, renderStaff, renderStudio, renderTopbar, type Tab } from './views';
+import { SPEEDS, renderDock, renderGames, renderNav, renderNews, renderResearch, renderStaff, renderTopbar, type Tab } from './views';
 
 type StatKey = 'cash' | 'fans' | 'rp';
 
@@ -27,7 +27,9 @@ export class App {
   private last = 0;
   private reviewTimer = 0;
   private html: Record<string, string> = {};
-  private els: Record<'top' | 'scroll' | 'scene' | 'main' | 'nav' | 'sheet' | 'fx' | 'toasts', HTMLElement>;
+  private els: Record<'top' | 'scroll' | 'scene' | 'dock' | 'main' | 'nav' | 'sheet' | 'fx' | 'toasts', HTMLElement>;
+  /** Speed to resume at when un-pausing. */
+  private lastSpeed = 1;
   /** Starts as the 2D office and upgrades to 3D once three.js has loaded (if WebGL works). */
   private office: OfficeView = new OfficeScene();
   /** Values currently shown in the top bar; they glide towards the real ones. */
@@ -38,9 +40,13 @@ export class App {
   private lastDraw = 0;
 
   constructor(root: HTMLElement) {
-    root.innerHTML = `<div id="top"></div><div id="scroll" class="scroll"><div id="scene" class="scene"></div><main id="main"></main></div><div id="nav"></div><div id="sheet-root"></div><div id="fx"></div><div class="toasts" id="toasts"></div>`;
+    // A full-screen world with the interface floating on top, like a mobile game:
+    // the office fills the screen, the HUD sits on top, an action dock above the
+    // tab bar, and the other tabs slide up as panels over the world.
+    root.innerHTML = `<div id="scene" class="stage"></div><div id="top" class="hud"></div><div id="dock" class="dock"></div><div id="scroll" class="panel scroll"><main id="main"></main></div><div id="nav"></div><div id="sheet-root"></div><div id="fx"></div><div class="toasts" id="toasts"></div>`;
     const $ = (id: string) => root.querySelector<HTMLElement>(`#${id}`)!;
-    this.els = { top: $('top'), scroll: $('scroll'), scene: $('scene'), main: $('main'), nav: $('nav'), sheet: $('sheet-root'), fx: $('fx'), toasts: $('toasts') };
+    this.els = { top: $('top'), scroll: $('scroll'), scene: $('scene'), dock: $('dock'), main: $('main'), nav: $('nav'), sheet: $('sheet-root'), fx: $('fx'), toasts: $('toasts') };
+    this.enableSwipeToClose();
 
     this.els.scene.appendChild(this.office.el);
     this.loadOffice3D();
@@ -80,6 +86,9 @@ export class App {
     // The office animates at ~30fps while visible.
     if (s && this.tab === 'studio' && !document.hidden && t - this.lastDraw > 32) {
       this.lastDraw = t;
+      const top = this.els.top.getBoundingClientRect().bottom;
+      const bottom = window.innerHeight - this.els.dock.getBoundingClientRect().top;
+      this.office.setInsets?.(top, bottom);
       this.office.draw(s, t, !s.over && !this.sheet && SPEEDS[this.speed] > 0);
     }
     requestAnimationFrame((n) => this.loop(n));
@@ -194,7 +203,7 @@ export class App {
   private confetti() {
     const layer = document.createElement('div');
     layer.className = 'confetti';
-    const colors = ['#7c5cff', '#ff5c9a', '#3ddc97', '#ffad3b', '#4fb3ff', '#ffd25c'];
+    const colors = ['#dc4b2a', '#f2b33d', '#23877d', '#2f7fc1', '#2b2622', '#fff8ea'];
     for (let i = 0; i < 90; i++) {
       const p = document.createElement('i');
       p.style.left = `${Math.random() * 100}%`;
@@ -208,6 +217,48 @@ export class App {
     }
     document.body.appendChild(layer);
     window.setTimeout(() => layer.remove(), 4000);
+  }
+
+  /** Drag a sheet down to dismiss it, like a native bottom sheet. */
+  private enableSwipeToClose() {
+    let startY = 0;
+    let dy = 0;
+    let sheetEl: HTMLElement | null = null;
+    const host = this.els.sheet;
+    host.addEventListener(
+      'touchstart',
+      (e) => {
+        const el = (e.target as HTMLElement).closest<HTMLElement>('.sheet');
+        if (!el || el.scrollTop > 0 || !this.sheet || BLOCKING.includes(this.sheet.kind)) return;
+        if ((e.target as HTMLElement).closest('input, textarea')) return;
+        sheetEl = el;
+        startY = e.touches[0].clientY;
+        dy = 0;
+      },
+      { passive: true },
+    );
+    host.addEventListener(
+      'touchmove',
+      (e) => {
+        if (!sheetEl) return;
+        dy = Math.max(0, e.touches[0].clientY - startY);
+        if (sheetEl.scrollTop > 0) dy = 0;
+        sheetEl.style.transition = 'none';
+        sheetEl.style.transform = `translateY(${dy}px)`;
+      },
+      { passive: true },
+    );
+    host.addEventListener('touchend', () => {
+      if (!sheetEl) return;
+      const el = sheetEl;
+      sheetEl = null;
+      el.style.transition = '';
+      if (dy > 110) {
+        this.close();
+      } else {
+        el.style.transform = '';
+      }
+    });
   }
 
   /** Loads the three.js office in the background and swaps it in; keeps the 2D office if that fails. */
@@ -263,16 +314,31 @@ export class App {
   private render() {
     const s = this.state;
     if (s) {
-      this.set('top', renderTopbar(s, this.speed));
+      this.set('top', renderTopbar(s, this.speed, this.lastSpeed));
       this.updateStats(0);
-      this.els.scene.hidden = this.tab !== 'studio';
       if (this.tab === 'news') this.markNewsRead();
-      const view = { studio: renderStudio, games: renderGames, research: renderResearch, staff: renderStaff, news: renderNews }[this.tab];
-      this.set('main', view(s));
+      const studio = this.tab === 'studio';
+      this.els.dock.hidden = !studio;
+      this.els.scroll.hidden = studio;
+      if (studio) {
+        this.set('dock', renderDock(s));
+      } else {
+        const titles: Record<Exclude<Tab, 'studio'>, [string, string]> = {
+          games: ['Games', `${s.released.length} released`],
+          research: ['Research', `🔬 ${Math.floor(s.rp)} RP`],
+          staff: ['Team', `${s.staff.length} ${s.staff.length === 1 ? 'person' : 'people'}`],
+          news: ['News', ''],
+        };
+        const tab = this.tab as Exclude<Tab, 'studio'>;
+        const [title, extra] = titles[tab];
+        const view = { games: renderGames, research: renderResearch, staff: renderStaff, news: renderNews }[tab];
+        this.set('main', `<header class="panel-head"><h1>${title}</h1>${extra ? `<span class="panel-chip">${extra}</span>` : ''}</header>${view(s)}`);
+      }
       this.set('nav', renderNav(this.tab, s, this.unreadNews()));
     } else {
       this.set('top', '');
-      this.els.scene.hidden = true;
+      this.els.dock.hidden = true;
+      this.els.scroll.hidden = true;
       this.set('main', '');
       this.set('nav', '');
     }
@@ -334,7 +400,7 @@ export class App {
 
   private bubbles(design: number, tech: number, bugs: number) {
     if (this.tab !== 'studio') return;
-    const counters = this.els.main.querySelectorAll<HTMLElement>('#counters .counter');
+    const counters = this.els.dock.querySelectorAll<HTMLElement>('#counters .counter');
     if (counters.length !== 3) return;
     const items: [number, string, string][] = [
       [design, `+${design.toFixed(1)}`, 'var(--design)'],
@@ -403,6 +469,7 @@ export class App {
     }
     const btn = target.closest<HTMLElement>('[data-action]');
     if (!btn || (btn as HTMLButtonElement).disabled) return;
+    this.vibrate(5);
     this.action(btn.dataset.action!, btn.dataset.arg ?? '');
   }
 
@@ -419,6 +486,19 @@ export class App {
       // Global
       case 'speed':
         this.speed = Number(arg);
+        if (this.speed > 0) this.lastSpeed = this.speed;
+        this.acc = 0;
+        this.render();
+        return;
+      case 'toggle-pause':
+        this.speed = this.speed === 0 ? this.lastSpeed : 0;
+        this.acc = 0;
+        this.render();
+        return;
+      case 'cycle-speed':
+        // 1× → 2× → 4× → 1×, and un-pause.
+        this.lastSpeed = this.speed === 0 ? this.lastSpeed : (this.speed % (SPEEDS.length - 1)) + 1;
+        this.speed = this.lastSpeed;
         this.acc = 0;
         this.render();
         return;
@@ -426,6 +506,7 @@ export class App {
         if (this.tab !== arg) {
           this.tab = arg as Tab;
           this.els.scroll.scrollTop = 0;
+          this.vibrate(6);
           this.render();
           this.animateIn(this.els.main);
         }
@@ -478,7 +559,11 @@ export class App {
         this.open({ kind: 'newGame', step: 1, draft });
         return;
       }
+      case 'contracts':
+        this.open({ kind: 'contracts' });
+        return;
       case 'contract':
+        if (sheet?.kind === 'contracts') this.close();
         report(startContract(s, Number(arg)));
         return;
       case 'release': {

@@ -132,6 +132,9 @@ interface Rig {
   pose: Pose;
 }
 
+const BACKDROP_DAY = new THREE.Color('#e6d8bd');
+const BACKDROP_NIGHT = new THREE.Color('#5a4e42');
+
 const PANTS = ['#2a2f45', '#3a3a44', '#4a3a2a', '#1f3a4a'];
 
 /** One flickering tongue of flame: it rises, shrinks and fades, then starts over. */
@@ -366,8 +369,10 @@ export class Office3D implements OfficeView {
   private overlay: HTMLDivElement;
   private world = new THREE.Group();
   private layoutKey = '';
-  private aspect = 1.4;
   private width = 0;
+  private height = 0;
+  private insets = { top: 0, bottom: 0 };
+  private roomBox = { minX: -5, maxX: 5, minY: -5, maxY: 5 };
   private lastT = 0;
   private clock = 0;
   private screenTimer = 0;
@@ -375,8 +380,9 @@ export class Office3D implements OfficeView {
 
   // Lights
   private sun = new THREE.DirectionalLight('#ffffff', 2);
-  private hemi = new THREE.HemisphereLight('#cfe3ff', '#3a3046', 0.8);
+  private hemi = new THREE.HemisphereLight('#fff1d8', '#5a4a3a', 0.8);
   private lamps: THREE.PointLight[] = [];
+  private backdrop = new THREE.Color();
   private zoneLight = new THREE.PointLight('#ff9a3a', 0, 5, 1.4);
 
   // Layout
@@ -543,7 +549,7 @@ export class Office3D implements OfficeView {
       }
       const away = !!walk;
       if (refreshScreens) this.drawScreen(desk, s, away ? 'idle' : mode, animating && !away, inZone && !away, time, rig.look);
-      const screenColor = inZone ? '#ffb84a' : away || mode === 'idle' ? '#7c5cff' : mode === 'polish' ? '#6dffb8' : '#5ab0ff';
+      const screenColor = inZone ? '#ffb84a' : away || mode === 'idle' ? '#23877d' : mode === 'polish' ? '#6dffb8' : '#5ab0ff';
       (desk.screenGlow.material as THREE.SpriteMaterial).color.set(screenColor);
       (desk.screenGlow.material as THREE.SpriteMaterial).opacity = 0.12 + light.dark * 1.1;
       rig.aura.visible = inZone && !walk;
@@ -656,15 +662,15 @@ export class Office3D implements OfficeView {
 
   private buildRoom(W: number, D: number) {
     const level = this.level;
-    const floorCol = ['#5f5c6b', '#6a4e3c', '#3a3358', '#454c63'][level] ?? '#454c63';
-    const wallCol = ['#7a7788', '#b89a7e', '#5a4a8a', '#4a5478'][level] ?? '#4a5478';
+    const floorCol = ['#6e655a', '#6a4e3c', '#3f4a52', '#454c63'][level] ?? '#454c63';
+    const wallCol = ['#a59a88', '#b89a7e', '#6a7f86', '#4a5478'][level] ?? '#4a5478';
     // Floor slab and two cut-away walls (back and left).
     part(this.world, W, 0.12, D, floorCol, 0, -0.06, 0);
     if (level === 1) {
       // Wooden floorboards.
       for (let x = -W / 2 + 0.4; x < W / 2; x += 0.4) part(this.world, 0.012, 0.005, D, shadeHex(floorCol, -0.2), x, 0.002, 0);
     } else if (level === 2) {
-      part(this.world, W * 0.7, 0.01, D * 0.55, '#4a3f72', 0.3, 0.005, 0.2);
+      part(this.world, W * 0.7, 0.01, D * 0.55, '#a8442e', 0.3, 0.005, 0.2);
     } else if (level === 3) {
       for (let x = -W / 2 + 0.8; x < W / 2; x += 1.6) part(this.world, 0.8, 0.004, D, '#4b536b', x, 0.002, 0);
     }
@@ -692,7 +698,7 @@ export class Office3D implements OfficeView {
       part(this.world, 0.6, 0.7, 0.6, '#3d9a5a', -W / 2 + 0.4, 0.75, -D / 2 + 0.4, { geo: SPHERE, shadow: true });
       if (level === 2) {
         // Posters of past hits.
-        ['#ff5c9a', '#3ddc97', '#ffad3b'].forEach((col, i) => {
+        ['#dc4b2a', '#23877d', '#f2b33d'].forEach((col, i) => {
           part(this.world, 0.55, 0.75, 0.02, '#1d1830', W * 0.12 + i * 0.85, 1.7, -D / 2 + 0.02);
           part(this.world, 0.47, 0.67, 0.01, col, W * 0.12 + i * 0.85, 1.7, -D / 2 + 0.04, { material: mat(col, 0.6) });
         });
@@ -703,7 +709,7 @@ export class Office3D implements OfficeView {
     } else {
       // Campus: a glass wall onto the city.
       part(this.world, W - 0.4, WALL_H - 0.5, 0.01, '#ffffff', 0.1, WALL_H / 2 + 0.1, -D / 2 + 0.02, { material: skyMat });
-      for (let x = -W / 2 + 0.2; x <= W / 2; x += W / 5) part(this.world, 0.06, WALL_H, 0.06, '#c8c3e6', x, WALL_H / 2, -D / 2 + 0.03);
+      for (let x = -W / 2 + 0.2; x <= W / 2; x += W / 5) part(this.world, 0.06, WALL_H, 0.06, '#d8d2c4', x, WALL_H / 2, -D / 2 + 0.03);
       part(this.world, 0.36, 0.5, 0.36, '#e8e8f0', -W / 2 + 0.4, 0.25, -D / 2 + 0.4, { geo: CYL, shadow: true });
       part(this.world, 0.55, 0.9, 0.55, '#3d9a5a', -W / 2 + 0.4, 0.95, -D / 2 + 0.4, { geo: CONE, shadow: true });
     }
@@ -866,20 +872,8 @@ export class Office3D implements OfficeView {
     maxX += pad;
     minY -= pad;
     maxY += pad;
-    this.aspect = Math.max(1.05, Math.min(1.8, (maxX - minX) / (maxY - minY)));
-    const cx = (minX + maxX) / 2;
-    const cy = (minY + maxY) / 2;
-    let hw = (maxX - minX) / 2;
-    let hh = (maxY - minY) / 2;
-    if (hw / hh > this.aspect) hh = hw / this.aspect;
-    else hw = hh * this.aspect;
-    this.camera.left = cx - hw;
-    this.camera.right = cx + hw;
-    this.camera.top = cy + hh;
-    this.camera.bottom = cy - hh;
-    this.camera.updateProjectionMatrix();
-    this.el.style.aspectRatio = `${this.aspect}`;
-    this.width = 0; // force a resize
+    this.roomBox = { minX, maxX, minY, maxY };
+    this.applyFrustum();
 
     // Shadow camera covers the room.
     const s = Math.max(W, D) * 0.75;
@@ -893,11 +887,48 @@ export class Office3D implements OfficeView {
     sc.updateProjectionMatrix();
   }
 
+  /**
+   * The office fills the screen; frame the room in the visible gap between the
+   * HUD (top inset) and the dock and tab bar (bottom inset).
+   */
+  private applyFrustum() {
+    const { minX, maxX, minY, maxY } = this.roomBox;
+    const w = Math.max(1, this.width);
+    const h = Math.max(1, this.height);
+    const top = Math.min(this.insets.top, h * 0.45);
+    const bottom = Math.min(this.insets.bottom, h * 0.45);
+    const freeFrac = Math.max(0.2, (h - top - bottom) / h);
+    const aspect = w / h;
+    const roomW = maxX - minX;
+    const roomH = maxY - minY;
+    // Frustum height that fits the room both across and into the free band.
+    const frustumH = Math.max(roomH / freeFrac, roomW / aspect);
+    const frustumW = frustumH * aspect;
+    const cx = (minX + maxX) / 2;
+    const cy = (minY + maxY) / 2;
+    // Put the room's centre in the middle of the free band.
+    const centreFromTop = (top + (h - top - bottom) / 2) / h;
+    this.camera.left = cx - frustumW / 2;
+    this.camera.right = cx + frustumW / 2;
+    this.camera.top = cy + frustumH * centreFromTop;
+    this.camera.bottom = this.camera.top - frustumH;
+    this.camera.updateProjectionMatrix();
+  }
+
+  setInsets(top: number, bottom: number) {
+    if (Math.abs(top - this.insets.top) < 2 && Math.abs(bottom - this.insets.bottom) < 2) return;
+    this.insets = { top, bottom };
+    this.applyFrustum();
+  }
+
   private resize() {
     const w = this.el.clientWidth || 360;
-    if (w === this.width) return;
+    const h = this.el.clientHeight || 640;
+    if (w === this.width && h === this.height) return;
     this.width = w;
-    this.renderer.setSize(w, Math.round(w / this.aspect), false);
+    this.height = h;
+    this.renderer.setSize(w, h, false);
+    this.applyFrustum();
   }
 
   // -------------------------------------------------------------------------
@@ -914,11 +945,13 @@ export class Office3D implements OfficeView {
     this.sun.color.setHSL(0.1 - light.dusk * 0.04, 0.4 + light.dusk * 0.5, 0.75 + day * 0.2);
     this.hemi.intensity = 0.5 + day * 0.7;
     this.hemi.color.set(light.sun < -0.2 ? '#6070b0' : '#cfe3ff');
-    this.hemi.groundColor.set(light.sun < -0.2 ? '#151225' : '#3a3046');
+    this.hemi.groundColor.set(light.sun < -0.2 ? '#2a221c' : '#5a4a3a');
     const lampOn = Math.min(1, light.dark * 2.4);
     this.lamps.forEach((l) => (l.intensity = lampOn * (this.level === 0 ? 7 : 5) * (1 + Math.sin(time * 11) * 0.02)));
     for (const d of this.desks) if (d.lampGlow) (d.lampGlow.material as THREE.SpriteMaterial).opacity = light.dark * 1.2;
-    this.renderer.setClearColor(light.sun < -0.2 ? '#0e0c1c' : '#1d1a2d');
+    // The tabletop the diorama sits on dims smoothly with the evening.
+    this.backdrop.copy(BACKDROP_DAY).lerp(BACKDROP_NIGHT, light.dark * 2);
+    this.renderer.setClearColor(this.backdrop);
   }
 
   private drawSky(light: Daylight, time: number) {

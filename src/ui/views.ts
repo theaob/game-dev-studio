@@ -14,24 +14,24 @@ import { esc, money, num, scoreClass } from './format';
 export type Tab = 'studio' | 'games' | 'research' | 'staff' | 'news';
 export const SPEEDS = [0, 1, 2, 4];
 
-export function renderTopbar(state: GameState, speed: number): string {
+/** Game HUD: studio and date, play/speed controls, and resource chips. Stat values are filled in by the app. */
+export function renderTopbar(state: GameState, speed: number, lastSpeed: number): string {
+  const paused = speed === 0;
+  const shown = paused ? lastSpeed : speed;
   return `
-  <div class="topbar">
-    <div class="topbar-row">
-      <div class="studio">
-        <div class="studio-name">${esc(state.studioName)}</div>
-        <div class="date">${formatDate(state.week)}</div>
-      </div>
-      <div class="speed" role="group" aria-label="Game speed">
-        ${SPEEDS.map((s, i) => `<button data-action="speed" data-arg="${i}" class="${i === speed ? 'on' : ''}" aria-label="${s === 0 ? 'Pause' : `Speed ${s}x`}">${s === 0 ? '❚❚' : '▶'.repeat(Math.min(i, 3))}</button>`).join('')}
-      </div>
-      <button class="icon-btn" data-action="menu" aria-label="Menu">☰</button>
-    </div>
-    <div class="stats">
-      <div class="stat" data-stat="cash"><small>Cash</small><b>${money(state.cash)}</b></div>
-      <div class="stat" data-stat="fans"><small>Fans</small><b>${num(state.fans)}</b></div>
-      <div class="stat" data-stat="rp"><small>Research</small><b>${Math.floor(state.rp)} RP</b></div>
-    </div>
+  <div class="hud-row">
+    <button class="hud-pill studio-pill" data-action="menu" aria-label="Menu">
+      <span class="studio-logo">🎮</span>
+      <span class="studio-text"><b>${esc(state.studioName)}</b><small>${formatDate(state.week)}</small></span>
+    </button>
+    <div class="grow"></div>
+    <button class="hud-btn ${paused ? 'paused' : ''}" data-action="toggle-pause" aria-label="${paused ? 'Play' : 'Pause'}">${paused ? '▶' : '❚❚'}</button>
+    <button class="hud-btn speed-btn" data-action="cycle-speed" aria-label="Speed ${SPEEDS[shown]}x">${SPEEDS[shown]}×</button>
+  </div>
+  <div class="hud-res">
+    <div class="res" data-stat="cash"><i>💰</i><b>${money(state.cash)}</b></div>
+    <div class="res" data-stat="fans"><i>❤️</i><b>${num(state.fans)}</b></div>
+    <div class="res" data-stat="rp"><i>🔬</i><b>${Math.floor(state.rp)} RP</b></div>
   </div>`;
 }
 
@@ -45,18 +45,23 @@ export function renderNav(tab: Tab, state: GameState, unreadNews: number): strin
     ['news', '📰', 'News', unreadNews > 0 && tab !== 'news'],
   ];
   return `<nav class="tabs">${items
-    .map(([id, icon, label, dot]) => `<button data-action="tab" data-arg="${id}" class="${tab === id ? 'on' : ''}"><span>${icon}</span>${label}${dot ? '<i class="dot"></i>' : ''}</button>`)
+    .map(
+      ([id, icon, label, dot]) =>
+        `<button data-action="tab" data-arg="${id}" class="${tab === id ? 'on' : ''}" aria-label="${label}"><span class="tab-icon">${icon}</span><small>${label}</small>${dot ? '<i class="dot"></i>' : ''}</button>`,
+    )
     .join('')}</nav>`;
 }
 
 // ---------------------------------------------------------------------------
-// Studio
+// Studio: an action dock floating over the office
 // ---------------------------------------------------------------------------
 
-export function renderStudio(state: GameState): string {
-  return `
-    ${renderActivity(state)}
-    ${renderOnMarket(state)}`;
+export function renderDock(state: GameState): string {
+  const selling = state.released.filter((g) => g.weeksOnMarket < SALES_WEEKS);
+  const ticker = selling.length
+    ? `<button class="ticker" data-action="tab" data-arg="games">📈 ${selling.length} on sale · ${money(selling.reduce((a, g) => a + g.revenue, 0))} earned</button>`
+    : '';
+  return `${ticker}${renderActivity(state)}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -78,40 +83,26 @@ export function renderNews(state: GameState): string {
 function renderActivity(state: GameState): string {
   const a = state.activity;
   if (!a) {
+    const offers = state.contractOffers.length;
     return `
-    <div class="card hero" id="activity">
-      <div class="card-title">Your team is ready</div>
-      <div class="sub">Start a new game, or take on contract work to pay the bills.</div>
-      <div class="btn-row"><button class="btn big pulse" data-action="new-game">🎮 Develop a new game</button></div>
-    </div>
-    <h2>Contract work</h2>
-    <div class="list">
-      ${
-        state.contractOffers
-          .map(
-            (o) => `
-        <div class="list-item">
-          <div class="emoji">📝</div>
-          <div class="grow">
-            <div class="name">${esc(o.title)}</div>
-            <div class="sub">${o.weeks} weeks · ${money(o.pay)} · +${o.rp} RP</div>
-          </div>
-          <button class="btn small ghost" data-action="contract" data-arg="${o.id}">Take</button>
-        </div>`,
-          )
-          .join('') || '<div class="empty">No offers right now. Check back next month.</div>'
-      }
+    <div class="dock-actions" id="activity">
+      <button class="btn big pulse" data-action="new-game">🎮 New Game</button>
+      <button class="btn tile" data-action="contracts" ${offers ? '' : 'disabled'}>📝<small>Contracts</small>${offers ? `<i class="badge">${offers}</i>` : ''}</button>
     </div>`;
   }
 
   if (a.kind === 'contract') {
     const pct = (a.weeksDone / a.offer.weeks) * 100;
     return `
-    <div class="card" id="activity">
-      <div class="sub">Contract work</div>
-      <div class="card-title">${esc(a.offer.title)}</div>
-      <div class="mt bar"><i style="width:${pct}%"></i></div>
-      <div class="sub mt">Week ${a.weeksDone} of ${a.offer.weeks} · pays ${money(a.offer.pay)} and ${a.offer.rp} RP</div>
+    <div class="dock-card" id="activity">
+      <div class="row">
+        <span class="dock-icon">📝</span>
+        <div class="grow">
+          <div class="dock-title">${esc(a.offer.title)}</div>
+          <div class="sub">Week ${a.weeksDone}/${a.offer.weeks} · ${money(a.offer.pay)} · +${a.offer.rp} RP</div>
+        </div>
+      </div>
+      <div class="bar live mt-s"><i style="width:${pct}%"></i></div>
     </div>`;
   }
 
@@ -120,18 +111,19 @@ function renderActivity(state: GameState): string {
   const platform = platformById(a.platform);
   const polishing = a.phase >= 3;
   const pct = polishing ? 100 : ((a.phase * a.phaseWeeks + a.weekInPhase) / (a.phaseWeeks * 3)) * 100;
+  const steps = [...PHASES.map((p) => p.name), 'Polish'];
   return `
-  <div class="card" id="activity">
+  <div class="dock-card" id="activity">
     <div class="row">
-      <div class="big-emoji" style="font-size:40px;margin:0">${topic.icon}</div>
+      <span class="dock-icon">${topic.icon}</span>
       <div class="grow">
-        <div class="card-title">${esc(a.name)}</div>
-        <div class="sub">${topic.name} ${genre.name} · ${platform.name} · ${sizeById(a.size).name}${a.sequelOf !== undefined ? ' · Sequel' : ''}</div>
+        <div class="dock-title">${esc(a.name)}</div>
+        <div class="sub dock-sub">${genre.name} · ${platform.name} · ${sizeById(a.size).name}${a.sequelOf !== undefined ? ' · Sequel' : ''}</div>
       </div>
     </div>
-    <div class="phases">
-      ${PHASES.map((p, i) => `<span class="${i < a.phase ? 'done' : i === a.phase ? 'now' : ''}">${i < a.phase ? '✓ ' : ''}${p.name}</span>`).join('')}
-      <span class="${polishing ? 'now' : ''}">Polish</span>
+    <div class="steps-row">
+      <span class="phase-chip">${polishing ? '🧹 Polish' : `${a.phase + 1}/3 ${PHASES[a.phase].name}`}</span>
+      <div class="steps">${steps.map((_, i) => `<i class="${i < a.phase ? 'done' : i === a.phase ? 'now' : ''}"></i>`).join('')}</div>
     </div>
     <div class="bar ${polishing ? '' : 'live'}"><i style="width:${pct}%"></i></div>
     <div class="counters" id="counters">
@@ -139,12 +131,7 @@ function renderActivity(state: GameState): string {
       <div class="counter c-tech"><b>${Math.round(a.tech)}</b><small>Tech</small></div>
       <div class="counter c-bugs"><b>${Math.round(a.bugs)}</b><small>Bugs</small></div>
     </div>
-    ${
-      polishing
-        ? `<div class="sub mt">Development finished! The team is squashing bugs (${a.polishWeeks} week${a.polishWeeks === 1 ? '' : 's'} of polish). Release whenever you're ready.</div>
-           <div class="btn-row"><button class="btn big pulse" data-action="release">🚀 Release game</button></div>`
-        : ''
-    }
+    ${polishing ? '<button class="btn big pulse mt-s" data-action="release">🚀 Release</button>' : ''}
   </div>`;
 }
 
@@ -183,6 +170,7 @@ export function renderGames(state: GameState): string {
   const best = games.reduce((a, g) => (g.score > a.score ? g : a));
   const top = games.reduce((a, g) => (g.revenue > a.revenue ? g : a));
   return `
+  ${renderOnMarket(state)}
   <h2>Hall of fame</h2>
   <div class="stats" style="grid-template-columns:1fr 1fr 1fr">
     <div class="stat"><small>Games</small><b>${games.length}</b></div>
@@ -215,10 +203,6 @@ export function renderResearch(state: GameState): string {
     researchRow(state, t.id, t.icon, t.name, 'New game topic', state.topics.includes(t.id)),
   );
   return `
-  <div class="card mt">
-    <div class="sub">Research points are earned while developing games and doing contracts.</div>
-    <div class="card-title mt">🔬 ${Math.floor(state.rp)} RP available</div>
-  </div>
   ${Object.entries(groups)
     .map(([cat, rows]) => `<h2>${cat}</h2><div class="list">${rows.join('')}</div>`)
     .join('')}

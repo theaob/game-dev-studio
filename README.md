@@ -2,7 +2,9 @@
 
 A mobile-first game development tycoon. Found a studio in a 1985 garage, make games, chase great reviews and grow into a campus by 2025.
 
-Built as an installable web app (PWA) in TypeScript + Vite. The only runtime dependency is three.js, which renders the 3D office and loads lazily after the game starts. It runs in any phone browser, works offline once loaded, and can be wrapped for the App Store or Google Play with [Capacitor](https://capacitorjs.com/).
+Built as an installable web app (PWA) in TypeScript + Vite. The only runtime dependencies are three.js, which renders the 3D office and loads lazily after the game starts, and the bundled Bricolage Grotesque display font.
+
+The UI is laid out like a mobile game, not a web page. The office fills the screen, with a HUD on top (studio, play/pause, speed, cash/fans/RP), an action dock and a floating tab bar. Other tabs slide up as panels over the office, and sheets can be swiped down to close. The visual style is warm paper and ink: outlined cards and buttons with hard offset shadows, a tomato-red primary colour, and mustard and teal accents. It runs in any phone browser, works offline once loaded, and can be wrapped for the App Store or Google Play with [Capacitor](https://capacitorjs.com/).
 
 ## Gameplay
 

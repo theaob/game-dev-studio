@@ -32,6 +32,7 @@ export type Sheet =
   | { kind: 'menu'; saved?: boolean }
   | { kind: 'help' }
   | { kind: 'confirm'; text: string; action: string; arg?: string; confirmLabel: string }
+  | { kind: 'contracts' }
   | { kind: 'gameOver' };
 
 export const OUTLETS = ['Game Weekly', 'Pixel Press', 'PlayZone', 'Joystick Journal'];
@@ -67,6 +68,8 @@ export function renderSheet(state: GameState | null, sheet: Sheet): string {
       return menu(sheet.saved);
     case 'gameOver':
       return gameOver(state);
+    case 'contracts':
+      return contracts(state);
   }
 }
 
@@ -441,6 +444,27 @@ function menu(saved?: boolean): string {
       <button class="option" data-action="help"><span class="emoji">📖</span><span class="grow"><b>How to play</b></span></button>
       <button class="option" data-action="save"><span class="emoji">💾</span><span class="grow"><b>Save game</b>${saved ? ' <span class="tag good">Saved!</span>' : '<br/><span class="sub">The game also saves automatically every month.</span>'}</span></button>
       <button class="option" data-action="ask-reset"><span class="emoji">🔄</span><span class="grow"><b>Start over</b><br/><span class="sub">Delete this save and found a new studio.</span></span></button>
+    </div>
+    <div class="btn-row"><button class="btn ghost" data-action="close">Close</button></div>`;
+}
+
+function contracts(state: GameState): string {
+  return `
+    <h3>Contract work</h3>
+    <p class="muted">Quick jobs that pay the bills and earn research points.</p>
+    <div class="options mt">
+      ${
+        state.contractOffers
+          .map(
+            (o) => `
+        <div class="option contract">
+          <span class="emoji">📝</span>
+          <span class="grow"><b>${esc(o.title)}</b><br/><span class="sub">${o.weeks} weeks · ${money(o.pay)} · +${o.rp} RP</span></span>
+          <button class="btn small" data-action="contract" data-arg="${o.id}">Take</button>
+        </div>`,
+          )
+          .join('') || '<p class="muted center">No offers right now. New ones arrive every month.</p>'
+      }
     </div>
     <div class="btn-row"><button class="btn ghost" data-action="close">Close</button></div>`;
 }
