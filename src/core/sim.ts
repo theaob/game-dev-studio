@@ -22,6 +22,7 @@ import {
   topicById,
 } from './data';
 import type { StoreItemId } from './data';
+import { founderSalary, friendly, marketingCost, officeCost, officeRent, priceIndex, reachableUsers, sizeCost } from './economy';
 import { int, pick, random, range } from './rng';
 import { hasSequel, sequelSalesMult, seriesNumber } from './sequels';
 import { average, clamp, evaluate, normalizeFocus, rollReviews, scoreFactor } from './scoring';
@@ -99,7 +100,12 @@ export function availablePlatforms(state: GameState) {
 }
 
 export function monthlyCosts(state: GameState): number {
-  return OFFICES[state.officeLevel].rent + state.staff.reduce((a, s) => a + s.salary, 0);
+  return officeRent(state, state.officeLevel) + state.staff.reduce((a, s) => a + staffSalary(state, s), 0);
+}
+
+/** What someone costs per month; the founder's wage follows the price index. */
+export function staffSalary(state: GameState, s: Staff): number {
+  return s.founder ? founderSalary(state) : s.salary;
 }
 
 export function officeCapacity(state: GameState): number {
@@ -159,9 +165,8 @@ export function zoneChance(state: GameState): number {
 /** Price today: boosts scale with team size, and everything with the years like salaries. */
 export function storePrice(state: GameState, id: StoreItemId): number {
   const item = storeItemById(id);
-  const years = yearFraction(state.week) - START_YEAR;
   const team = item.kind === 'upgrade' ? 1 : Math.max(1, state.staff.length);
-  return Math.round((item.price * team * (1 + 0.03 * years)) / 100) * 100;
+  return friendly(item.price * team * priceIndex(state.week));
 }
 
 /** Why an item can't be bought right now, or null if it can. */
@@ -194,6 +199,69 @@ export function buyStoreItem(state: GameState, id: StoreItemId): string | null {
   return null;
 }
 
+// ---------------------------------------------------------------------------
+// The studio cat. Now and then, while a game is being made, it curls up on
+// someone's lap, and a purring cat makes that developer work faster.
+
+/** Output multiplier for whoever has the cat on their lap. */
+export const CAT_LAP_BOOST = 1.3;
+/** Weekly chance, during development, that the cat picks a lap. */
+export const CAT_LAP_CHANCE = 0.15;
+/** Weeks the cat wants to itself after a lap visit. */
+export const CAT_COOLDOWN_WEEKS = 3;
+/** How long the cat stays when the player puts it on a lap. */
+export const CAT_PLACED_WEEKS = 3;
+
+export function catBoost(state: GameState, staffId: number): number {
+  return state.cat?.lap?.staffId === staffId ? CAT_LAP_BOOST : 1;
+}
+
+/** Who has the cat on their lap, if anyone. */
+export function catLapStaff(state: GameState): Staff | undefined {
+  const id = state.cat?.lap?.staffId;
+  return id === undefined ? undefined : state.staff.find((s) => s.id === id);
+}
+
+/** The player puts the cat on someone's lap. Returns an error message, or null on success. */
+export function placeCatOnLap(state: GameState, staffId: number): string | null {
+  const s = state.staff.find((x) => x.id === staffId);
+  if (!s) return 'Staff member not found.';
+  if (state.cat?.lap?.staffId === staffId) return null;
+  if ((state.cat?.cooldown ?? 0) > 0) return 'The cat wants some alone time.';
+  state.cat = { lap: { staffId, weeks: CAT_PLACED_WEEKS } };
+  return null;
+}
+
+/** The player lifts the cat off a lap: the boost ends and the cat wants some space. */
+export function catLeaveLap(state: GameState): void {
+  if (!state.cat?.lap) return;
+  state.cat = { cooldown: CAT_COOLDOWN_WEEKS };
+}
+
+function tickCat(state: GameState, events: SimEvent[]) {
+  const cat = (state.cat ??= {});
+  if (cat.lap) {
+    const owner = state.staff.find((s) => s.id === cat.lap!.staffId);
+    cat.lap.weeks--;
+    if (!owner || cat.lap.weeks <= 0) {
+      events.push({ type: 'catLeft', staffId: cat.lap.staffId });
+      state.cat = { cooldown: CAT_COOLDOWN_WEEKS };
+    }
+    return;
+  }
+  if (cat.cooldown) {
+    cat.cooldown--;
+    if (!cat.cooldown) delete cat.cooldown;
+    return;
+  }
+  // Only working laps are warm enough: the cat picks someone while a game is in development.
+  if (state.activity?.kind !== 'game' || !state.staff.length) return;
+  if (random(state) >= CAT_LAP_CHANCE) return;
+  const s = pick(state, state.staff);
+  state.cat = { lap: { staffId: s.id, weeks: int(state, 2, 4) } };
+  events.push({ type: 'catLap', staffId: s.id, name: s.name });
+}
+
 /** Boosts only count down while a game is being made. */
 function tickBoosts(state: GameState) {
   if (!state.boosts) return;
@@ -208,7 +276,7 @@ export function availableSizes(state: GameState) {
 }
 
 export function availableMarketing(state: GameState) {
-  return MARKETING.filter((m) => !m.research || hasResearch(state, m.research));
+  return MARKETING.filter((m) => (!m.research || hasResearch(state, m.research)) && (!m.fromYear || yearOf(state.week) >= m.fromYear));
 }
 
 export interface CostBreakdown {
@@ -220,14 +288,13 @@ export interface CostBreakdown {
 
 export function gameCost(state: GameState, spec: Pick<GameSpec, 'platform' | 'size' | 'marketing'>): CostBreakdown {
   const license = state.licenses.includes(spec.platform) ? 0 : platformById(spec.platform).license;
-  const size = sizeById(spec.size).cost;
-  const marketing = marketingById(spec.marketing).cost;
+  const size = sizeCost(state, spec.size);
+  const marketing = marketingCost(state, spec.marketing);
   return { license, size, marketing, total: license + size + marketing };
 }
 
 export function salaryFor(state: GameState, design: number, tech: number): number {
-  const years = yearFraction(state.week) - START_YEAR;
-  return Math.round(((800 + (design + tech) * 350) * (1 + 0.03 * years)) / 50) * 50;
+  return Math.round(((800 + (design + tech) * 350) * priceIndex(state.week)) / 50) * 50;
 }
 
 // ---------------------------------------------------------------------------
@@ -361,6 +428,7 @@ export function fire(state: GameState, staffId: number): string | null {
   if (!s) return 'Staff member not found.';
   if (s.founder) return "You can't fire yourself.";
   state.staff = state.staff.filter((x) => x.id !== staffId);
+  if (state.cat?.lap?.staffId === staffId) state.cat = { cooldown: CAT_COOLDOWN_WEEKS };
   notify(state, `${s.name} left the studio.`, 'info');
   return null;
 }
@@ -386,8 +454,9 @@ export function train(state: GameState, staffId: number, skill: 'design' | 'tech
 export function upgradeOffice(state: GameState): string | null {
   const next = OFFICES[state.officeLevel + 1];
   if (!next) return 'You already have the biggest office.';
-  if (state.cash < next.cost) return `Moving costs $${next.cost.toLocaleString('en-US')}.`;
-  state.cash -= next.cost;
+  const cost = officeCost(state, state.officeLevel + 1);
+  if (state.cash < cost) return `Moving costs $${cost.toLocaleString('en-US')}.`;
+  state.cash -= cost;
   state.officeLevel++;
   notify(state, `Moved into a ${next.name}! Room for ${next.capacity} people.`, 'good');
   return null;
@@ -412,7 +481,7 @@ export function releaseGame(state: GameState): ReleaseReport | string {
   const original = p.sequelOf !== undefined ? state.released.find((g) => g.id === p.sequelOf) : undefined;
   // A sequel sells to the original's fans (or suffers from its reputation).
   const sequelMult = original ? sequelSalesMult(original) : 1;
-  const audience = (users * 1e6 * 0.0008 + 3000) * sf * platformGenreFit(platform, p.genre) * size.unitMult * market.salesMult;
+  const audience = (reachableUsers(users) * 1e6 * 0.0008 + 3000) * sf * platformGenreFit(platform, p.genre) * size.unitMult * market.salesMult;
   const fanBuyers = state.fans * 0.2 * (score / 10) * Math.sqrt(size.unitMult);
   const targetUnits = Math.round((audience * range(state, 0.85, 1.15) + fanBuyers) * sequelMult);
   const unitPrice = size.price * platform.priceMult * (1 + 0.025 * years);
@@ -557,6 +626,7 @@ export function tick(state: GameState): SimEvent[] {
     }
   }
 
+  tickCat(state, events);
   tickSales(state);
 
   if (state.week % WEEKS_PER_MONTH === 0) monthly(state);
@@ -583,7 +653,7 @@ function tickProject(state: GameState, p: GameProject, events: SimEvent[]) {
     p.polishWeeks++;
     if ((p.polishMode ?? 'bugs') === 'bugs') {
       // The team squashes bugs, one whole bug at a time, at least one per week.
-      const fixPower = state.staff.reduce((a, s) => a + s.tech * s.speed, 0) * (hasResearch(state, 'qa2') ? 0.75 : 0.5);
+      const fixPower = state.staff.reduce((a, s) => a + s.tech * s.speed * catBoost(state, s.id), 0) * (hasResearch(state, 'qa2') ? 0.75 : 0.5);
       const fixed = Math.min(p.bugs, Math.max(1, Math.round(fixPower * range(state, 0.8, 1.2))));
       p.bugs -= fixed;
       events.push({ type: 'points', design: 0, tech: 0, bugs: -fixed });
@@ -604,8 +674,8 @@ function tickProject(state: GameState, p: GameProject, events: SimEvent[]) {
       s.zone = int(state, 2, 3);
       events.push({ type: 'zone', staffId: s.id, name: s.name });
     }
-    // In the zone: much more output, and focused work makes fewer bugs.
-    const boost = s.zone ? ZONE_BOOST : 1;
+    // In the zone: much more output, and focused work makes fewer bugs. A cat on the lap helps too.
+    const boost = (s.zone ? ZONE_BOOST : 1) * catBoost(state, s.id);
     const pts = staffWeeklyPoints(state, s, p.phase, p.focus[p.phase]);
     const c = (p.contrib[s.id] ??= { design: 0, tech: 0 });
     pts.forEach((a, i) => {
@@ -665,7 +735,7 @@ function polishPoints(state: GameState, p: GameProject, kind: 'design' | 'tech',
   let raw = 0;
   for (const s of state.staff) {
     const skill = kind === 'design' ? s.design * designMultiplier(state) : s.tech * techMultiplier(state);
-    raw += skill * s.speed * mult;
+    raw += skill * s.speed * mult * catBoost(state, s.id);
   }
   const gain = wholeNumber(state, raw);
   const bugs = wholeNumber(state, raw * 0.06 * bugMultiplier(state) * range(state, 0.6, 1.4));
@@ -736,6 +806,8 @@ function monthly(state: GameState) {
 
 function yearly(state: GameState) {
   const year = yearOf(state.week);
+  // Yearly pay review: salaries keep up with the market rate for each person's skills.
+  for (const s of state.staff) if (!s.founder) s.salary = Math.max(s.salary, salaryFor(state, s.design, s.tech));
   for (const p of PLATFORMS) {
     if (p.start === year) notify(state, `New platform: the ${p.name} (${p.kind}) has launched!`, 'good');
     if (p.end === year) notify(state, `The ${p.name} has been discontinued.`, 'info');
@@ -757,8 +829,10 @@ const CONTRACT_TEMPLATES = [
 ];
 const BUSINESSES = ['bakery', 'bank', 'car dealer', 'museum', 'pizza chain', 'school', 'gym', 'airline'];
 
+/** Contract pay covers this multiple of the studio's running costs for the contract's weeks. */
+const CONTRACT_MARGIN = 1.3;
+
 function refreshContracts(state: GameState) {
-  const years = yearFraction(state.week) - START_YEAR;
   const platforms = availablePlatforms(state);
   state.contractOffers = [0, 1, 2].map(() => {
     const weeks = int(state, 2, 6);
@@ -766,7 +840,8 @@ function refreshContracts(state: GameState) {
       .replace('{biz}', pick(state, BUSINESSES))
       .replace('{topic}', topicById(pick(state, state.topics)).name)
       .replace('{platform}', pick(state, platforms).name);
-    const pay = Math.round((weeks * (2500 + years * 600) * range(state, 0.8, 1.3) * (1 + 0.25 * (state.staff.length - 1))) / 100) * 100;
+    // Contracts pay the bills with a little to spare: a safety net, not a way to get rich.
+    const pay = friendly(weeks * ((monthlyCosts(state) / WEEKS_PER_MONTH) * CONTRACT_MARGIN + 500 * priceIndex(state.week)) * range(state, 0.85, 1.2));
     const offer: ContractOffer = { id: state.nextId++, title, weeks, pay, rp: Math.max(1, Math.round(weeks * 0.6 * range(state, 0.7, 1.4))) };
     return offer;
   });

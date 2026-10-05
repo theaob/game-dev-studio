@@ -24,7 +24,11 @@ import {
 import { yearFraction } from './time';
 import type { GameSpec, GameState, ReleaseReport } from './types';
 
-export type BotStyle = 'smart' | 'naive';
+/**
+ * smart: plays well. naive: careless solo developer. eager: grows like the smart
+ * bot (hires, upgrades, big budgets) but designs games carelessly.
+ */
+export type BotStyle = 'smart' | 'naive' | 'eager';
 
 function smartFocus(genre: string, phase: number): number[] {
   const imp = genreById(genre).importance.slice(phase * 3, phase * 3 + 3);
@@ -38,7 +42,7 @@ export function botTurn(state: GameState, style: BotStyle, reports: ReleaseRepor
     if (act.awaitingFocus) setPhaseFocus(state, style === 'smart' ? smartFocus(act.genre, act.phase) : [50, 50, 50]);
     if (act.phase >= 3) {
       const total = act.design + act.tech;
-      const done = style === 'naive' || act.bugs / total < 0.015 || act.polishWeeks >= 6;
+      const done = style !== 'smart' || act.bugs / total < 0.015 || act.polishWeeks >= 6;
       if (done) {
         const r = releaseGame(state);
         if (typeof r !== 'string') reports.push(r);
@@ -47,7 +51,7 @@ export function botTurn(state: GameState, style: BotStyle, reports: ReleaseRepor
     return;
   }
 
-  if (style === 'smart') {
+  if (style !== 'naive') {
     for (const r of [...RESEARCH.map((x) => x.id), ...TOPICS.map((t) => t.id)]) {
       if (!researchBlocker(state, r)) doResearch(state, r);
     }
@@ -71,7 +75,7 @@ export function botTurn(state: GameState, style: BotStyle, reports: ReleaseRepor
     return;
   }
 
-  const spec = style === 'smart' ? smartSpec(state) : naiveSpec(state);
+  const spec = style === 'smart' ? smartSpec(state) : style === 'eager' ? eagerSpec(state) : naiveSpec(state);
   if (!spec) {
     if (state.contractOffers.length) startContract(state, state.contractOffers[0].id);
     return;
@@ -115,6 +119,24 @@ function naiveSpec(state: GameState): GameSpec | null {
   const genre = GENRES[(n * 3) % GENRES.length].id;
   const spec: GameSpec = { name: `Game ${n + 1}`, topic, genre, platform: 'pc', size: 'small', marketing: 'none' };
   return gameCost(state, spec).total <= state.cash ? spec : null;
+}
+
+/** Big, well-marketed games on the biggest platform, but with whatever topic and genre comes to mind. */
+function eagerSpec(state: GameState): GameSpec | null {
+  const n = state.released.length;
+  const year = yearFraction(state.week);
+  const topic = state.topics[(n * 7) % state.topics.length];
+  const genre = GENRES[(n * 3) % GENRES.length].id;
+  const platform = [...availablePlatforms(state)].sort((a, b) => platformUsers(b, year) - platformUsers(a, year))[0];
+  const sizes = availableSizes(state).filter((s) => state.staff.length >= s.minStaff).reverse();
+  const marketing = [...availableMarketing(state)].reverse();
+  for (const size of sizes) {
+    for (const m of marketing) {
+      const spec: GameSpec = { name: `Game ${n + 1}`, topic, genre, platform: platform.id, size: size.id, marketing: m.id };
+      if (gameCost(state, spec).total <= state.cash - monthlyCosts(state) * 2) return spec;
+    }
+  }
+  return null;
 }
 
 export function playThrough(state: GameState, style: BotStyle, maxWeeks = Infinity) {

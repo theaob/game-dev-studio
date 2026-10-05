@@ -28,6 +28,7 @@ import type { GameProject, GameSpec, GameState, ReleaseReport } from '../core/ty
 import { esc, money, num, scoreClass } from './format';
 import type { StoreItem } from '../core/data';
 import { polishPicker } from './views';
+import { marketingCost, sizeCost } from '../core/economy';
 
 export type Sheet =
   | { kind: 'welcome'; name: string }
@@ -104,6 +105,7 @@ function help(): string {
       <p><b>Set the focus.</b> Development has 3 phases with 3 areas each. Put your team's effort where the genre needs it. Reviews reveal what matters.</p>
       <p><b>Design vs Tech.</b> Every genre has a sweet spot between creative (design) and technical (tech) points.</p>
       <p><b>Polish.</b> After development you can keep polishing before you release: fix bugs (they hurt reviews), or add more design or tech points to fix the game's balance. Design and tech polishing gives less each week.</p>
+      <p><b>The cat.</b> Sometimes the studio cat curls up on a developer's lap, and they work 30% faster while it stays. You can carry the cat over and drop it on someone too, but it needs some alone time between laps.</p>
       <p><b>Store.</b> Spend cash on power-ups: boosts like an espresso bar or pizza night last a few weeks of development, and studio upgrades help forever. Find it next to Contracts, or tap ⚡ Boost while making a game.</p>
       <p><b>Raise the bar.</b> Players expect each game to beat your last one, and the industry keeps moving. Grow your team, train them and research better tech.</p>
       <p><b>Stay solvent.</b> Rent and salaries are paid monthly. Three months in the red and you're bankrupt. Contract work pays the bills.</p>
@@ -283,7 +285,7 @@ function newGameStep2(state: GameState, d: GameSpec, error?: string): string {
         .map(
           (s) => `
         <button class="option ${d.size === s.id ? 'on' : ''}" data-action="pick-size" data-arg="${s.id}">
-          <span class="grow"><b>${s.name}</b><br/><span class="sub">${s.phaseWeeks * 3} weeks · ${s.cost ? money(s.cost) : 'no extra cost'} · ${s.minStaff > 1 ? `best with ${s.minStaff}+ staff` : 'solo friendly'}</span></span>
+          <span class="grow"><b>${s.name}</b><br/><span class="sub">${s.phaseWeeks * 3} weeks · ${money(sizeCost(state, s.id))} · ${s.minStaff > 1 ? `best with ${s.minStaff}+ staff` : 'solo friendly'}</span></span>
         </button>`,
         )
         .join('')}
@@ -295,7 +297,7 @@ function newGameStep2(state: GameState, d: GameSpec, error?: string): string {
             .map(
               (m) => `
         <button class="option ${d.marketing === m.id ? 'on' : ''}" data-action="pick-marketing" data-arg="${m.id}">
-          <span class="grow"><b>${m.name}</b><br/><span class="sub">${m.cost ? `${money(m.cost)} · ` : ''}${m.salesMult > 1 ? `+${Math.round((m.salesMult - 1) * 100)}% sales` : 'word of mouth only'}</span></span>
+          <span class="grow"><b>${m.name}</b><br/><span class="sub">${m.cost ? `${money(marketingCost(state, m.id))} · ` : ''}${m.salesMult > 1 ? `+${Math.round((m.salesMult - 1) * 100)}% sales` : 'word of mouth only'}</span></span>
         </button>`,
             )
             .join('')}</div>`

@@ -208,9 +208,9 @@ export interface SizeDef {
 }
 
 export const SIZES: SizeDef[] = [
-  { id: 'small', name: 'Small', phaseWeeks: 3, cost: 0, unitMult: 1, price: 9, minStaff: 1 },
-  { id: 'medium', name: 'Medium', phaseWeeks: 6, cost: 25000, unitMult: 1.9, price: 15, minStaff: 2, research: 'size_medium' },
-  { id: 'large', name: 'Large', phaseWeeks: 10, cost: 120000, unitMult: 3.4, price: 24, minStaff: 5, research: 'size_large' },
+  { id: 'small', name: 'Small', phaseWeeks: 3, cost: 8000, unitMult: 1, price: 9, minStaff: 1 },
+  { id: 'medium', name: 'Medium', phaseWeeks: 6, cost: 40000, unitMult: 1.9, price: 15, minStaff: 2, research: 'size_medium' },
+  { id: 'large', name: 'Large', phaseWeeks: 10, cost: 160000, unitMult: 3.4, price: 24, minStaff: 5, research: 'size_large' },
 ];
 
 export function sizeById(id: SizeId): SizeDef {
@@ -223,12 +223,15 @@ export interface MarketingDef {
   cost: number;
   salesMult: number;
   research?: string;
+  /** First year it's on offer (TV and web advertising arrive later). */
+  fromYear?: number;
 }
 
 export const MARKETING: MarketingDef[] = [
   { id: 'none', name: 'No marketing', cost: 0, salesMult: 1 },
   { id: 'ads', name: 'Magazine ads', cost: 20000, salesMult: 1.3, research: 'marketing' },
   { id: 'campaign', name: 'Big campaign', cost: 150000, salesMult: 1.75, research: 'marketing' },
+  { id: 'global', name: 'Global TV & web campaign', cost: 600000, salesMult: 2.4, research: 'marketing', fromYear: 1998 },
 ];
 
 export function marketingById(id: MarketingId): MarketingDef {

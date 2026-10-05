@@ -1,6 +1,6 @@
 export type GenreId = 'action' | 'adventure' | 'rpg' | 'simulation' | 'strategy' | 'puzzle' | 'casual';
 export type SizeId = 'small' | 'medium' | 'large';
-export type MarketingId = 'none' | 'ads' | 'campaign';
+export type MarketingId = 'none' | 'ads' | 'campaign' | 'global';
 
 export interface Staff {
   id: number;
@@ -137,6 +137,14 @@ export interface GameState {
   boosts?: Partial<Record<string, number>>;
   /** Permanent store upgrades bought. */
   upgrades?: string[];
+  /** The studio cat: whose lap it's on (boosting them), and how long until it wants another lap. */
+  cat?: CatState;
+}
+
+export interface CatState {
+  lap?: { staffId: number; weeks: number };
+  /** Weeks of alone time left before the cat will sit on a lap again. */
+  cooldown?: number;
 }
 
 /** Insight lines shown after a release. */
@@ -153,4 +161,6 @@ export type SimEvent =
   | { type: 'devComplete' }
   | { type: 'contractDone'; offer: ContractOffer }
   | { type: 'notice'; notice: Notice }
-  | { type: 'gameOver'; reason: 'bankrupt' | 'retired' };
+  | { type: 'gameOver'; reason: 'bankrupt' | 'retired' }
+  | { type: 'catLap'; staffId: number; name: string }
+  | { type: 'catLeft'; staffId: number };

@@ -2,9 +2,11 @@ import { OFFICES, PHASES, RESEARCH, STORE, TOPICS, genreById, platformById, size
 import {
   SALES_WEEKS,
   boostWeeks,
+  catLapStaff,
   monthlyCosts,
   officeCapacity,
   polishYield,
+  staffSalary,
   researchBlocker,
   researchCost,
   trainingCost,
@@ -12,6 +14,7 @@ import {
 import { formatDate, formatShortDate } from '../core/time';
 import type { GameProject, GameState, PolishMode, ReleasedGame, Staff } from '../core/types';
 import { esc, money, num, scoreClass } from './format';
+import { officeCost, officeRent } from '../core/economy';
 
 export type Tab = 'studio' | 'games' | 'research' | 'staff' | 'news';
 export const SPEEDS = [0, 1, 2, 4];
@@ -146,6 +149,11 @@ function activeBoosts(state: GameState): string {
   const chips = STORE.filter((x) => x.kind === 'boost' && boostWeeks(state, x.id) > 0).map(
     (x) => `<span class="boost-chip" title="${x.name}">${x.icon} ${boostWeeks(state, x.id)}w</span>`,
   );
+  const lap = catLapStaff(state);
+  if (lap && state.cat?.lap) {
+    const who = lap.name === 'You' ? 'You' : lap.name.split(' ')[0];
+    chips.push(`<span class="boost-chip" title="The cat is on ${esc(lap.name)}'s lap: +30% output">🐈 ${esc(who)} ${state.cat.lap.weeks}w</span>`);
+  }
   return chips.length ? `<div class="boost-chips">${chips.join('')}</div>` : '';
 }
 
@@ -280,14 +288,14 @@ export function renderStaff(state: GameState): string {
     <div class="row">
       <div class="grow">
         <div class="card-title">${office.name}</div>
-        <div class="sub">${state.staff.length} / ${office.capacity} people · rent ${money(office.rent)}/mo</div>
+        <div class="sub">${state.staff.length} / ${office.capacity} people · rent ${money(officeRent(state, state.officeLevel))}/mo</div>
         <div class="sub">Monthly costs: <b>${money(monthlyCosts(state))}</b></div>
       </div>
     </div>
     ${
       next
-        ? `<div class="btn-row"><button class="btn ghost" data-action="office" ${state.cash < next.cost ? 'disabled' : ''}>Move to ${next.name} · ${money(next.cost)}</button></div>
-           <div class="sub mt">${next.name}: room for ${next.capacity}, rent ${money(next.rent)}/mo.</div>`
+        ? `<div class="btn-row"><button class="btn ghost" data-action="office" ${state.cash < officeCost(state, state.officeLevel + 1) ? 'disabled' : ''}>Move to ${next.name} · ${money(officeCost(state, state.officeLevel + 1))}</button></div>
+           <div class="sub mt">${next.name}: room for ${next.capacity}, rent ${money(officeRent(state, state.officeLevel + 1))}/mo.</div>`
         : ''
     }
   </div>
@@ -323,7 +331,7 @@ function staffRow(state: GameState, s: Staff): string {
     <div class="emoji">${s.founder ? '😎' : '🧑‍💻'}</div>
     <div class="grow">
       <div class="name">${esc(s.name)}${s.founder ? ' <span class="tag">Founder</span>' : ''}</div>
-      <div class="sub">${s.founder ? 'No salary' : `${money(s.salary)}/mo`} · speed ${s.speed.toFixed(1)}x</div>
+      <div class="sub">${s.founder ? `Founder · ${money(staffSalary(state, s))}/mo` : `${money(s.salary)}/mo`} · speed ${s.speed.toFixed(1)}x</div>
       ${skillBars(s)}
       <div class="btn-row" style="margin-top:10px">
         <button class="btn small ghost" data-action="train" data-arg="${s.id}:design" ${s.design >= 10 || state.rp < d.rp || state.cash < d.cash ? 'disabled' : ''}>📘 Design · ${d.rp} RP</button>

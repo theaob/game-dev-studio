@@ -352,14 +352,39 @@ interface CatState {
   /** Depth on the floor; the cat drifts back to the front strip when it walks. */
   z?: number;
   dir: 1 | -1;
-  /** held: dangling by the scruff from the player's finger; falling: just let go. */
-  mode: 'walk' | 'sit' | 'sleep' | 'held' | 'falling';
+  /**
+   * held: dangling by the scruff from the player's finger; falling: just let go;
+   * jump: hopping on or off a lap or desk; lap: curled up on someone's lap (the
+   * game decides whose); perch: sitting on a computer.
+   */
+  mode: 'walk' | 'sit' | 'sleep' | 'held' | 'falling' | 'jump' | 'lap' | 'perch';
   t: number;
   target: number;
+  /** Floor point it's walking to, and what it does on arrival. */
+  tz?: number;
+  goal?: CatGoal;
+  /** Staff id whose lap it's on (lap mode) or desk index it's sitting on (perch mode). */
+  lapId?: number;
+  deskIdx?: number;
+  /** How long to stay on a computer (scene seconds). */
+  stay?: number;
+}
+
+/** What the cat is heading for. */
+type CatGoal = { kind: 'lap'; staffId: number } | { kind: 'desk'; index: number };
+
+interface CatJump {
+  from: THREE.Vector3;
+  to: THREE.Vector3;
+  t: number;
+  dur: number;
+  then: 'lap' | 'perch' | 'floor';
 }
 
 /** Where the cat is grabbed, in its own coordinates (the back of the neck). */
 const SCRUFF = new THREE.Vector3(0.17, 0.4, 0);
+/** The cat is drawn a bit larger than life so it reads on a phone screen. */
+const CAT_SCALE = 1.25;
 /** How high the cat dangles above the floor point under the finger. */
 const CARRY_HEIGHT = 0.75;
 /** How far the finger moves (px) or how long it presses (ms) before a press becomes a pick-up. */
@@ -428,12 +453,19 @@ export class Office3D implements OfficeView {
   private cat = new THREE.Group();
   private catParts: { body: THREE.Mesh; head: THREE.Group; tail: THREE.Group; legs: THREE.Mesh[] } | null = null;
   private carry: CatCarry | null = null;
+  onCatLap?: (staffId: number) => boolean;
+  onCatLeave?: () => void;
   /** Set after a pick-up so the click that follows the release isn't treated as a tap. */
   private suppressClick = false;
   /** Height of the cat while it falls after being let go. */
   private catY = 0;
   private catVy = 0;
   private catState: CatState = { x: 0, dir: 1, mode: 'sleep', t: 0, target: 0 };
+  private catJump: CatJump | null = null;
+  /** Which desk each staff member sits at. */
+  private deskOf = new Map<number, number>();
+  /** Whose lap the game says the cat is on. */
+  private lapWanted: number | undefined;
 
   // Particles
   private particles: { pos: THREE.Vector3; vel: THREE.Vector3; life: number; max: number; color: THREE.Color }[] = [];
@@ -609,6 +641,7 @@ export class Office3D implements OfficeView {
       this.zoneLight.intensity = 0;
     }
 
+    this.lapWanted = state.cat?.lap?.staffId;
     this.updateCat(tick, time, dt);
     this.updateParticles(dt);
     this.renderer.render(this.scene, this.camera);
@@ -641,6 +674,13 @@ export class Office3D implements OfficeView {
     this.desks = [];
     this.rigs.clear();
     this.walks.clear();
+    this.deskOf.clear();
+    // Desks move around: put the cat back on the floor and let it find its way again.
+    if (['lap', 'perch', 'jump'].includes(this.catState.mode)) {
+      this.catState.mode = 'sit';
+      this.catState.t = 0;
+      this.catJump = null;
+    }
     for (const l of this.lamps) this.scene.remove(l);
     this.lamps = [];
 
@@ -665,6 +705,7 @@ export class Office3D implements OfficeView {
       if (s) {
         const rig = buildRig(s);
         rig.root.position.copy(this.desks[i].seat);
+        this.deskOf.set(s.id, i);
         sitLegs(rig);
         this.world.add(rig.root);
         this.rigs.set(s.id, rig);
@@ -1268,6 +1309,7 @@ export class Office3D implements OfficeView {
       [-0.14, 0.06],
     ].map(([x, z]) => part(this.cat, 0.05, 0.14, 0.05, fur, x, 0.07, z));
     this.cat.userData.id = CAT_ID;
+    this.cat.scale.setScalar(CAT_SCALE);
     this.catParts = { body, head, tail, legs };
   }
 
@@ -1317,24 +1359,73 @@ export class Office3D implements OfficeView {
       return;
     }
 
+    if (cat.mode === 'jump' && this.catJump) {
+      this.animateJump(this.catJump, time, realDt);
+      return;
+    }
+
+    // The game decides laps: head for the right one, or hop off when it's over.
+    const want = this.lapWanted !== undefined && this.deskOf.has(this.lapWanted) ? this.lapWanted : undefined;
+    if (cat.mode === 'lap' && cat.lapId !== want) {
+      this.hopDown();
+      return;
+    }
+    if (want !== undefined && cat.mode !== 'lap') {
+      if (cat.mode === 'perch') {
+        this.hopDown();
+        return;
+      }
+      if (cat.goal?.kind !== 'lap' || cat.goal.staffId !== want) this.walkTo(this.lapApproach(want), { kind: 'lap', staffId: want });
+    }
+
+    if (cat.mode === 'lap') {
+      cat.t += dt;
+      this.cat.position.copy(this.lapSpot(cat.lapId!));
+      // Turned towards the camera.
+      this.cat.rotation.set(0, -0.7, 0);
+      this.poseUpright(parts, 'sleep', time);
+      // An occasional contented purr.
+      if (cat.t > 9) {
+        cat.t = 0;
+        this.say(CAT_ID, pickLine(['Purr…', '💤', '😽', '❤️']), 1.6);
+      }
+      return;
+    }
+    if (cat.mode === 'perch') {
+      cat.t += dt;
+      this.cat.position.copy(this.deskSpot(cat.deskIdx!));
+      this.cat.rotation.set(0, cat.dir > 0 ? 0 : Math.PI, 0);
+      this.poseUpright(parts, cat.stay! > 11 ? 'sleep' : 'sit', time);
+      if (cat.t > cat.stay!) this.hopDown();
+      return;
+    }
+
     if (dt > 0) {
       cat.t += dt;
       if (cat.mode === 'walk') {
-        cat.x += 0.45 * dt * cat.dir;
-        // Wander back towards its usual spot in front of the desks.
-        cat.z += Math.sign(b.homeZ - cat.z) * Math.min(Math.abs(b.homeZ - cat.z), 0.3 * dt);
-        if ((cat.dir > 0 && cat.x >= cat.target) || (cat.dir < 0 && cat.x <= cat.target)) {
+        const tz = cat.tz ?? b.homeZ;
+        const dx = cat.target - cat.x;
+        const dz = tz - cat.z;
+        const dist = Math.hypot(dx, dz);
+        const speed = cat.goal ? 0.9 : 0.45;
+        if (dist > 0.02) cat.dir = dx >= 0 ? 1 : -1;
+        if (dist <= speed * dt) {
           cat.x = cat.target;
-          cat.mode = Math.random() < 0.4 ? 'sleep' : 'sit';
-          cat.t = 0;
-          if (cat.mode === 'sleep' && Math.random() < 0.5) this.say(CAT_ID, '💤', 2.5);
+          cat.z = tz;
+          this.arrive();
+        } else {
+          cat.x += (dx / dist) * speed * dt;
+          cat.z += (dz / dist) * speed * dt;
         }
       } else if (cat.t > (cat.mode === 'sleep' ? 14 : 5) && Math.random() < dt * 0.5) {
-        cat.target = minX + Math.random() * (maxX - minX);
-        cat.dir = cat.target > cat.x ? 1 : -1;
-        cat.mode = 'walk';
-        cat.t = 0;
-        if (Math.random() < 0.25) this.say(CAT_ID, pickLine(['Meow', '🐟?', 'Mrrp']), 1.6);
+        // Off exploring: sometimes up onto a computer, usually just somewhere else on the floor.
+        if (this.desks.length && Math.random() < 0.3) {
+          const index = Math.floor(Math.random() * this.desks.length);
+          this.walkTo(this.deskApproach(index), { kind: 'desk', index });
+        } else {
+          this.walkTo(new THREE.Vector3(minX + Math.random() * (maxX - minX), 0, b.homeZ), undefined);
+          if (Math.random() < 0.25) this.say(CAT_ID, pickLine(['Meow', '🐟?', 'Mrrp']), 1.6);
+        }
       }
     }
     cat.x = Math.max(b.minX, Math.min(b.maxX, cat.x));
@@ -1342,6 +1433,111 @@ export class Office3D implements OfficeView {
     this.cat.position.set(cat.x, 0, cat.z);
     this.cat.rotation.set(0, cat.dir > 0 ? 0 : Math.PI, 0);
     this.poseUpright(parts, cat.mode as 'walk' | 'sit' | 'sleep', time);
+  }
+
+  // Where things are, for the cat ------------------------------------------
+
+  /**
+   * On the lap: curled across the person's thighs, half sticking out on the
+   * camera's side so it isn't hidden behind their back and the chair.
+   */
+  private lapSpot(staffId: number): THREE.Vector3 {
+    const seat = this.desks[this.deskOf.get(staffId) ?? 0].seat;
+    return new THREE.Vector3(seat.x + 0.2, 0.6, seat.z - 0.08);
+  }
+
+  private lapApproach(staffId: number): THREE.Vector3 {
+    const seat = this.desks[this.deskOf.get(staffId) ?? 0].seat;
+    return new THREE.Vector3(seat.x + 0.55, 0, seat.z + 0.15);
+  }
+
+  /** Up on a computer: on top of a warm CRT, or beside a flat screen on the desk. */
+  private deskSpot(index: number): THREE.Vector3 {
+    const d = this.desks[index].group.position;
+    return this.era === 'crt' || this.era === 'crt-mono' ? new THREE.Vector3(d.x - 0.08, 1.31, d.z - 0.22) : new THREE.Vector3(d.x + 0.58, 0.78, d.z - 0.22);
+  }
+
+  private deskApproach(index: number): THREE.Vector3 {
+    const d = this.desks[index].group.position;
+    return new THREE.Vector3(d.x + 1.0, 0, d.z + 0.2);
+  }
+
+  private walkTo(p: THREE.Vector3, goal: CatGoal | undefined) {
+    const cat = this.catState;
+    const b = this.catBounds();
+    cat.target = Math.max(b.minX, Math.min(b.maxX, p.x));
+    cat.tz = Math.max(b.minZ, Math.min(b.maxZ, p.z));
+    cat.goal = goal;
+    cat.mode = 'walk';
+    cat.t = 0;
+  }
+
+  /** Reached the end of a walk: settle down, or jump up to where it was going. */
+  private arrive() {
+    const cat = this.catState;
+    const goal = cat.goal;
+    cat.goal = undefined;
+    cat.t = 0;
+    if (goal?.kind === 'lap' && goal.staffId === this.lapWanted && this.deskOf.has(goal.staffId)) {
+      cat.lapId = goal.staffId;
+      this.startJump(this.lapSpot(goal.staffId), 'lap');
+    } else if (goal?.kind === 'desk' && this.desks[goal.index]) {
+      cat.deskIdx = goal.index;
+      this.startJump(this.deskSpot(goal.index), 'perch');
+    } else {
+      cat.mode = Math.random() < 0.4 ? 'sleep' : 'sit';
+      if (cat.mode === 'sleep' && Math.random() < 0.5) this.say(CAT_ID, '💤', 2.5);
+    }
+  }
+
+  private startJump(to: THREE.Vector3, then: CatJump['then']) {
+    const from = this.cat.position.clone();
+    this.catJump = { from, to, t: 0, dur: 0.45 + Math.min(0.3, from.distanceTo(to) * 0.15), then };
+    this.catState.mode = 'jump';
+    this.catState.dir = to.x >= from.x ? 1 : -1;
+  }
+
+  /** Jump down to the floor beside wherever it is. */
+  private hopDown() {
+    const cat = this.catState;
+    const b = this.catBounds();
+    const p = this.cat.position;
+    const to = new THREE.Vector3(Math.max(b.minX, Math.min(b.maxX, p.x + 0.55)), 0, Math.max(b.minZ, Math.min(b.maxZ, p.z + 0.35)));
+    cat.lapId = undefined;
+    cat.deskIdx = undefined;
+    this.startJump(to, 'floor');
+  }
+
+  private animateJump(j: CatJump, time: number, realDt: number) {
+    const cat = this.catState;
+    const parts = this.catParts!;
+    j.t = Math.min(1, j.t + realDt / j.dur);
+    const p = j.from.clone().lerp(j.to, j.t);
+    // A cat's hop: up in an arc, a bit higher than the higher end.
+    p.y += Math.sin(j.t * Math.PI) * (0.35 + Math.abs(j.to.y - j.from.y) * 0.3);
+    this.cat.position.copy(p);
+    this.cat.rotation.set(0, cat.dir > 0 ? 0 : Math.PI, (j.t < 0.5 ? 0.35 : -0.25) * Math.sin(j.t * Math.PI));
+    this.poseUpright(parts, 'walk', time);
+    parts.legs.forEach((l, i) => (l.rotation.z = (i < 2 ? -0.7 : 0.7) * Math.sin(j.t * Math.PI)));
+    if (j.t < 1) return;
+    this.catJump = null;
+    cat.t = 0;
+    if (j.then === 'lap' && cat.lapId !== undefined) {
+      cat.mode = 'lap';
+      const owner = this.rigs.get(cat.lapId);
+      this.say(CAT_ID, pickLine(['😽', 'Purr…', '💤']), 1.8);
+      if (owner) window.setTimeout(() => this.say(owner.id, pickLine(['Aww 😻', '🥰', 'Hi, kitty!', 'Best coworker']), 2.2), 500);
+    } else if (j.then === 'perch' && cat.deskIdx !== undefined) {
+      cat.mode = 'perch';
+      cat.stay = 6 + Math.random() * 10;
+      // Whoever sits there has opinions.
+      const ownerId = [...this.deskOf.entries()].find(([, i]) => i === cat.deskIdx)?.[0];
+      if (ownerId !== undefined) window.setTimeout(() => this.say(ownerId, pickLine(['Hey!', 'Move, cat!', '😹', 'My screen!']), 2), 400);
+    } else {
+      cat.x = j.to.x;
+      cat.z = j.to.z;
+      cat.mode = 'sit';
+    }
   }
 
   private poseUpright(parts: NonNullable<Office3D['catParts']>, mode: 'walk' | 'sit' | 'sleep', time: number) {
@@ -1405,7 +1601,7 @@ export class Office3D implements OfficeView {
     this.cat.rotation.set(sw.x, cat.dir > 0 ? 0 : Math.PI, tilt + sw.z);
     // Put the scruff exactly at the carry point.
     const grab = c.pos.clone().add(new THREE.Vector3(0, CARRY_HEIGHT, 0));
-    const offset = SCRUFF.clone().applyEuler(this.cat.rotation);
+    const offset = SCRUFF.clone().multiplyScalar(CAT_SCALE).applyEuler(this.cat.rotation);
     this.cat.position.copy(grab.sub(offset));
 
     parts.body.position.y = 0.22;
@@ -1446,7 +1642,7 @@ export class Office3D implements OfficeView {
   }
 
   private onPointerDown(e: PointerEvent) {
-    if (this.carry || this.catState.mode === 'falling') return;
+    if (this.carry || this.catState.mode === 'falling' || this.catState.mode === 'jump') return;
     this.raycaster.setFromCamera(this.ndcFor(e), this.camera);
     if (!this.raycaster.intersectObject(this.cat, true).length) return;
     const start = this.cat.position.clone();
@@ -1472,11 +1668,47 @@ export class Office3D implements OfficeView {
 
   private liftCat() {
     if (!this.carry) return;
+    const cat = this.catState;
+    // Lifting it off a lap ends the visit; off a computer, it just comes along.
+    if (cat.mode === 'lap') {
+      this.lapWanted = undefined;
+      this.onCatLeave?.();
+    }
+    cat.lapId = undefined;
+    cat.deskIdx = undefined;
+    cat.goal = undefined;
     this.carry.lifted = true;
     this.catState.mode = 'held';
     this.catState.t = 0;
     this.renderer.domElement.style.cursor = 'grabbing';
     this.say(CAT_ID, pickLine(['Mew!', '🙀', 'Mrrr?', '😿']), 1.4);
+  }
+
+  /** Someone whose chair is close to this floor point (forgiving drops on small screens). */
+  private seatNear(p: THREE.Vector3): number | undefined {
+    let best: number | undefined;
+    let bestD = 0.6;
+    for (const [id, i] of this.deskOf) {
+      const seat = this.desks[i]?.seat;
+      if (!seat || !this.rigs.has(id)) continue;
+      const d = Math.hypot(seat.x - p.x, seat.z - p.z);
+      if (d < bestD) {
+        bestD = d;
+        best = id;
+      }
+    }
+    return best;
+  }
+
+  /** The staff member under the pointer, if any. */
+  private rigUnder(e: { clientX: number; clientY: number }): number | undefined {
+    this.raycaster.setFromCamera(this.ndcFor(e), this.camera);
+    for (const hit of this.raycaster.intersectObjects([...this.rigs.values()].map((r) => r.root), true)) {
+      let o: THREE.Object3D | null = hit.object;
+      while (o && o.userData.id === undefined) o = o.parent;
+      if (o && o.userData.id !== CAT_ID) return o.userData.id as number;
+    }
+    return undefined;
   }
 
   private onPointerMove(e: PointerEvent) {
@@ -1496,8 +1728,17 @@ export class Office3D implements OfficeView {
     if (!c.lifted) return; // a quick tap: the click handler makes it purr
     this.suppressClick = true;
     window.setTimeout(() => (this.suppressClick = false), 400);
-    // Let go: drop from where it dangles, landing on the spot under the finger.
     const cat = this.catState;
+    // Dropped onto someone: the cat may agree to settle on their lap.
+    const onto = this.rigUnder(e) ?? this.seatNear(c.pos);
+    if (onto !== undefined && this.onCatLap?.(onto)) {
+      this.lapWanted = onto;
+      cat.lapId = onto;
+      cat.goal = undefined;
+      this.startJump(this.lapSpot(onto), 'lap');
+      return;
+    }
+    // Let go: drop from where it dangles, landing on the spot under the finger.
     cat.x = c.pos.x;
     cat.z = c.pos.z;
     cat.target = cat.x;
@@ -1564,7 +1805,7 @@ export class Office3D implements OfficeView {
     if (id === CAT_ID) {
       const v = new THREE.Vector3();
       this.catParts?.head.getWorldPosition(v);
-      return v.add(new THREE.Vector3(0.05, 0.25, 0));
+      return v.add(new THREE.Vector3(0.05, 0.42, 0));
     }
     const r = this.rigs.get(id);
     if (!r) return null;

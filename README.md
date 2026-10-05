@@ -13,12 +13,22 @@ The UI is laid out like a mobile game, not a web page. The office fills the scre
 - **Choose a platform**: 18 fictional platforms launch and retire over 40 years, from home computers and 8-bit consoles to handhelds, motion consoles and phones. Each has its own audience size, license cost and genre preferences.
 - **Set the focus** for each of the 3 development phases (Foundation, Content, Presentation). Each genre cares about different areas, and reviews reveal what matters.
 - **Balance design vs tech**: every genre has an ideal ratio.
-- **Watch your team work** in a 3D low-poly office (three.js) that changes as you move from the garage to the campus. Day turns to night, monitors light up faces in the dark, computers change with the decades (beige CRTs in the 80s to dual widescreens later), every desk has a personal item, and a studio cat wanders around. Tap a developer or the cat to say hi. Press and drag the cat to carry it around the room by the scruff, like a mother cat carries a kitten: it dangles and swings as you move, then lands on its feet (a little offended) wherever you let go. Every so often a developer gets **in the zone**: they glow, sparks fly, and for a few weeks they produce 1.8x as much with half the bugs. Staff chatter in speech bubbles (designers and tech folks say different things, and the whole team reacts to reviews and paydays) and wander off for coffee breaks. Breaks are just for show and don't affect output.
+- **Watch your team work** in a 3D low-poly office (three.js) that changes as you move from the garage to the campus. Day turns to night, monitors light up faces in the dark, computers change with the decades (beige CRTs in the 80s to dual widescreens later), every desk has a personal item, and a studio cat wanders around. Tap a developer or the cat to say hi. The cat climbs onto computers (on top of the warm CRTs of the early years) and, while a game is in development, now and then curls up on someone's lap for a few weeks: that developer works 30% faster while it purrs. You can drop the cat on a developer yourself, but after each visit it wants a few weeks of alone time. Press and drag the cat to carry it around the room by the scruff, like a mother cat carries a kitten: it dangles and swings as you move, then lands on its feet (a little offended) wherever you let go. Every so often a developer gets **in the zone**: they glow, sparks fly, and for a few weeks they produce 1.8x as much with half the bugs. Staff chatter in speech bubbles (designers and tech folks say different things, and the whole team reacts to reviews and paydays) and wander off for coffee breaks. Breaks are just for show and don't affect output.
 - **Polish** before you release. Fix bugs one at a time, or add more design or tech points to fix the game's balance for its genre. Design and tech polishing gives less each week, and new bugs slip in while nobody is fixing them. All points (design, tech, bugs, research) are gained in whole numbers.
 - **Reviews** from 4 outlets decide sales and fans. The bar keeps rising: the market expects each game to beat your best work.
 - **Store**: spend cash on power-ups. Boosts last a few game-development weeks: the Espresso Bar adds 20% more points, Pizza Night triples the chance of getting in the zone, and a Bug Bash fixes 40% of bugs at once. Permanent studio upgrades are Ergonomic Chairs (+5% points), Noise-cancelling Headphones (zone 50% more often) and Test Automation (15% fewer bugs). Boost prices scale with team size, and all prices rise over the years like salaries.
 - **Grow**: take contracts to pay the bills, earn research points, unlock topics, game sizes, engines and QA, hire and train staff, and move to bigger offices.
-- Monthly rent and salaries apply, and three months in the red means bankruptcy.
+- **Money**:
+  - Monthly rent and salaries apply (including a modest wage for you, the founder), and three months in the red means bankruptcy.
+  - Every game has a production budget, so a flop loses money.
+  - Prices rise about 5% a year: salaries get a yearly pay review, and rent, budgets, marketing and the Store follow suit.
+  - Bigger platforms sell more games, but crowded markets mean sales grow slower than player numbers.
+  - Contracts cover your running costs with a little to spare: a safety net, not a way to get rich.
+  - Late in the game a Global TV & web campaign (from 1998) gives big studios something big to spend on.
+  - The money curve is tuned with `scripts/balance.test.ts` (prints year-by-year cash for many bot careers), and `src/core/economy.test.ts` keeps it on target:
+    - good studios get rich (but not absurdly);
+    - careless studios that expand go bankrupt;
+    - careless solo developers stay small.
 
 The game autosaves to local storage every in-game month.
 
@@ -63,6 +73,7 @@ If anything is missing, the deploy job fails straight away with a message saying
 src/core/      Pure, deterministic simulation (no DOM). Seeded RNG lives in the save.
   data.ts      Topics, genres, platforms, research, offices: all the tuning numbers
   sim.ts       Game state, weekly tick, player actions
+  economy.ts   Prices, inflation, market reach: the money model
   scoring.ts   Review score model
   bot.ts       Automated players used for tests and balancing
 src/ui/        DOM rendering: tabs, bottom sheets, game loop, animations
