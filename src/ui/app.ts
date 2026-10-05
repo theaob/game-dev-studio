@@ -2,6 +2,7 @@ import { availablePlatforms, createGame, doResearch, fire, hire, randomTitle, re
 import { normalizeFocus } from '../core/scoring';
 import type { GameSpec, GameState, GenreId, MarketingId, NoticeKind, SimEvent, SizeId } from '../core/types';
 import { clearSave, loadGame, saveGame } from '../save';
+import { OfficeScene } from './office';
 import { focusLean, renderSheet, type Sheet } from './sheets';
 import { SPEEDS, renderGames, renderNav, renderResearch, renderStaff, renderStudio, renderTopbar, type Tab } from './views';
 
@@ -21,13 +22,16 @@ export class App {
   private last = 0;
   private reviewTimer = 0;
   private html: Record<string, string> = {};
-  private els: Record<'top' | 'main' | 'nav' | 'sheet' | 'fx' | 'toasts', HTMLElement>;
+  private els: Record<'top' | 'scene' | 'main' | 'nav' | 'sheet' | 'fx' | 'toasts', HTMLElement>;
+  private office = new OfficeScene();
+  private lastDraw = 0;
 
   constructor(root: HTMLElement) {
-    root.innerHTML = `<div id="top"></div><main id="main"></main><div id="nav"></div><div id="sheet-root"></div><div id="fx"></div><div class="toasts" id="toasts"></div>`;
+    root.innerHTML = `<div id="top"></div><div id="scene" class="scene"></div><main id="main"></main><div id="nav"></div><div id="sheet-root"></div><div id="fx"></div><div class="toasts" id="toasts"></div>`;
     const $ = (id: string) => root.querySelector<HTMLElement>(`#${id}`)!;
-    this.els = { top: $('top'), main: $('main'), nav: $('nav'), sheet: $('sheet-root'), fx: $('fx'), toasts: $('toasts') };
+    this.els = { top: $('top'), scene: $('scene'), main: $('main'), nav: $('nav'), sheet: $('sheet-root'), fx: $('fx'), toasts: $('toasts') };
 
+    this.els.scene.appendChild(this.office.el);
     root.addEventListener('click', (e) => this.onClick(e));
     root.addEventListener('input', (e) => this.onInput(e));
     document.addEventListener('visibilitychange', () => {
@@ -59,6 +63,11 @@ export class App {
         this.step();
       }
     }
+    // The office animates at ~30fps while visible.
+    if (s && this.tab === 'studio' && !document.hidden && t - this.lastDraw > 32) {
+      this.lastDraw = t;
+      this.office.draw(s, t, !s.over && !this.sheet && SPEEDS[this.speed] > 0);
+    }
     requestAnimationFrame((n) => this.loop(n));
   }
 
@@ -87,6 +96,11 @@ export class App {
       case 'gameOver':
         this.save();
         this.open({ kind: 'gameOver' });
+        break;
+      case 'zone':
+        this.office.celebrate(ev.staffId);
+        this.toast(ev.name === 'You' ? "🔥 You're in the zone!" : `🔥 ${ev.name} is in the zone!`, 'good');
+        this.vibrate(25);
         break;
       case 'contractDone':
         this.vibrate(15);
@@ -121,11 +135,13 @@ export class App {
     const s = this.state;
     if (s) {
       this.set('top', renderTopbar(s, this.speed));
+      this.els.scene.hidden = this.tab !== 'studio';
       const view = { studio: renderStudio, games: renderGames, research: renderResearch, staff: renderStaff }[this.tab];
       this.set('main', view(s));
       this.set('nav', renderNav(this.tab, s));
     } else {
       this.set('top', '');
+      this.els.scene.hidden = true;
       this.set('main', '');
       this.set('nav', '');
     }

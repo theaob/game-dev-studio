@@ -11,6 +11,8 @@ export interface Staff {
   salary: number; // per month
   founder?: boolean;
   hiredWeek: number;
+  /** Weeks left "in the zone" (boosted output). Absent or 0 = normal. */
+  zone?: number;
 }
 
 export interface GameSpec {
@@ -133,6 +135,7 @@ export interface ReleaseReport {
 export type SimEvent =
   | { type: 'points'; design: number; tech: number; bugs: number }
   | { type: 'needFocus'; phase: number }
+  | { type: 'zone'; staffId: number; name: string }
   | { type: 'devComplete' }
   | { type: 'contractDone'; offer: ContractOffer }
   | { type: 'notice'; notice: Notice }

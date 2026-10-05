@@ -40,6 +40,9 @@ export const SAVE_VERSION = 1;
 export const SALES_WEEKS = 16;
 const SALES_DECAY = 0.8;
 const MAX_NOTICES = 40;
+/** Weekly chance that a developer gets in the zone, and how much more they produce while there. */
+export const ZONE_CHANCE = 0.06;
+export const ZONE_BOOST = 1.8;
 
 // ---------------------------------------------------------------------------
 // Setup
@@ -411,6 +414,7 @@ export function releaseGame(state: GameState): ReleaseReport | string {
   state.rp += rpEarned;
   state.bestPPW = Math.max(state.bestPPW, ev.ppw);
   state.released.push(game);
+  for (const s of state.staff) s.zone = 0;
   state.activity = null;
   notify(state, `${game.name} released to an average score of ${score.toFixed(1)}.`, score >= 7 ? 'good' : score < 5 ? 'bad' : 'info');
   return { game, insights, rpEarned };
@@ -486,20 +490,29 @@ function tickProject(state: GameState, p: GameProject, events: SimEvent[]) {
   let design = 0;
   let tech = 0;
   const noise = range(state, 0.85, 1.15);
+  let bugWeight = 0;
   for (const s of state.staff) {
+    if (!s.zone && random(state) < ZONE_CHANCE) {
+      s.zone = int(state, 2, 3);
+      events.push({ type: 'zone', staffId: s.id, name: s.name });
+    }
+    // In the zone: much more output, and focused work makes fewer bugs.
+    const boost = s.zone ? ZONE_BOOST : 1;
     const pts = staffWeeklyPoints(state, s, p.phase, p.focus[p.phase]);
     const c = (p.contrib[s.id] ??= { design: 0, tech: 0 });
     pts.forEach((a, i) => {
-      const d = a.design * noise;
-      const t = a.tech * noise;
+      const d = a.design * noise * boost;
+      const t = a.tech * noise * boost;
       design += d;
       tech += t;
+      bugWeight += (d + t) * (s.zone ? 0.5 : 1);
       c.design += d;
       c.tech += t;
       p.areaPoints[p.phase * 3 + i] += d + t;
     });
+    if (s.zone) s.zone--;
   }
-  const bugs = (design + tech) * 0.12 * bugMultiplier(state) * range(state, 0.6, 1.4);
+  const bugs = bugWeight * 0.12 * bugMultiplier(state) * range(state, 0.6, 1.4);
   p.design += design;
   p.tech += tech;
   p.bugs += bugs;

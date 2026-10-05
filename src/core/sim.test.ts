@@ -148,3 +148,23 @@ describe('balance (bot playthroughs)', () => {
     expect(avg).toBeLessThan(6);
   });
 });
+
+describe('in the zone', () => {
+  it('sometimes boosts developers during a project and clears after release', () => {
+    const s = createGame('Zone', 11);
+    startGame(s, spec, [10, 30, 60]);
+    let zoned = 0;
+    for (let i = 0; i < 400 && s.activity; i++) {
+      const p = s.activity;
+      if (p.kind === 'game' && p.awaitingFocus) setPhaseFocus(s, [33, 33, 33]);
+      if (p.kind === 'game' && p.phase >= 3) {
+        releaseGame(s);
+        if (s.released.length < 8) startGame(s, { ...spec, name: `G${s.released.length}`, topic: s.released.length % 2 ? 'scifi' : 'fantasy' }, [33, 33, 33]);
+        continue;
+      }
+      zoned += tick(s).filter((e) => e.type === 'zone').length;
+    }
+    expect(zoned).toBeGreaterThan(0);
+    expect(s.staff.every((x) => !x.zone)).toBe(true);
+  });
+});

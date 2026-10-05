@@ -157,6 +157,29 @@ button {
   color: #fff;
 }
 
+/* ---------- Office scene ---------- */
+
+.scene {
+  padding: 0 16px;
+}
+
+.scene[hidden] {
+  display: none;
+}
+
+.office {
+  display: block;
+  width: 100%;
+  border-radius: var(--radius);
+  background: var(--card);
+  image-rendering: pixelated;
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.scene + main {
+  padding-top: 12px;
+}
+
 /* ---------- Main ---------- */
 
 main {
