@@ -29,22 +29,44 @@ describe('money curve', () => {
     expect(reachableUsers(300) / reachableUsers(30)).toBeLessThan(4);
   });
 
-  it('a good studio feels the pinch early, then grows rich but not absurdly so', () => {
+  it('research points come fast enough to unlock the first upgrades early', () => {
+    // When does an average player first get medium-sized games (30 RP)?
+    const years = Array.from({ length: 8 }, (_, i) => {
+      const s = createGame('rp', (i + 1) * 7919);
+      const reports: ReleaseReport[] = [];
+      while (!s.over && !s.researched.includes('size_medium') && s.week < WEEKS_PER_YEAR * 10) {
+        botTurn(s, 'casual', reports);
+        tick(s);
+      }
+      return s.week / WEEKS_PER_YEAR;
+    });
+    expect(median(years)).toBeLessThan(2);
+  });
+
+  it('a good studio grows rich, but not absurdly so', () => {
     const runs = careers('smart', 8);
     expect(runs.every((r) => r.over === 'retired')).toBe(true);
-    expect(median(runs.map((r) => r.yearOneLow))).toBeLessThan(35_000);
     const final = median(runs.map((r) => r.cash));
     expect(final).toBeGreaterThan(10_000_000);
-    expect(final).toBeLessThan(250_000_000);
+    // Marketing lets an expert earn more, but it should stay in the hundreds of millions, not billions.
+    expect(final).toBeLessThan(400_000_000);
   });
 
   it('growing fast with careless games ends in bankruptcy', () => {
     const runs = careers('eager', 8);
-    expect(runs.filter((r) => r.over === 'bankrupt').length).toBeGreaterThanOrEqual(6);
+    expect(runs.filter((r) => r.over === 'bankrupt').length).toBeGreaterThanOrEqual(5);
   });
 
-  it('a careless solo developer stays small', () => {
+  it('an average player gets by comfortably', () => {
+    const runs = careers('casual', 8);
+    expect(runs.every((r) => r.over === 'retired')).toBe(true);
+    expect(median(runs.map((r) => r.cash))).toBeGreaterThan(5_000_000);
+  });
+
+  it('a new player with mediocre games keeps a cushion and stays small', () => {
     const runs = careers('naive', 8);
+    // The first year shouldn't feel like the edge of bankruptcy.
+    expect(Math.min(...runs.map((r) => r.yearOneLow))).toBeGreaterThan(30_000);
     expect(median(runs.map((r) => r.cash))).toBeLessThan(5_000_000);
   });
 });

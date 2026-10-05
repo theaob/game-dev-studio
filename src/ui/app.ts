@@ -1,5 +1,6 @@
-import { availablePlatforms, createGame, doResearch, fire, hire, randomTitle, buyStoreItem, catLeaveLap, placeCatOnLap, releaseGame, setPhaseFocus, setPolishMode, startContract, startGame, tick, train, upgradeOffice, validateGame } from '../core/sim';
+import { availablePlatforms, createGame, doResearch, fire, hire, randomTitle, bookBooth, buyStoreItem, catLeaveLap, pushSales, runPromo, placeCatOnLap, releaseGame, setPhaseFocus, setPolishMode, startContract, startGame, tick, train, upgradeOffice, validateGame } from '../core/sim';
 import { storeItemById } from '../core/data';
+import type { BoothId, PromoId, SalesPushId } from '../core/marketing';
 import { normalizeFocus } from '../core/scoring';
 import { sequelName } from '../core/sequels';
 import type { GameSpec, GameState, GenreId, MarketingId, NoticeKind, PolishMode, SimEvent, SizeId } from '../core/types';
@@ -41,7 +42,7 @@ export class App {
   /** Values currently shown in the top bar; they glide towards the real ones. */
   private shownStats: Record<StatKey, number> | null = null;
   private lastStats: Record<StatKey, number> | null = null;
-  /** Identifies the newest notice the player has seen on the News tab. */
+  /** Identifies the newest headline the player has seen on the News tab. */
   private newsSeen = '';
   private lastDraw = 0;
 
@@ -333,20 +334,21 @@ export class App {
     };
   }
 
-  private noticeKey(i: number): string {
-    const n = this.state?.notices[i];
-    return n ? `${n.week}|${n.text}` : '';
+  /** Identifies a headline on the News tab. */
+  private headlineKey(i: number): string {
+    const h = this.state?.industry?.headlines[i];
+    return h ? `${h.week}|${h.text}` : '';
   }
 
   private markNewsRead() {
-    if (this.state) this.newsSeen = this.noticeKey(this.state.notices.length - 1);
+    const n = this.state?.industry?.headlines.length ?? 0;
+    if (this.state) this.newsSeen = this.headlineKey(n - 1);
   }
 
   private unreadNews(): number {
-    const s = this.state;
-    if (!s) return 0;
-    for (let i = s.notices.length - 1; i >= 0; i--) if (this.noticeKey(i) === this.newsSeen) return s.notices.length - 1 - i;
-    return s.notices.length;
+    const list = this.state?.industry?.headlines ?? [];
+    for (let i = list.length - 1; i >= 0; i--) if (this.headlineKey(i) === this.newsSeen) return list.length - 1 - i;
+    return Math.min(list.length, 9);
   }
 
   private save() {
@@ -620,6 +622,24 @@ export class App {
       case 'store':
         this.open({ kind: 'store' });
         return;
+      case 'marketing':
+        this.open({ kind: 'marketing' });
+        return;
+      case 'promo':
+      case 'booth':
+      case 'push': {
+        const err =
+          name === 'promo'
+            ? runPromo(s, arg as PromoId)
+            : name === 'booth'
+              ? bookBooth(s, arg as BoothId)
+              : pushSales(s, Number(arg.split(':')[0]), arg.split(':')[1] as SalesPushId);
+        if (report(err)) {
+          this.office.cheer(name === 'push' ? ['📈', 'Sales!', '💸'] : name === 'booth' ? ['🎪', 'Expo!', '🤩'] : ['📣', 'Hype!', '🔥']);
+          if (sheet?.kind === 'marketing') this.renderSheet();
+        }
+        return;
+      }
       case 'buy': {
         const item = storeItemById(arg);
         const bugsBefore = s.activity?.kind === 'game' ? s.activity.bugs : 0;
@@ -685,7 +705,7 @@ export class App {
       // New game wizard
       case 'random-name':
         if (sheet?.kind === 'newGame') {
-          if (sheet.draft.genre) sheet.draft.name = randomTitle(sheet.draft.genre, sheet.draft.name);
+          if (sheet.draft.genre) sheet.draft.name = randomTitle(sheet.draft.genre, sheet.draft.name, sheet.draft.topic || undefined);
           sheet.nameEdited = false;
           this.renderSheet();
         }
@@ -701,7 +721,7 @@ export class App {
             d.name = sequelName(original);
           } else if (d.sequelOf !== undefined) {
             d.sequelOf = undefined;
-            d.name = d.genre ? randomTitle(d.genre) : '';
+            d.name = d.genre ? randomTitle(d.genre, undefined, d.topic || undefined) : '';
             sheet.nameEdited = false;
           }
           sheet.error = undefined;
@@ -717,10 +737,14 @@ export class App {
           const d = sheet.draft;
           if (name === 'pick-genre') {
             // The title is chosen after the genre: suggest one that fits, unless the player wrote their own.
-            if (d.genre !== arg && !sheet.nameEdited) d.name = randomTitle(arg as GenreId);
+            if (d.genre !== arg && !sheet.nameEdited) d.name = randomTitle(arg as GenreId, undefined, d.topic || undefined);
             d.genre = arg as GenreId;
           }
-          if (name === 'pick-topic') d.topic = arg;
+          if (name === 'pick-topic') {
+            // ...and it picks up the topic too, once there's a genre to go with it.
+            if (d.topic !== arg && d.genre && !sheet.nameEdited) d.name = randomTitle(d.genre, d.name, arg);
+            d.topic = arg;
+          }
           if (name === 'pick-platform') d.platform = arg;
           if (name === 'pick-size') d.size = arg as SizeId;
           if (name === 'pick-marketing') d.marketing = arg as MarketingId;

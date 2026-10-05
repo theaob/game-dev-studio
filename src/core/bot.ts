@@ -7,13 +7,16 @@ import {
   availableMarketing,
   availablePlatforms,
   availableSizes,
+  bookBooth,
   doResearch,
   gameCost,
   hire,
   monthlyCosts,
   officeCapacity,
+  pushSales,
   releaseGame,
   researchBlocker,
+  runPromo,
   setPhaseFocus,
   startContract,
   startGame,
@@ -21,14 +24,17 @@ import {
   train,
   upgradeOffice,
 } from './sim';
+import { RIVAL_CLASH_MULT, rivalClash, trendMult } from './industry';
 import { yearFraction } from './time';
 import type { GameSpec, GameState, ReleaseReport } from './types';
 
 /**
  * smart: plays well. naive: careless solo developer. eager: grows like the smart
- * bot (hires, upgrades, big budgets) but designs games carelessly.
+ * bot (hires, upgrades, big budgets) but designs games carelessly. casual: an
+ * average player: sensible but not optimal combos, even focus sliders, a little
+ * polishing, cautious hiring and no training.
  */
-export type BotStyle = 'smart' | 'naive' | 'eager';
+export type BotStyle = 'smart' | 'naive' | 'eager' | 'casual';
 
 function smartFocus(genre: string, phase: number): number[] {
   const imp = genreById(genre).importance.slice(phase * 3, phase * 3 + 3);
@@ -39,10 +45,18 @@ export function botTurn(state: GameState, style: BotStyle, reports: ReleaseRepor
   const act = state.activity;
 
   if (act?.kind === 'game') {
+    // Marketing: everyone sensible runs a preview; the smart bot hypes bigger games and goes to GameExpo.
+    if (style === 'smart' || style === 'casual') runPromo(state, 'preview');
+    if (style === 'smart' && act.size !== 'small') {
+      runPromo(state, 'trailer');
+      if (state.cash > monthlyCosts(state) * 12) runPromo(state, 'influencers');
+    }
+    if (style === 'smart' && state.cash > monthlyCosts(state) * 6) bookBooth(state, act.size === 'small' ? 'small' : 'medium');
     if (act.awaitingFocus) setPhaseFocus(state, style === 'smart' ? smartFocus(act.genre, act.phase) : [50, 50, 50]);
     if (act.phase >= 3) {
       const total = act.design + act.tech;
-      const done = style !== 'smart' || act.bugs / total < 0.015 || act.polishWeeks >= 6;
+      const done =
+        style === 'smart' ? act.bugs / total < 0.015 || act.polishWeeks >= 6 : style === 'casual' ? act.bugs / total < 0.03 || act.polishWeeks >= 2 : true;
       if (done) {
         const r = releaseGame(state);
         if (typeof r !== 'string') reports.push(r);
@@ -55,16 +69,23 @@ export function botTurn(state: GameState, style: BotStyle, reports: ReleaseRepor
     for (const r of [...RESEARCH.map((x) => x.id), ...TOPICS.map((t) => t.id)]) {
       if (!researchBlocker(state, r)) doResearch(state, r);
     }
-    for (const st of state.staff) {
-      const skill = st.design <= st.tech ? 'design' : 'tech';
-      if (state.cash > monthlyCosts(state) * 12) train(state, st.id, skill);
+    if (style !== 'casual') {
+      for (const st of state.staff) {
+        const skill = st.design <= st.tech ? 'design' : 'tech';
+        if (state.cash > monthlyCosts(state) * 12) train(state, st.id, skill);
+      }
     }
     const next = OFFICES[state.officeLevel + 1];
-    if (next && state.cash > next.cost * 2.5) upgradeOffice(state);
-    while (state.staff.length < officeCapacity(state) && state.candidates.length && state.cash > monthlyCosts(state) * 8) {
+    if (next && state.cash > next.cost * (style === 'casual' ? 3 : 2.5)) upgradeOffice(state);
+    const cushion = style === 'casual' ? 10 : 8;
+    while (state.staff.length < officeCapacity(state) && state.candidates.length && state.cash > monthlyCosts(state) * cushion) {
       const best = [...state.candidates].sort((a, b) => b.design + b.tech - (a.design + a.tech))[0];
       if (hire(state, best.id)) break;
     }
+  }
+
+  if (style === 'smart') {
+    for (const g of state.released) if (g.weeksOnMarket < 4 && g.score >= 7) pushSales(state, g.id, 'ads');
   }
 
   if (act) return;
@@ -75,7 +96,7 @@ export function botTurn(state: GameState, style: BotStyle, reports: ReleaseRepor
     return;
   }
 
-  const spec = style === 'smart' ? smartSpec(state) : style === 'eager' ? eagerSpec(state) : naiveSpec(state);
+  const spec = style === 'smart' ? smartSpec(state) : style === 'casual' ? smartSpec(state, 2, true) : style === 'eager' ? eagerSpec(state) : naiveSpec(state);
   if (!spec) {
     if (state.contractOffers.length) startContract(state, state.contractOffers[0].id);
     return;
@@ -86,24 +107,30 @@ export function botTurn(state: GameState, style: BotStyle, reports: ReleaseRepor
   }
 }
 
-function smartSpec(state: GameState): GameSpec | null {
+/** The best-selling spec it can afford; `minFit` 3 only takes great topic/genre matches, 2 takes good ones too. */
+function smartSpec(state: GameState, minFit = 3, modestAds = false): GameSpec | null {
   const year = yearFraction(state.week);
   const recent = state.released.slice(-3);
   let best: { spec: GameSpec; value: number } | null = null;
   const sizes = availableSizes(state).filter((s) => state.staff.length >= s.minStaff);
   const marketing = availableMarketing(state);
+  // An average player sizes ads to the game: none for small, magazine ads for medium, up to a big campaign for large.
+  const allowed: Record<string, string[]> = { small: ['none'], medium: ['none', 'ads'], large: ['none', 'ads', 'campaign'] };
+  const adsFor = (size: string) => (modestAds ? marketing.filter((m) => allowed[size].includes(m.id)) : marketing);
   for (const platform of availablePlatforms(state)) {
     for (const genre of GENRES) {
       for (const topic of state.topics) {
         if (recent.some((g) => g.topic === topic && g.genre === genre.id)) continue;
         const fit = topicFit(topic, genre.id);
-        if (fit < 3) continue;
+        if (fit < minFit) continue;
         for (const size of sizes) {
-          for (const m of marketing) {
+          for (const m of adsFor(size.id)) {
             const spec: GameSpec = { name: `Game ${state.released.length + 1}`, topic, genre: genre.id, platform: platform.id, size: size.id, marketing: m.id };
             const cost = gameCost(state, spec).total;
             if (cost > state.cash - monthlyCosts(state) * 4) continue;
-            const value = (platformUsers(platform, year) + 5) * platformGenreFit(platform, genre.id) * size.unitMult * m.salesMult * platform.priceMult - cost / 20000;
+            // The smart bot reads the news: it chases trends and avoids a rival's recent hit.
+            const news = modestAds ? 1 : trendMult(state, genre.id, topic) * (rivalClash(state, genre.id, topic) ? RIVAL_CLASH_MULT : 1);
+            const value = (platformUsers(platform, year) + 5) * platformGenreFit(platform, genre.id) * size.unitMult * m.salesMult * platform.priceMult * news - cost / 20000;
             if (!best || value > best.value) best = { spec, value };
           }
         }

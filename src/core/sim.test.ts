@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { GENRES, GENRE_TITLES, PLATFORMS, TOPICS, platformUsers } from './data';
+import { GENRES, GENRE_TITLES, PLATFORMS, TOPICS, TOPIC_TITLE_WORDS, platformUsers } from './data';
 import { playThrough } from './bot';
 import { benchmark, evaluate, normalizeFocus, phaseAlignment, repeatMultiplier } from './scoring';
 import { SEQUEL_TOO_SOON_MULT, sequelCandidates, sequelName, sequelSalesMult } from './sequels';
@@ -26,8 +26,14 @@ import {
   catLeaveLap,
   fire,
   placeCatOnLap,
+  bookBooth,
+  pushSales,
+  runPromo,
+  SALES_WEEKS,
 } from './sim';
-import { TOTAL_WEEKS, formatDate } from './time';
+import { TOTAL_WEEKS, WEEKS_PER_YEAR, formatDate } from './time';
+import { RIVAL_CLASH_MULT, TREND_GENRE_BONUS, TREND_TOPIC_BONUS, trendMult } from './industry';
+import { EXPO_BOOKING_WEEKS, EXPO_WEEK, HYPE_DECAY, hypeEffect } from './marketing';
 import type { GameProject, GameSpec } from './types';
 
 const spec: GameSpec = { name: 'Dragon Quest', topic: 'fantasy', genre: 'rpg', platform: 'pc', size: 'small', marketing: 'none' };
@@ -277,6 +283,25 @@ describe('sequels', () => {
 });
 
 describe('title suggestions', () => {
+  it('mention the topic once one is picked', () => {
+    for (const topic of TOPICS) {
+      const words = TOPIC_TITLE_WORDS[topic.id];
+      expect(words?.length, topic.id).toBeGreaterThan(0);
+      for (const g of GENRES) {
+        // Seeded, so the check can't fail on an unlucky streak.
+        let seed = 12345;
+        const rand = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
+        let mentions = 0;
+        for (let i = 0; i < 20; i++) {
+          const t = randomTitle(g.id, undefined, topic.id, rand);
+          expect(t).not.toMatch(/[{}]|  /);
+          if (words.some((w) => t.includes(w))) mentions++;
+        }
+        expect(mentions, `${topic.id} ${g.id}`).toBeGreaterThanOrEqual(10);
+      }
+    }
+  });
+
   it('fit the genre and change on every re-roll', () => {
     for (const g of GENRES) {
       const words = [...GENRE_TITLES[g.id].a, ...GENRE_TITLES[g.id].b];
@@ -456,5 +481,154 @@ describe('studio cat', () => {
     expect(placeCatOnLap(s, 501)).toBeNull();
     expect(fire(s, 501)).toBeNull();
     expect(s.cat?.lap).toBeUndefined();
+  });
+});
+
+describe('marketing', () => {
+  const studio = (seed: number) => {
+    const s = createGame('Hype', seed);
+    s.cash = 1e7;
+    s.staff.push({ ...s.candidates[0], id: 701, design: 6, tech: 6, speed: 1 });
+    return s;
+  };
+  const finish = (s: ReturnType<typeof createGame>) => {
+    while (s.activity?.kind === 'game' && s.activity.phase < 3) {
+      if (s.activity.awaitingFocus) setPhaseFocus(s, [33, 33, 33]);
+      tick(s);
+    }
+    const r = releaseGame(s);
+    if (typeof r === 'string') throw new Error(r);
+    return r;
+  };
+
+  it('builds hype with promos once each, in the right phase, and it fades', () => {
+    const s = studio(81);
+    startGame(s, spec, [33, 33, 33]);
+    expect(runPromo(s, 'trailer')).toBe('Needs more of the game to show.');
+    const cash = s.cash;
+    expect(runPromo(s, 'preview')).toBeNull();
+    expect(s.cash).toBeLessThan(cash);
+    expect(runPromo(s, 'preview')).toBe('Already done for this game.');
+    expect(runPromo(s, 'influencers')).toMatch(/Available from/);
+    const p = s.activity!;
+    if (p.kind !== 'game') throw new Error('expected a game');
+    expect(p.hype).toBe(12);
+    tick(s);
+    expect(p.hype).toBeCloseTo(12 * HYPE_DECAY, 1);
+  });
+
+  it('hype pays off for good games and backfires on bad ones', () => {
+    expect(hypeEffect(50, 8).salesMult).toBeGreaterThan(1.15);
+    expect(hypeEffect(50, 8, 2.4).salesMult).toBeLessThan(hypeEffect(50, 8).salesMult);
+    expect(hypeEffect(0, 8).salesMult).toBe(1);
+    expect(hypeEffect(50, 6).salesMult).toBeGreaterThan(1);
+    expect(hypeEffect(50, 6).salesMult).toBeLessThan(hypeEffect(50, 8).salesMult);
+    expect(hypeEffect(80, 3).salesMult).toBeLessThan(1);
+    expect(hypeEffect(80, 3).fansMult).toBeLessThan(1);
+    expect(hypeEffect(80, 2).salesMult).toBeLessThan(hypeEffect(20, 2).salesMult);
+  });
+
+  it('sells more at launch with hype', () => {
+    const plain = studio(82);
+    startGame(plain, spec, [33, 33, 33]);
+    const hyped = studio(82);
+    startGame(hyped, spec, [33, 33, 33]);
+    const p = hyped.activity!;
+    if (p.kind !== 'game') throw new Error('expected a game');
+    p.hype = 60; // set directly so both runs use the same random numbers
+    const a = finish(plain);
+    const b = finish(hyped);
+    expect(b.game.score).toBe(a.game.score);
+    expect(b.game.targetUnits / a.game.targetUnits).toBeCloseTo(hypeEffect(60 * HYPE_DECAY ** 9, b.game.score).salesMult, 1);
+  });
+
+  it('runs GameExpo: booking window, one booth a year, hype and fans on expo week', () => {
+    const s = studio(83);
+    expect(bookBooth(s, 'small')).toMatch(/Booking opens/);
+    while (s.week % WEEKS_PER_YEAR !== EXPO_WEEK - EXPO_BOOKING_WEEKS + 1) tick(s);
+    startGame(s, spec, [33, 33, 33]);
+    expect(bookBooth(s, 'medium')).toBeNull();
+    expect(bookBooth(s, 'big')).toBe('You already have a booth this year.');
+    const fans = s.fans;
+    while (s.week % WEEKS_PER_YEAR !== EXPO_WEEK) {
+      if (s.activity?.kind === 'game' && s.activity.awaitingFocus) setPhaseFocus(s, [33, 33, 33]);
+      tick(s);
+    }
+    const p = s.activity!;
+    if (p.kind !== 'game') throw new Error('expected a game');
+    expect(p.hype).toBeGreaterThanOrEqual(30 * 0.99);
+    expect(s.fans).toBeGreaterThanOrEqual(fans + 1000);
+  });
+
+  it('pushes sales after launch: ads and a discount sale, once each, while on the charts', () => {
+    const s = studio(84);
+    startGame(s, spec, [33, 33, 33]);
+    const g = finish(s).game;
+    const target = g.targetUnits;
+    expect(pushSales(s, g.id, 'ads')).toBeNull();
+    expect(g.targetUnits).toBeGreaterThan(target);
+    expect(pushSales(s, g.id, 'ads')).toBe('Already done for this game.');
+    const price = g.unitPrice;
+    expect(pushSales(s, g.id, 'sale')).toBeNull();
+    expect(g.unitPrice).toBeCloseTo(price * 0.6);
+    for (let w = 0; w < SALES_WEEKS; w++) tick(s);
+    expect(g.unitsSold).toBe(g.targetUnits);
+    expect(pushSales(s, g.id, 'ads')).toBe('It has left the charts.');
+  });
+});
+
+describe('industry news', () => {
+  it('sets a new trend every year and announces it', () => {
+    const s = createGame('News', 91);
+    const first = s.industry!.trend!;
+    expect(first.year).toBe(1985);
+    expect(s.industry!.headlines[0].text).toMatch(/1985 trend/);
+    while (s.week < WEEKS_PER_YEAR) tick(s);
+    const next = s.industry!.trend!;
+    expect(next.year).toBe(1986);
+    expect(next.genre).not.toBe(first.genre);
+    expect(next.topic).not.toBe(first.topic);
+    expect(trendMult(s, next.genre, next.topic)).toBeCloseTo(TREND_GENRE_BONUS * TREND_TOPIC_BONUS);
+    expect(trendMult(s, next.genre, 'no-such-topic')).toBe(TREND_GENRE_BONUS);
+  });
+
+  it('has rival studios release games, keeping the feed short', () => {
+    const s = createGame('News', 92);
+    for (let i = 0; i < WEEKS_PER_YEAR * 10; i++) {
+      s.activity = null; // stay idle so nothing else happens
+      tick(s);
+    }
+    const ind = s.industry!;
+    expect(ind.rivalGames.length).toBeGreaterThan(10);
+    expect(ind.headlines.length).toBeLessThanOrEqual(80);
+    expect(ind.headlines.some((h) => /released|flopped|smash hit/.test(h.text))).toBe(true);
+  });
+
+  it('sells more on trend and less right after a rival hit with the same idea', () => {
+    const run = (setup: (s: ReturnType<typeof createGame>) => void) => {
+      const s = createGame('News', 93);
+      s.cash = 1e7;
+      s.industry!.trend = { year: 1985, genre: 'action', topic: 'space' };
+      setup(s);
+      startGame(s, spec, [33, 33, 33]);
+      while (s.activity?.kind === 'game' && s.activity.phase < 3) {
+        if (s.activity.awaitingFocus) setPhaseFocus(s, [33, 33, 33]);
+        tick(s);
+      }
+      // Keep the setup in place even if the week's news changed it.
+      setup(s);
+      const r = releaseGame(s);
+      if (typeof r === 'string') throw new Error(r);
+      return r;
+    };
+    const plain = run(() => {});
+    const trendy = run((s) => (s.industry!.trend = { year: 1985, genre: 'rpg', topic: 'fantasy' }));
+    const clashed = run((s) => {
+      s.industry!.rivalGames = [{ week: s.week, studio: 'Lunar Soft', name: 'Dragon Saga', genre: 'rpg', topic: 'fantasy', score: 8.8 }];
+    });
+    expect(trendy.game.targetUnits / plain.game.targetUnits).toBeCloseTo(TREND_GENRE_BONUS * TREND_TOPIC_BONUS, 1);
+    expect(clashed.game.targetUnits / plain.game.targetUnits).toBeCloseTo(RIVAL_CLASH_MULT, 1);
+    expect(trendy.insights.some((i) => /trend/.test(i.text))).toBe(true);
+    expect(clashed.insights.some((i) => /Dragon Saga/.test(i.text))).toBe(true);
   });
 });

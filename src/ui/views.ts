@@ -1,4 +1,5 @@
-import { OFFICES, PHASES, RESEARCH, STORE, TOPICS, genreById, platformById, sizeById, topicById } from '../core/data';
+import { OFFICES, PHASES, PLATFORMS, RESEARCH, STORE, TOPICS, genreById, platformById, platformUsers, sizeById, topicById } from '../core/data';
+import { TREND_GENRE_BONUS, TREND_TOPIC_BONUS } from '../core/industry';
 import {
   SALES_WEEKS,
   boostWeeks,
@@ -11,7 +12,8 @@ import {
   researchCost,
   trainingCost,
 } from '../core/sim';
-import { formatDate, formatShortDate } from '../core/time';
+import { WEEKS_PER_YEAR, formatDate, formatShortDate, yearOf } from '../core/time';
+import { EXPO_BOOKING_WEEKS, weeksToExpo } from '../core/marketing';
 import type { GameProject, GameState, PolishMode, ReleasedGame, Staff } from '../core/types';
 import { esc, money, num, scoreClass } from './format';
 import { officeCost, officeRent } from '../core/economy';
@@ -66,7 +68,18 @@ export function renderDock(state: GameState): string {
   const ticker = selling.length
     ? `<button class="ticker" data-action="tab" data-arg="games">📈 ${selling.length} on sale · ${money(selling.reduce((a, g) => a + g.revenue, 0))} earned</button>`
     : '';
-  return `${ticker}${renderActivity(state)}`;
+  return `${expoChip(state)}${ticker}${renderActivity(state)}`;
+}
+
+/** While GameExpo booking is open: a reminder that opens the Marketing sheet. */
+function expoChip(state: GameState): string {
+  const weeks = weeksToExpo(state, WEEKS_PER_YEAR);
+  if (weeks === null || weeks < 1 || weeks > EXPO_BOOKING_WEEKS) return '';
+  const booked = state.expo?.year === yearOf(state.week);
+  const when = `${weeks} week${weeks === 1 ? '' : 's'}`;
+  return booked
+    ? `<button class="ticker" data-action="marketing">🎪 GameExpo in ${when} · booth booked</button>`
+    : `<button class="ticker expo" data-action="marketing">🎪 GameExpo in ${when} · Book a booth</button>`;
 }
 
 // ---------------------------------------------------------------------------
@@ -74,15 +87,73 @@ export function renderDock(state: GameState): string {
 // ---------------------------------------------------------------------------
 
 export function renderNews(state: GameState): string {
-  if (!state.notices.length) return '<h2>News</h2><div class="card empty">Nothing has happened yet.</div>';
-  // Newest first, grouped by month.
+  const year = yearOf(state.week);
+  const ind = state.industry;
+  const trend = ind?.trend;
+  const trendCard = trend
+    ? `
+  <h2>🔥 Trending in ${trend.year}</h2>
+  <div class="list">
+    <div class="list-item">
+      <div class="emoji">${genreById(trend.genre).icon}</div>
+      <div class="grow"><div class="name">${genreById(trend.genre).name} games</div><div class="sub">Hot genre this year</div></div>
+      <span class="tag good">+${Math.round((TREND_GENRE_BONUS - 1) * 100)}% sales</span>
+    </div>
+    <div class="list-item">
+      <div class="emoji">${topicById(trend.topic).icon}</div>
+      <div class="grow"><div class="name">${topicById(trend.topic).name}</div><div class="sub">${state.topics.includes(trend.topic) ? 'Hot topic this year' : 'Hot topic this year · research it to use it'}</div></div>
+      <span class="tag good">+${Math.round((TREND_TOPIC_BONUS - 1) * 100)}% sales</span>
+    </div>
+  </div>
+  <p class="sub mt-s">A new trend starts every January. Both together sell ${Math.round((TREND_GENRE_BONUS * TREND_TOPIC_BONUS - 1) * 100)}% more.</p>`
+    : '';
+
+  // Platforms on sale, biggest audience first, with where they're heading.
+  const live = PLATFORMS.filter((p) => platformUsers(p, year + 0.5) > 0).sort((a, b) => platformUsers(b, year + 0.5) - platformUsers(a, year + 0.5));
+  const platformRows = live.map((p) => {
+    const now = platformUsers(p, year + 0.5);
+    const next = platformUsers(p, year + 1.5);
+    const dir = p.end !== undefined && p.end <= year + 1 ? '<span class="tag bad">Ends next year</span>' : next > now * 1.05 ? '<span class="tag good">▲ Growing</span>' : next < now * 0.95 ? '<span class="tag mid">▼ Shrinking</span>' : '<span class="tag">Steady</span>';
+    const owned = p.license > 0 && state.licenses.includes(p.id) ? ' · licensed' : '';
+    return `
+    <div class="list-item">
+      <div class="emoji">${p.icon}</div>
+      <div class="grow"><div class="name">${esc(p.name)}</div><div class="sub">${p.kind} · ${num(now * 1e6)} players${owned}</div></div>
+      ${dir}
+    </div>`;
+  });
+  const coming = PLATFORMS.filter((p) => p.start === year + 1);
+  const comingRows = coming.map(
+    (p) => `
+    <div class="list-item">
+      <div class="emoji">${p.icon}</div>
+      <div class="grow"><div class="name">${esc(p.name)}</div><div class="sub">${p.kind} · arrives in ${p.start}</div></div>
+      <span class="tag">Coming soon</span>
+    </div>`,
+  );
+
+  const headlines = ind ? [...ind.headlines].reverse().slice(0, 40) : [];
   const groups: { label: string; items: string[] }[] = [];
-  for (const n of [...state.notices].reverse()) {
-    const label = formatShortDate(n.week);
+  for (const h of headlines) {
+    const label = formatShortDate(h.week);
     if (groups[groups.length - 1]?.label !== label) groups.push({ label, items: [] });
-    groups[groups.length - 1].items.push(`<div class="notice ${n.kind}">${esc(n.text)}</div>`);
+    groups[groups.length - 1].items.push(`<div class="headline ${h.kind}"><span class="hl-icon">${h.icon}</span><span>${esc(h.text)}</span></div>`);
   }
-  return groups.map((g) => `<h2>${g.label}</h2><div class="list">${g.items.join('')}</div>`).join('');
+  const feed = groups.length
+    ? groups.map((g) => `<h3 class="news-date">${g.label}</h3><div class="card news-card">${g.items.join('')}</div>`).join('')
+    : '<div class="card empty">No headlines yet.</div>';
+
+  const log = [...state.notices].reverse().slice(0, 30);
+  return `
+  ${trendCard}
+  <h2>Platforms</h2>
+  <div class="list">${platformRows.join('')}${comingRows.join('')}</div>
+  <h2>Headlines</h2>
+  ${feed}
+  <details class="studio-log mt">
+    <summary>Studio log</summary>
+    <div class="list">${log.map((n) => `<div class="notice ${n.kind}"><div class="when">${formatShortDate(n.week)}</div>${esc(n.text)}</div>`).join('')}</div>
+  </details>`;
 }
 
 function renderActivity(state: GameState): string {
@@ -129,6 +200,12 @@ function renderActivity(state: GameState): string {
       <button class="boost-btn" data-action="store" aria-label="Store: boosts and upgrades">⚡<small>Boost</small></button>
     </div>
     ${activeBoosts(state)}
+    <div class="hype-row">
+      <span class="hype-label">📣 Hype</span>
+      <div class="hype-bar"><i style="width:${Math.round(a.hype ?? 0)}%"></i></div>
+      <b>${Math.round(a.hype ?? 0)}</b>
+      <button class="btn small" data-action="marketing">Promote</button>
+    </div>
     <div class="steps-row">
       <span class="phase-chip">${polishing ? '🧹 Polish' : `${a.phase + 1}/3 ${PHASES[a.phase].name}`}</span>
       <div class="steps">${steps.map((_, i) => `<i class="${i < a.phase ? 'done' : i === a.phase ? 'now' : ''}"></i>`).join('')}</div>
@@ -185,8 +262,9 @@ function renderOnMarket(state: GameState): string {
   return `
   <h2>On sale now</h2>
   <div class="list">
-    ${selling.map((g) => gameRow(g, `${num(g.unitsSold)} sold · ${money(g.revenue)}`)).join('')}
-  </div>`;
+    ${selling.map((g) => gameRow(g, `${num(g.unitsSold)} sold · ${money(g.revenue)}${g.pushes?.length ? ` · ${g.pushes.map((x) => (x === 'sale' ? '🏷️' : '📣')).join('')}` : ''}`)).join('')}
+  </div>
+  <button class="btn ghost mt-s wide" data-action="marketing">📣 Push sales</button>`;
 }
 
 function gameRow(g: ReleasedGame, detail: string): string {
@@ -227,10 +305,26 @@ export function renderGames(state: GameState): string {
     <div class="sub mt">Best seller</div>
     <div class="row"><div class="grow"><b>${esc(top.name)}</b></div><span class="tag">${money(top.revenue)}</span></div>
   </div>
-  <h2>All releases</h2>
+  ${releasesByYear(games)}`;
+}
+
+/** Every release in order, oldest first, grouped by year. */
+function releasesByYear(games: ReleasedGame[]): string {
+  const years = new Map<number, ReleasedGame[]>();
+  for (const g of [...games].sort((a, b) => a.releaseWeek - b.releaseWeek || a.id - b.id)) {
+    const y = yearOf(g.releaseWeek);
+    if (!years.has(y)) years.set(y, []);
+    years.get(y)!.push(g);
+  }
+  return [...years]
+    .map(
+      ([y, list]) => `
+  <h2>${y}</h2>
   <div class="list">
-    ${[...games].reverse().map((g) => gameRow(g, `${formatShortDate(g.releaseWeek)} · ${num(g.unitsSold)} sold · ${money(g.revenue)}`)).join('')}
-  </div>`;
+    ${list.map((g) => gameRow(g, `${formatShortDate(g.releaseWeek)} · ${num(g.unitsSold)} sold · ${money(g.revenue)}`)).join('')}
+  </div>`,
+    )
+    .join('');
 }
 
 // ---------------------------------------------------------------------------

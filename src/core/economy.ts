@@ -13,7 +13,9 @@ export const INFLATION = 0.05;
 /** How much of a platform's growth turns into sales (1 = all of it); the rest is lost to competitors. */
 export const REACH_EXPONENT = 0.55;
 /** The founder pays themselves a modest wage. */
-export const FOUNDER_SALARY = 1200;
+export const FOUNDER_SALARY = 900;
+/** Money in the bank on day one. */
+export const STARTING_CASH = 60000;
 
 /** Price level relative to 1985 (1.0), rising every year. */
 export function priceIndex(week: number): number {
@@ -42,9 +44,12 @@ export function sizeCost(state: Pick<GameState, 'week'>, size: SizeId): number {
   return friendly(def.cost * priceIndex(state.week));
 }
 
-export function marketingCost(state: Pick<GameState, 'week'>, id: MarketingId): number {
+/** Ad campaigns are sized to the game: a small game buys smaller ads. */
+export const MARKETING_SIZE_SCALE: Record<SizeId, number> = { small: 0.4, medium: 1, large: 2 };
+
+export function marketingCost(state: Pick<GameState, 'week'>, id: MarketingId, size: SizeId = 'medium'): number {
   const def = MARKETING.find((m) => m.id === id)!;
-  return friendly(def.cost * priceIndex(state.week));
+  return friendly(def.cost * MARKETING_SIZE_SCALE[size] * priceIndex(state.week));
 }
 
 export function officeRent(state: Pick<GameState, 'week'>, level: number): number {

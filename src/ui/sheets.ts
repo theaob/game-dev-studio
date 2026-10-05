@@ -21,9 +21,15 @@ import {
   staffWeeklyPoints,
   storeBlocker,
   storePrice,
+  SALES_WEEKS,
+  boothBlocker,
+  promoBlocker,
+  salesPushBlocker,
 } from '../core/sim';
 import { SEQUEL_TOO_SOON_WEEKS, sequelCandidates, sequelSalesMult, seriesNumber } from '../core/sequels';
-import { formatShortDate, yearFraction } from '../core/time';
+import { WEEKS_PER_YEAR, formatShortDate, yearFraction, yearOf } from '../core/time';
+import { RIVAL_CLASH_MULT, RIVAL_CLASH_WEEKS, rivalClash, trendMult } from '../core/industry';
+import { BOOTHS, EXPO_BOOKING_WEEKS, PROMOS, SALES_PUSHES, boothById, boothPrice, promoPrice, salesPushPrice, weeksToExpo } from '../core/marketing';
 import type { GameProject, GameSpec, GameState, ReleaseReport } from '../core/types';
 import { esc, money, num, scoreClass } from './format';
 import type { StoreItem } from '../core/data';
@@ -43,6 +49,7 @@ export type Sheet =
   | { kind: 'confirm'; text: string; action: string; arg?: string; confirmLabel: string }
   | { kind: 'contracts' }
   | { kind: 'store' }
+  | { kind: 'marketing' }
   | { kind: 'gameOver' };
 
 export const OUTLETS = ['Game Weekly', 'Pixel Press', 'PlayZone', 'Joystick Journal'];
@@ -82,6 +89,8 @@ export function renderSheet(state: GameState | null, sheet: Sheet): string {
       return contracts(state);
     case 'store':
       return store(state);
+    case 'marketing':
+      return marketing(state);
   }
 }
 
@@ -89,7 +98,7 @@ function welcome(name: string): string {
   return `
     <div class="big-emoji">🎮</div>
     <h3 class="center">Game Dev Studio</h3>
-    <p class="muted center">It's 1985. You have a garage, a computer and $40,000. Can you build a legendary game studio?</p>
+    <p class="muted center">It's 1985. You have a garage, a computer and $60,000. Can you build a legendary game studio?</p>
     <h4>Name your studio</h4>
     <input class="text-input" data-bind="studio" maxlength="28" value="${esc(name)}" placeholder="Garage Games" autocomplete="off" />
     <div class="btn-row"><button class="btn big" data-action="start-studio">Start</button></div>
@@ -105,11 +114,13 @@ function help(): string {
       <p><b>Set the focus.</b> Development has 3 phases with 3 areas each. Put your team's effort where the genre needs it. Reviews reveal what matters.</p>
       <p><b>Design vs Tech.</b> Every genre has a sweet spot between creative (design) and technical (tech) points.</p>
       <p><b>Polish.</b> After development you can keep polishing before you release: fix bugs (they hurt reviews), or add more design or tech points to fix the game's balance. Design and tech polishing gives less each week.</p>
+      <p><b>Marketing.</b> Pick an ad budget when you start a game. Tap 📣 Promote while making it to build hype with previews and trailers, and book a booth at the yearly GameExpo. Hype sells more copies of a good game, but a hyped flop gets a backlash. After launch, 📣 Push sales runs ads or a discount sale.</p>
+      <p><b>Read the news.</b> Each year has a trending genre and topic (marked 🔥 when you start a game) that sell better. Rival studios release games too: right after a rival's hit, the same topic and genre sells less for a while. The News tab also shows which platforms are growing or on their way out.</p>
       <p><b>The cat.</b> Sometimes the studio cat curls up on a developer's lap, and they work 30% faster while it stays. You can carry the cat over and drop it on someone too, but it needs some alone time between laps.</p>
       <p><b>Store.</b> Spend cash on power-ups: boosts like an espresso bar or pizza night last a few weeks of development, and studio upgrades help forever. Find it next to Contracts, or tap ⚡ Boost while making a game.</p>
       <p><b>Raise the bar.</b> Players expect each game to beat your last one, and the industry keeps moving. Grow your team, train them and research better tech.</p>
       <p><b>Stay solvent.</b> Rent and salaries are paid monthly. Three months in the red and you're bankrupt. Contract work pays the bills.</p>
-      <p><b>Grow.</b> Earn research points (RP) to unlock topics, bigger games and better engines. Move offices to hire more people.</p>
+      <p><b>Grow.</b> Earn research points (RP) to unlock topics, bigger games and better engines. You earn RP every week you're making a game (more with a bigger team) and with every release (more for better reviews). Move offices to hire more people.</p>
       <p>The game runs from 1985 to 2025. Tap ❚❚ to pause anytime. Your progress is saved automatically.</p>
     </div>
     <div class="btn-row"><button class="btn" data-action="close">Got it</button></div>`;
@@ -130,6 +141,7 @@ function receptionPreview(state: GameState, d: Pick<GameSpec, 'topic' | 'genre' 
   const topic = topicById(d.topic).name;
   const genre = genreById(d.genre);
   const fit = state.knowledge.combos[`${d.topic}|${d.genre}`];
+  const news = newsNotes(state, d.genre, d.topic);
   if (fit === undefined) {
     return `
     <div class="reception unknown mt">
@@ -137,11 +149,12 @@ function receptionPreview(state: GameState, d: Pick<GameSpec, 'topic' | 'genre' 
       <div class="grow">
         <b>Unknown reception</b>
         <div class="sub">You haven't released a ${esc(topic)} ${genre.name} game yet. Make one to discover how players react.</div>
+        ${news.length ? `<ul class="reception-notes">${news.map((n) => `<li>${n}</li>`).join('')}</ul>` : ''}
       </div>
     </div>`;
   }
   const r = RECEPTION[fit];
-  const notes: string[] = [];
+  const notes: string[] = [...news];
   const past = state.released.filter((g) => g.topic === d.topic && g.genre === d.genre);
   const last = past[past.length - 1];
   if (last) notes.push(`📊 Last time, <b>${esc(last.name)}</b> scored <b>${last.score.toFixed(1)}</b>${past.length > 1 ? ` (${past.length} games so far)` : ''}.`);
@@ -168,6 +181,19 @@ function receptionPreview(state: GameState, d: Pick<GameSpec, 'topic' | 'genre' 
     </div>`;
 }
 
+/** What the News tab says about this idea: this year's trend and rivals' recent hits. */
+function newsNotes(state: GameState, genre: string, topic: string): string[] {
+  const notes: string[] = [];
+  const t = trendMult(state, genre, topic);
+  if (t > 1) notes.push(`🔥 On trend this year: <b>+${Math.round((t - 1) * 100)}% sales</b>.`);
+  const clash = rivalClash(state, genre, topic);
+  if (clash) {
+    const months = Math.max(1, Math.ceil((RIVAL_CLASH_WEEKS - (state.week - clash.week)) / 4));
+    notes.push(`⚔️ ${esc(clash.studio)}'s hit <b>${esc(clash.name)}</b> is still fresh: <b>${Math.round((RIVAL_CLASH_MULT - 1) * 100)}% sales</b> for about ${months} more month${months > 1 ? 's' : ''}.`);
+  }
+  return notes;
+}
+
 /** The "New game or sequel?" picker and, for a sequel, what to expect. */
 function sequelPicker(state: GameState, d: GameSpec): string {
   const candidates = sequelCandidates(state);
@@ -175,10 +201,14 @@ function sequelPicker(state: GameState, d: GameSpec): string {
   const original = d.sequelOf !== undefined ? state.released.find((g) => g.id === d.sequelOf) : undefined;
   const chips = [
     `<button class="chip ${original ? '' : 'on'}" data-action="pick-sequel" data-arg="none">✨ New game</button>`,
-    ...candidates.slice(0, 8).map(
-      (g) =>
-        `<button class="chip ${original?.id === g.id ? 'on' : ''}" data-action="pick-sequel" data-arg="${g.id}">🔁 ${esc(g.name)} <span class="tag ${g.score >= 7.5 ? 'good' : g.score >= 5 ? 'mid' : 'bad'}">${g.score.toFixed(1)}</span></button>`,
-    ),
+    // The 8 best-reviewed candidates, listed in release order.
+    ...candidates
+      .slice(0, 8)
+      .sort((a, b) => a.releaseWeek - b.releaseWeek || a.id - b.id)
+      .map(
+        (g) =>
+          `<button class="chip ${original?.id === g.id ? 'on' : ''}" data-action="pick-sequel" data-arg="${g.id}">🔁 ${esc(g.name)} <small class="muted">${yearOf(g.releaseWeek)}</small> <span class="tag ${g.score >= 7.5 ? 'good' : g.score >= 5 ? 'mid' : 'bad'}">${g.score.toFixed(1)}</span></button>`,
+      ),
   ].join('');
   let info = '';
   if (original) {
@@ -218,7 +248,7 @@ function newGameStep1(state: GameState, d: GameSpec, error?: string): string {
         : `
     <h4>Genre</h4>
     <div class="chips">
-      ${GENRES.map((g) => `<button class="chip ${d.genre === g.id ? 'on' : ''}" data-action="pick-genre" data-arg="${g.id}">${g.icon} ${g.name}</button>`).join('')}
+      ${GENRES.map((g) => `<button class="chip ${d.genre === g.id ? 'on' : ''}" data-action="pick-genre" data-arg="${g.id}">${g.icon} ${g.name}${state.industry?.trend?.genre === g.id ? ' 🔥' : ''}</button>`).join('')}
     </div>
     <h4>Topic</h4>
     <div class="chips">
@@ -227,7 +257,7 @@ function newGameStep1(state: GameState, d: GameSpec, error?: string): string {
           const t = topicById(id);
           const known = d.genre ? state.knowledge.combos[`${id}|${d.genre}`] : undefined;
           const dot = known !== undefined ? `<i class="fit fit-${known}" title="${FIT_LABELS[known]}"></i>` : '';
-          return `<button class="chip ${d.topic === id ? 'on' : ''}" data-action="pick-topic" data-arg="${id}">${t.icon} ${t.name}${dot}</button>`;
+          return `<button class="chip ${d.topic === id ? 'on' : ''}" data-action="pick-topic" data-arg="${id}">${t.icon} ${t.name}${state.industry?.trend?.topic === id ? ' 🔥' : ''}${dot}</button>`;
         })
         .join('')}
     </div>`
@@ -297,7 +327,7 @@ function newGameStep2(state: GameState, d: GameSpec, error?: string): string {
             .map(
               (m) => `
         <button class="option ${d.marketing === m.id ? 'on' : ''}" data-action="pick-marketing" data-arg="${m.id}">
-          <span class="grow"><b>${m.name}</b><br/><span class="sub">${m.cost ? `${money(marketingCost(state, m.id))} · ` : ''}${m.salesMult > 1 ? `+${Math.round((m.salesMult - 1) * 100)}% sales` : 'word of mouth only'}</span></span>
+          <span class="grow"><b>${m.name}</b><br/><span class="sub">${m.cost ? `${money(marketingCost(state, m.id, d.size))} · ` : ''}${m.salesMult > 1 ? `+${Math.round((m.salesMult - 1) * 100)}% sales` : 'word of mouth only'}</span></span>
         </button>`,
             )
             .join('')}</div>`
@@ -534,6 +564,68 @@ function store(state: GameState): string {
     <h4>Studio upgrades</h4>
     <div class="options">${upgrades.map((x) => storeRow(state, x)).join('')}</div>
     <div class="btn-row"><button class="btn ghost" data-action="close">Close</button></div>`;
+}
+
+/** One buyable marketing option: icon, name, what it does, and a price button (or why not). */
+function marketingRow(icon: string, name: string, desc: string, status: string, action: string, arg: string, price: number, blocked: string | null, done: boolean): string {
+  return `
+    <div class="option store-item">
+      <span class="emoji">${icon}</span>
+      <span class="grow"><b>${name}</b> ${status}<br/><span class="sub">${desc}</span>${blocked && !done ? `<br/><span class="sub warn">${blocked}</span>` : ''}</span>
+      <button class="btn small" data-action="${action}" data-arg="${arg}" ${blocked ? 'disabled' : ''}>${done ? 'Done' : price ? money(price) : 'Free'}</button>
+    </div>`;
+}
+
+function marketing(state: GameState): string {
+  const parts: string[] = ['<h3>Marketing</h3>'];
+  const p = state.activity;
+
+  // Hype for the game in development.
+  if (p?.kind === 'game') {
+    const hype = Math.round(p.hype ?? 0);
+    parts.push(`
+    <h4>Build hype for ${esc(p.name)}</h4>
+    <div class="hype-row big">
+      <span class="hype-label">📣 Hype</span>
+      <div class="hype-bar"><i style="width:${hype}%"></i></div>
+      <b>${hype}</b>
+    </div>
+    <p class="sub">Hype fades a little every week. At launch it boosts sales and fans, but only if the reviews live up to it: a hyped flop gets a backlash.</p>
+    <div class="options">${PROMOS.map((pr) => {
+      const done = !!p.promos?.includes(pr.id);
+      return marketingRow(pr.icon, pr.name, `${pr.desc} +${pr.hype} hype.`, done ? '<span class="tag good">Done</span>' : '', 'promo', pr.id, promoPrice(state, pr.id), promoBlocker(state, pr.id), done);
+    }).join('')}</div>`);
+  }
+
+  // GameExpo.
+  const weeks = weeksToExpo(state, WEEKS_PER_YEAR);
+  const year = yearOf(state.week);
+  const booked = state.expo?.year === year ? boothById(state.expo.booth) : null;
+  let expo: string;
+  if (booked) {
+    expo = `<p class="sub">Your ${booked.name.toLowerCase()} is booked${weeks ? ` · opens in ${weeks} week${weeks === 1 ? '' : 's'}` : ''}. ${p?.kind === 'game' ? `${esc(p.name)} will be on show.` : 'Start a game before then to show it off.'}</p>`;
+  } else if (weeks !== null && weeks >= 1 && weeks <= EXPO_BOOKING_WEEKS) {
+    expo = `<p class="sub">Opens in ${weeks} week${weeks === 1 ? '' : 's'}. A game in development gets hype and you win fans; with nothing to show, you win fewer fans.</p>
+    <div class="options">${BOOTHS.map((b) => marketingRow('🎪', b.name, `+${b.hype} hype, +${b.fans.toLocaleString('en-US')} fans.`, '', 'booth', b.id, boothPrice(state, b.id), boothBlocker(state, b.id), false)).join('')}</div>`;
+  } else {
+    const next = weeks === null || weeks < 1 ? year + 1 : year;
+    expo = `<p class="sub">GameExpo ${next} is in June. Booking opens ${EXPO_BOOKING_WEEKS} weeks before.</p>`;
+  }
+  parts.push(`<h4>🎪 GameExpo ${booked || (weeks !== null && weeks >= 1) ? year : year + 1}</h4>${expo}`);
+
+  // Games on sale.
+  const selling = state.released.filter((g) => g.weeksOnMarket < SALES_WEEKS);
+  parts.push('<h4>Games on sale</h4>');
+  if (!selling.length) parts.push('<p class="sub">Nothing on sale right now.</p>');
+  for (const g of selling) {
+    parts.push(`<p class="sub"><b>${esc(g.name)}</b> · ${SALES_WEEKS - g.weeksOnMarket} weeks left on the charts</p>
+    <div class="options">${SALES_PUSHES.map((sp) => {
+      const done = !!g.pushes?.includes(sp.id);
+      return marketingRow(sp.icon, sp.name, sp.desc, done ? '<span class="tag good">Done</span>' : '', 'push', `${g.id}:${sp.id}`, salesPushPrice(state, sp.id), salesPushBlocker(state, g.id, sp.id), done);
+    }).join('')}</div>`);
+  }
+  parts.push('<div class="btn-row"><button class="btn ghost" data-action="close">Close</button></div>');
+  return parts.join('');
 }
 
 function gameOver(state: GameState): string {

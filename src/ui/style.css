@@ -687,6 +687,55 @@ h2 {
   border-left: 3px solid var(--line);
 }
 
+/* ---------- News ---------- */
+
+.news-date {
+  margin: 14px 2px 6px;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.news-card {
+  padding: 0;
+}
+
+.headline {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 14px;
+  border-top: 1px solid var(--line);
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.headline:first-child {
+  border-top: 0;
+}
+
+.headline .hl-icon {
+  flex: none;
+  width: 22px;
+  text-align: center;
+}
+
+.headline.good {
+  box-shadow: inset 3px 0 0 var(--good);
+}
+
+.headline.bad {
+  box-shadow: inset 3px 0 0 var(--bad);
+}
+
+.studio-log summary {
+  cursor: pointer;
+  padding: 10px 2px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
 /* ---------- Bottom nav ---------- */
 
 nav.tabs {
@@ -2278,4 +2327,58 @@ nav.tabs {
 .office3d-canvas,
 canvas.office {
   touch-action: none;
+}
+
+/* Marketing: hype meter */
+.hype-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.hype-label {
+  flex: none;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.hype-bar {
+  flex: 1;
+  height: 10px;
+  border-radius: 99px;
+  border: 1.5px solid var(--ink);
+  background: var(--card2);
+  overflow: hidden;
+}
+
+.hype-bar > i {
+  display: block;
+  height: 100%;
+  background: var(--accent2);
+  transition: width 0.3s;
+}
+
+.hype-row > b {
+  flex: none;
+  min-width: 22px;
+  text-align: right;
+  font-family: var(--display);
+}
+
+.hype-row .btn.small {
+  flex: none;
+  min-height: 32px;
+}
+
+.hype-row.big .hype-bar {
+  height: 14px;
+}
+
+.ticker.expo {
+  background: #ffe3a3;
+}
+
+.btn.wide {
+  width: 100%;
 }
