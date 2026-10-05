@@ -44,12 +44,12 @@ Versions show up on itch.io as `0.1.0-build.<run number>` for `main` builds, or 
    - Upload a placeholder once, or let the first CI run create the `html5` channel. Then tick **This file will be played in the browser**.
    - Embed options: **Mobile friendly**, orientation **Portrait**, viewport around **390 × 780**, and turn on **Fullscreen button**.
 2. **Get a butler API key**: run `butler login` locally and copy the key from `~/.config/itch/butler_creds`, or create one at <https://itch.io/user/settings/api-keys>.
-3. **Configure the GitHub repo** (Settings → Secrets and variables → Actions):
-   - Secret `BUTLER_API_KEY`: the key from step 2
-   - Variable `ITCH_USER`: your itch.io username (the `<user>` in `<user>.itch.io`)
-   - Variable `ITCH_GAME`: the project's URL slug (the `<game>` in `<user>.itch.io/<game>`)
+3. **Configure the GitHub repo** (Settings → Secrets and variables → Actions → **Secrets**). Add three repository secrets:
+   - `BUTLER_API_KEY`: the key from step 2
+   - `ITCH_USER`: your itch.io username (the `<user>` in `<user>.itch.io`)
+   - `ITCH_GAME`: the project's URL slug (the `<game>` in `<user>.itch.io/<game>`)
 
-   The deploy job uses a GitHub environment called `itch.io`. You can add required reviewers to it under Settings → Environments if you want to approve each release.
+   The deploy job uses a GitHub environment called `itch.io`. You can add required reviewers to it under Settings → Environments if you want to approve each release. Because the username and slug are secrets, GitHub masks them in logs as `***`.
 
 If anything is missing, the deploy job fails straight away with a message saying what to add.
 
