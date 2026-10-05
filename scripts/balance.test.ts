@@ -16,7 +16,7 @@ const money = (v: number) => {
 };
 const pct = (v: number[], p: number) => [...v].sort((a, b) => a - b)[Math.round(p * (v.length - 1))];
 
-for (const style of ['smart', 'eager', 'naive'] as BotStyle[]) {
+for (const style of ['smart', 'casual', 'eager', 'naive'] as BotStyle[]) {
   it(`money curve: ${style}`, () => {
     const byYear = new Map<number, { cash: number; revenue: number; costs: number; staff: number; office: number; score: number }[]>();
     const ends: string[] = [];

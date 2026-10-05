@@ -208,7 +208,7 @@ export interface SizeDef {
 }
 
 export const SIZES: SizeDef[] = [
-  { id: 'small', name: 'Small', phaseWeeks: 3, cost: 8000, unitMult: 1, price: 9, minStaff: 1 },
+  { id: 'small', name: 'Small', phaseWeeks: 3, cost: 5000, unitMult: 1, price: 9, minStaff: 1 },
   { id: 'medium', name: 'Medium', phaseWeeks: 6, cost: 40000, unitMult: 1.9, price: 15, minStaff: 2, research: 'size_medium' },
   { id: 'large', name: 'Large', phaseWeeks: 10, cost: 160000, unitMult: 3.4, price: 24, minStaff: 5, research: 'size_large' },
 ];

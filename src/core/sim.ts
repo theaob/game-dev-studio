@@ -22,7 +22,7 @@ import {
   topicById,
 } from './data';
 import type { StoreItemId } from './data';
-import { founderSalary, friendly, marketingCost, officeCost, officeRent, priceIndex, reachableUsers, sizeCost } from './economy';
+import { STARTING_CASH, founderSalary, friendly, marketingCost, officeCost, officeRent, priceIndex, reachableUsers, sizeCost } from './economy';
 import { int, pick, random, range } from './rng';
 import { hasSequel, sequelSalesMult, seriesNumber } from './sequels';
 import { average, clamp, evaluate, normalizeFocus, rollReviews, scoreFactor } from './scoring';
@@ -59,7 +59,7 @@ export function createGame(studioName: string, seed = Date.now()): GameState {
     rng: seed | 0,
     week: 0,
     studioName: studioName.trim() || 'Garage Games',
-    cash: 40000,
+    cash: STARTING_CASH,
     fans: 0,
     rp: 0,
     officeLevel: 0,
@@ -830,7 +830,7 @@ const CONTRACT_TEMPLATES = [
 const BUSINESSES = ['bakery', 'bank', 'car dealer', 'museum', 'pizza chain', 'school', 'gym', 'airline'];
 
 /** Contract pay covers this multiple of the studio's running costs for the contract's weeks. */
-const CONTRACT_MARGIN = 1.3;
+const CONTRACT_MARGIN = 1.5;
 
 function refreshContracts(state: GameState) {
   const platforms = availablePlatforms(state);
@@ -841,7 +841,7 @@ function refreshContracts(state: GameState) {
       .replace('{topic}', topicById(pick(state, state.topics)).name)
       .replace('{platform}', pick(state, platforms).name);
     // Contracts pay the bills with a little to spare: a safety net, not a way to get rich.
-    const pay = friendly(weeks * ((monthlyCosts(state) / WEEKS_PER_MONTH) * CONTRACT_MARGIN + 500 * priceIndex(state.week)) * range(state, 0.85, 1.2));
+    const pay = friendly(weeks * ((monthlyCosts(state) / WEEKS_PER_MONTH) * CONTRACT_MARGIN + 800 * priceIndex(state.week)) * range(state, 0.85, 1.2));
     const offer: ContractOffer = { id: state.nextId++, title, weeks, pay, rp: Math.max(1, Math.round(weeks * 0.6 * range(state, 0.7, 1.4))) };
     return offer;
   });

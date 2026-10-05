@@ -26,9 +26,11 @@ import type { GameSpec, GameState, ReleaseReport } from './types';
 
 /**
  * smart: plays well. naive: careless solo developer. eager: grows like the smart
- * bot (hires, upgrades, big budgets) but designs games carelessly.
+ * bot (hires, upgrades, big budgets) but designs games carelessly. casual: an
+ * average player: sensible but not optimal combos, even focus sliders, a little
+ * polishing, cautious hiring and no training.
  */
-export type BotStyle = 'smart' | 'naive' | 'eager';
+export type BotStyle = 'smart' | 'naive' | 'eager' | 'casual';
 
 function smartFocus(genre: string, phase: number): number[] {
   const imp = genreById(genre).importance.slice(phase * 3, phase * 3 + 3);
@@ -42,7 +44,8 @@ export function botTurn(state: GameState, style: BotStyle, reports: ReleaseRepor
     if (act.awaitingFocus) setPhaseFocus(state, style === 'smart' ? smartFocus(act.genre, act.phase) : [50, 50, 50]);
     if (act.phase >= 3) {
       const total = act.design + act.tech;
-      const done = style !== 'smart' || act.bugs / total < 0.015 || act.polishWeeks >= 6;
+      const done =
+        style === 'smart' ? act.bugs / total < 0.015 || act.polishWeeks >= 6 : style === 'casual' ? act.bugs / total < 0.03 || act.polishWeeks >= 2 : true;
       if (done) {
         const r = releaseGame(state);
         if (typeof r !== 'string') reports.push(r);
@@ -55,13 +58,16 @@ export function botTurn(state: GameState, style: BotStyle, reports: ReleaseRepor
     for (const r of [...RESEARCH.map((x) => x.id), ...TOPICS.map((t) => t.id)]) {
       if (!researchBlocker(state, r)) doResearch(state, r);
     }
-    for (const st of state.staff) {
-      const skill = st.design <= st.tech ? 'design' : 'tech';
-      if (state.cash > monthlyCosts(state) * 12) train(state, st.id, skill);
+    if (style !== 'casual') {
+      for (const st of state.staff) {
+        const skill = st.design <= st.tech ? 'design' : 'tech';
+        if (state.cash > monthlyCosts(state) * 12) train(state, st.id, skill);
+      }
     }
     const next = OFFICES[state.officeLevel + 1];
-    if (next && state.cash > next.cost * 2.5) upgradeOffice(state);
-    while (state.staff.length < officeCapacity(state) && state.candidates.length && state.cash > monthlyCosts(state) * 8) {
+    if (next && state.cash > next.cost * (style === 'casual' ? 3 : 2.5)) upgradeOffice(state);
+    const cushion = style === 'casual' ? 10 : 8;
+    while (state.staff.length < officeCapacity(state) && state.candidates.length && state.cash > monthlyCosts(state) * cushion) {
       const best = [...state.candidates].sort((a, b) => b.design + b.tech - (a.design + a.tech))[0];
       if (hire(state, best.id)) break;
     }
@@ -75,7 +81,7 @@ export function botTurn(state: GameState, style: BotStyle, reports: ReleaseRepor
     return;
   }
 
-  const spec = style === 'smart' ? smartSpec(state) : style === 'eager' ? eagerSpec(state) : naiveSpec(state);
+  const spec = style === 'smart' ? smartSpec(state) : style === 'casual' ? smartSpec(state, 2) : style === 'eager' ? eagerSpec(state) : naiveSpec(state);
   if (!spec) {
     if (state.contractOffers.length) startContract(state, state.contractOffers[0].id);
     return;
@@ -86,7 +92,8 @@ export function botTurn(state: GameState, style: BotStyle, reports: ReleaseRepor
   }
 }
 
-function smartSpec(state: GameState): GameSpec | null {
+/** The best-selling spec it can afford; `minFit` 3 only takes great topic/genre matches, 2 takes good ones too. */
+function smartSpec(state: GameState, minFit = 3): GameSpec | null {
   const year = yearFraction(state.week);
   const recent = state.released.slice(-3);
   let best: { spec: GameSpec; value: number } | null = null;
@@ -97,7 +104,7 @@ function smartSpec(state: GameState): GameSpec | null {
       for (const topic of state.topics) {
         if (recent.some((g) => g.topic === topic && g.genre === genre.id)) continue;
         const fit = topicFit(topic, genre.id);
-        if (fit < 3) continue;
+        if (fit < minFit) continue;
         for (const size of sizes) {
           for (const m of marketing) {
             const spec: GameSpec = { name: `Game ${state.released.length + 1}`, topic, genre: genre.id, platform: platform.id, size: size.id, marketing: m.id };

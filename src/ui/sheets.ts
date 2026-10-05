@@ -89,7 +89,7 @@ function welcome(name: string): string {
   return `
     <div class="big-emoji">🎮</div>
     <h3 class="center">Game Dev Studio</h3>
-    <p class="muted center">It's 1985. You have a garage, a computer and $40,000. Can you build a legendary game studio?</p>
+    <p class="muted center">It's 1985. You have a garage, a computer and $60,000. Can you build a legendary game studio?</p>
     <h4>Name your studio</h4>
     <input class="text-input" data-bind="studio" maxlength="28" value="${esc(name)}" placeholder="Garage Games" autocomplete="off" />
     <div class="btn-row"><button class="btn big" data-action="start-studio">Start</button></div>

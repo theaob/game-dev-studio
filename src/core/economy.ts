@@ -13,7 +13,9 @@ export const INFLATION = 0.05;
 /** How much of a platform's growth turns into sales (1 = all of it); the rest is lost to competitors. */
 export const REACH_EXPONENT = 0.55;
 /** The founder pays themselves a modest wage. */
-export const FOUNDER_SALARY = 1200;
+export const FOUNDER_SALARY = 900;
+/** Money in the bank on day one. */
+export const STARTING_CASH = 60000;
 
 /** Price level relative to 1985 (1.0), rising every year. */
 export function priceIndex(week: number): number {
