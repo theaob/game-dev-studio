@@ -731,6 +731,95 @@ nav.tabs .dot {
   margin-top: 10px;
 }
 
+/* ---------- Reception preview ---------- */
+
+.reception {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--card);
+  border-left: 4px solid var(--line);
+}
+
+.reception .face {
+  font-size: 34px;
+  line-height: 1;
+}
+
+.reception.great {
+  border-left-color: var(--good);
+  background: linear-gradient(90deg, #1f3d34, var(--card));
+}
+
+.reception.good {
+  border-left-color: #9be37a;
+}
+
+.reception.mid {
+  border-left-color: #ffd25c;
+}
+
+.reception.bad {
+  border-left-color: var(--bad);
+  background: linear-gradient(90deg, #3d1f27, var(--card));
+}
+
+.reception .meter {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  margin: 4px 0;
+}
+
+.reception .meter i {
+  width: 18px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--bg2);
+}
+
+.reception.great .meter i.on {
+  background: var(--good);
+}
+
+.reception.good .meter i.on {
+  background: #9be37a;
+}
+
+.reception.mid .meter i.on {
+  background: #ffd25c;
+}
+
+.reception.bad .meter i.on {
+  background: var(--bad);
+}
+
+.reception .meter span {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  margin-left: 4px;
+  text-transform: uppercase;
+}
+
+.reception-notes {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.reception-notes li {
+  padding: 2px 0;
+}
+
+.reception-notes b {
+  color: var(--text);
+}
+
 /* ---------- Focus sliders ---------- */
 
 .slider {

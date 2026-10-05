@@ -40,6 +40,42 @@ const LINES = {
   sip: ['☕', 'Ahh…', '😌', 'Mmm'],
 };
 
+type Gesture = 'type' | 'lean' | 'think' | 'sip' | 'point' | 'look' | 'stretch' | 'relax' | 'swivel';
+
+/** Seconds each gesture lasts before the next one is picked. */
+const GESTURE_SECONDS = 2.6;
+
+const GESTURES: Record<'work' | 'polish' | 'idle', [Gesture, number][]> = {
+  work: [['type', 0.55], ['lean', 0.1], ['think', 0.1], ['sip', 0.08], ['point', 0.07], ['look', 0.06], ['stretch', 0.04]],
+  polish: [['type', 0.45], ['point', 0.2], ['think', 0.15], ['lean', 0.1], ['sip', 0.05], ['look', 0.05]],
+  idle: [['relax', 0.55], ['swivel', 0.2], ['stretch', 0.1], ['sip', 0.15]],
+};
+
+function hash01(n: number): number {
+  let h = n | 0;
+  h = Math.imul(h ^ (h >>> 16), 0x45d9f3b);
+  h = Math.imul(h ^ (h >>> 16), 0x45d9f3b);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+
+/**
+ * What someone is doing right now. Deterministic per person and time, so each
+ * developer has their own rhythm without storing any state. `p` is 0..1 progress.
+ */
+function gestureFor(id: number, look: Look, t: number, mode: Mode, zone: boolean): { g: Gesture; p: number } {
+  const tt = t + look.phase * 37;
+  const n = Math.floor(tt / GESTURE_SECONDS);
+  const p = (tt % GESTURE_SECONDS) / GESTURE_SECONDS;
+  const r = hash01(n * 131 + id * 7919);
+  if (zone) return { g: r < 0.7 ? 'type' : 'lean', p };
+  let acc = 0;
+  for (const [g, w] of GESTURES[mode]) {
+    acc += w;
+    if (r < acc) return { g, p };
+  }
+  return { g: mode === 'idle' ? 'relax' : 'type', p };
+}
+
 function pickLine(list: string[]): string {
   return list[Math.floor(Math.random() * list.length)];
 }
@@ -341,6 +377,9 @@ export class OfficeScene {
       c.fillRect(x + rx, y + ry, rw, rh);
     };
     const look = s ? lookFor(s) : null;
+    // Body language runs on the scene clock, so everyone freezes mid-motion when the game is paused.
+    const gt = this.reducedMotion ? 0 : this.clock;
+    const gesture = s && look && !away ? gestureFor(s.id, look, gt, mode, zone) : null;
 
     // Zone aura behind everything at this desk.
     if (zone && look) {
@@ -358,12 +397,12 @@ export class OfficeScene {
     rect(8, 34, 2, 8, '#5e3c27');
     rect(38, 34, 2, 8, '#5e3c27');
 
-    // Mug on the desk (it goes with them on a coffee break)
-    if (!away) {
+    // Mug on the desk (it goes with them on a coffee break, or up to their lips)
+    if (!away && gesture?.g !== 'sip') {
       rect(36, 27, 3, 3, '#e8e8f0');
       rect(39, 28, 1, 1, '#e8e8f0');
     }
-    if (s && !away && Math.sin(time * 1.3 + (look?.phase ?? 0) * 10) > 0.4) rect(37, 25 - Math.floor((time * 3) % 2), 1, 1, '#ffffff66');
+    if (s && !away && gesture?.g !== 'sip' && Math.sin(time * 1.3 + (look?.phase ?? 0) * 10) > 0.4) rect(37, 25 - Math.floor((time * 3) % 2), 1, 1, '#ffffff66');
 
     // Monitor
     rect(13, 10, 22, 16, '#15131f');
@@ -376,7 +415,7 @@ export class OfficeScene {
       rect(30, 11, 4, 4, '#ffd25c');
       rect(31, 12, 2, 1, '#8a6a1a');
     }
-    if (!s || !look || away) {
+    if (!s || !look || away || !gesture) {
       // Empty chair
       rect(17, 32, 14, 9, '#2a2836');
       rect(23, 41, 2, 2, '#1b1a24');
@@ -384,63 +423,128 @@ export class OfficeScene {
     }
 
     // Person, seen from behind, sitting at the desk.
-    const typing = animating && mode !== 'idle';
-    const speed = zone ? 22 : 12;
-    const beat = typing ? Math.floor(time * speed + look.phase * 10) % 2 : 0;
-    const lean = mode === 'idle' ? 1 : 0;
-    const bob = zone ? Math.floor(time * 10) % 2 : 0;
-    const hy = 21 + lean - bob;
+    const { g, p } = gesture;
+    const typingNow = (g === 'type' || g === 'lean' || g === 'look') && (animating || this.reducedMotion);
+    const speed = zone ? 22 : g === 'lean' ? 16 : 11;
+    const beatN = Math.floor(gt * speed + look.phase * 10);
+    const beat = typingNow ? beatN % 2 : 0;
+    // Hands travel back and forth across the keyboard.
+    const slide = typingNow ? [0, 1, 0, -1][Math.floor(beatN / 3) % 4] : 0;
 
-    // Chair back
+    let dx = 0; // body sway
+    let dy = mode === 'idle' ? 1 : 0; // slump back when idle
+    let hdx = 0; // head turn
+    let hdy = 0; // head nod
+    if (g === 'type') {
+      dx = Math.round(Math.sin(gt * 0.9 + look.phase * 6) * 0.7);
+      hdy = beatN % 8 === 0 ? 1 : 0; // nod along to the rhythm
+    } else if (g === 'lean') {
+      dy -= 2; // lean in towards the monitor
+      hdy = beatN % 6 === 0 ? 1 : 0;
+    } else if (g === 'look') {
+      hdx = p < 0.5 ? 1 : -1; // glance at a neighbour, then the other way
+    } else if (g === 'think') {
+      hdx = 1;
+    } else if (g === 'swivel') {
+      dx = Math.round(Math.sin(gt * 2.4 + look.phase * 4) * 1.5);
+    }
+    if (zone) dy -= Math.floor(gt * 10) % 2;
+    const hy = 21 + dy;
+    const P = (rx: number, ry: number, rw: number, rh: number, col: string) => rect(rx + dx, ry, rw, rh, col);
+    const H = (rx: number, ry: number, rw: number, rh: number, col: string) => rect(rx + dx + hdx, ry + hdy, rw, rh, col);
+
+    // Chair back (stays put while they sway)
     rect(16, 34, 16, 8, '#2a2836');
     rect(23, 42, 2, 1, '#1b1a24');
     // Shoulders / shirt
-    rect(17, hy + 8, 14, 7, look.shirt);
-    rect(17, hy + 8, 14, 1, '#ffffff33');
-    // Arms reaching to the keyboard (alternate while typing)
-    if (mode === 'idle') {
-      // Hands behind the head, relaxing.
-      rect(15, hy + 2, 3, 6, look.shirt);
-      rect(30, hy + 2, 3, 6, look.shirt);
-    } else {
-      rect(15, hy + 9 - beat, 3, 4, look.shirt);
-      rect(30, hy + 9 - (1 - beat), 3, 4, look.shirt);
-      rect(15, hy + 8 - beat, 3, 1, look.skin);
-      rect(30, hy + 8 - (1 - beat), 3, 1, look.skin);
+    P(17, hy + 8, 14, 7, look.shirt);
+    P(17, hy + 8, 14, 1, '#ffffff33');
+
+    // Lower arms: on the keyboard, or behind the head when relaxing.
+    const relaxing = g === 'relax' || g === 'swivel';
+    const rightBusy = g === 'think' || g === 'point' || g === 'sip' || g === 'stretch';
+    if (relaxing) {
+      P(15, hy + 2, 3, 6, look.shirt);
+      P(30, hy + 2, 3, 6, look.shirt);
+    } else if (g !== 'stretch') {
+      P(15 + slide, hy + 9 - beat * 2, 3, 4, look.shirt);
+      P(15 + slide, hy + 8 - beat * 2, 3, 1, look.skin);
+      if (!rightBusy) {
+        P(30 + slide, hy + 9 - (1 - beat) * 2, 3, 4, look.shirt);
+        P(30 + slide, hy + 8 - (1 - beat) * 2, 3, 1, look.skin);
+      }
     }
+
     // Neck & head
-    rect(22, hy + 7, 4, 2, look.skin);
-    rect(20, hy, 8, 8, look.skin);
-    rect(19, hy + 3, 1, 2, look.skin);
-    rect(28, hy + 3, 1, 2, look.skin);
+    P(22, hy + 7, 4, 2, look.skin);
+    H(20, hy, 8, 8, look.skin);
+    H(19, hy + 3, 1, 2, look.skin);
+    H(28, hy + 3, 1, 2, look.skin);
     // Hair (from behind)
     switch (look.style) {
       case 0: // short
-        rect(20, hy, 8, 5, look.hair);
-        rect(20, hy - 1, 8, 1, look.hair);
+        H(20, hy, 8, 5, look.hair);
+        H(20, hy - 1, 8, 1, look.hair);
         break;
       case 1: // long
-        rect(19, hy - 1, 10, 7, look.hair);
-        rect(19, hy + 6, 2, 4, look.hair);
-        rect(27, hy + 6, 2, 4, look.hair);
-        rect(21, hy + 6, 6, 3, look.hair);
+        H(19, hy - 1, 10, 7, look.hair);
+        H(19, hy + 6, 2, 4, look.hair);
+        H(27, hy + 6, 2, 4, look.hair);
+        H(21, hy + 6, 6, 3, look.hair);
         break;
       case 2: // bun
-        rect(20, hy - 1, 8, 6, look.hair);
-        rect(22, hy - 4, 4, 3, look.hair);
+        H(20, hy - 1, 8, 6, look.hair);
+        H(22, hy - 4, 4, 3, look.hair);
         break;
       default: // headphones
-        rect(20, hy, 8, 4, look.hair);
-        rect(19, hy - 1, 10, 1, '#15131f');
-        rect(18, hy + 2, 2, 4, '#15131f');
-        rect(28, hy + 2, 2, 4, '#15131f');
+        H(20, hy, 8, 4, look.hair);
+        H(19, hy - 1, 10, 1, '#15131f');
+        H(18, hy + 2, 2, 4, '#15131f');
+        H(28, hy + 2, 2, 4, '#15131f');
+    }
+    // Turning the head shows a cheek and an eye.
+    if (hdx > 0) {
+      H(26, hy + 2, 2, 4, look.skin);
+      H(27, hy + 3, 1, 1, '#15131f');
+    } else if (hdx < 0) {
+      H(20, hy + 2, 2, 4, look.skin);
+      H(20, hy + 3, 1, 1, '#15131f');
     }
     if (zone) {
       // A little headband of fire.
       const f = Math.floor(time * 12) % 3;
-      rect(20, hy - 2 - (f === 0 ? 1 : 0), 2, 2, '#ffad3b');
-      rect(23, hy - 3 - (f === 1 ? 1 : 0), 2, 3, '#ff6b4a');
-      rect(26, hy - 2 - (f === 2 ? 1 : 0), 2, 2, '#ffd25c');
+      H(20, hy - 2 - (f === 0 ? 1 : 0), 2, 2, '#ffad3b');
+      H(23, hy - 3 - (f === 1 ? 1 : 0), 2, 3, '#ff6b4a');
+      H(26, hy - 2 - (f === 2 ? 1 : 0), 2, 2, '#ffd25c');
+    }
+
+    // Raised arms go in front of the head.
+    if (g === 'think') {
+      // Scratching their head.
+      const scratch = Math.floor(gt * 8) % 2;
+      P(29, hy + 2, 3, 8, look.shirt);
+      P(28, hy + 1 - scratch, 2, 2, look.skin);
+    } else if (g === 'point') {
+      // Pointing at something on the screen.
+      const tap = Math.floor(gt * 4) % 2;
+      P(29, hy + 1, 3, 8, look.shirt);
+      P(30, hy - 1, 2, 2, look.skin);
+      P(31, hy - 3 + tap, 1, 2, look.skin);
+    } else if (g === 'sip') {
+      // A sip from the mug, lifted at the start and the end of the gesture.
+      const lift = p > 0.25 && p < 0.75 ? 2 : 0;
+      P(29, hy + 4, 3, 6, look.shirt);
+      P(30, hy + 4 - lift, 2, 1, look.skin);
+      P(28, hy + 1 - lift, 3, 3, '#e8e8f0');
+      P(31, hy + 2 - lift, 1, 1, '#e8e8f0');
+      if (Math.floor(time * 3) % 2) P(29, hy - 1 - lift, 1, 1, '#ffffff88');
+    } else if (g === 'stretch') {
+      // Arms straight up, with a little wiggle at the top.
+      const reach = p > 0.2 && p < 0.8 ? 2 : 0;
+      P(15, hy - 3 - reach, 3, 12 + reach, look.shirt);
+      P(30, hy - 3 - reach, 3, 12 + reach, look.shirt);
+      P(15, hy - 5 - reach, 3, 2, look.skin);
+      P(30, hy - 5 - reach, 3, 2, look.skin);
     }
   }
 

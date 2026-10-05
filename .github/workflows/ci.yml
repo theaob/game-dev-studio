@@ -60,22 +60,23 @@ jobs:
     # Deploy from main, from version tags, or when started by hand. Never from pull requests.
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')))
     runs-on: ubuntu-latest
-    environment:
-      name: itch.io
-      url: https://${{ vars.ITCH_USER }}.itch.io/${{ vars.ITCH_GAME }}
+    # Secrets aren't allowed in an environment URL, so the page link is in the job summary instead.
+    environment: itch.io
     concurrency:
       group: itch-deploy
       cancel-in-progress: false
     env:
       BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
-      ITCH_TARGET: ${{ vars.ITCH_USER }}/${{ vars.ITCH_GAME }}:${{ inputs.channel || 'html5' }}
+      ITCH_USER: ${{ secrets.ITCH_USER }}
+      ITCH_GAME: ${{ secrets.ITCH_GAME }}
+      ITCH_CHANNEL: ${{ inputs.channel || 'html5' }}
     steps:
       - name: Check itch.io configuration
         run: |
           missing=0
           [ -n "$BUTLER_API_KEY" ] || { echo "::error::Secret BUTLER_API_KEY is not set"; missing=1; }
-          [ -n "${{ vars.ITCH_USER }}" ] || { echo "::error::Variable ITCH_USER is not set"; missing=1; }
-          [ -n "${{ vars.ITCH_GAME }}" ] || { echo "::error::Variable ITCH_GAME is not set"; missing=1; }
+          [ -n "$ITCH_USER" ] || { echo "::error::Secret ITCH_USER is not set"; missing=1; }
+          [ -n "$ITCH_GAME" ] || { echo "::error::Secret ITCH_GAME is not set"; missing=1; }
           exit $missing
 
       - uses: actions/checkout@v4
@@ -104,13 +105,14 @@ jobs:
             version="$(node -p "require('./package.json').version")-build.${GITHUB_RUN_NUMBER}"
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "Deploying $version to $ITCH_TARGET"
+          echo "Deploying $version to channel $ITCH_CHANNEL"
 
       - name: Push to itch.io
         run: |
           butler -V
-          butler push dist "$ITCH_TARGET" --userversion "${{ steps.version.outputs.version }}"
-          butler status "${ITCH_TARGET}"
+          target="$ITCH_USER/$ITCH_GAME:$ITCH_CHANNEL"
+          butler push dist "$target" --userversion "${{ steps.version.outputs.version }}"
+          butler status "$target"
 
       - name: Summary
         run: |
@@ -118,6 +120,7 @@ jobs:
             echo "### Deployed to itch.io 🎮"
             echo ""
             echo "- Version: \`${{ steps.version.outputs.version }}\`"
-            echo "- Channel: \`$ITCH_TARGET\`"
-            echo "- Page: https://${{ vars.ITCH_USER }}.itch.io/${{ vars.ITCH_GAME }}"
+            echo "- Channel: \`$ITCH_CHANNEL\`"
+            # Values from secrets are masked in logs and summaries, so this shows as *** on GitHub.
+            echo "- Page: https://$ITCH_USER.itch.io/$ITCH_GAME"
           } >> "$GITHUB_STEP_SUMMARY"
