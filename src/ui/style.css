@@ -1754,20 +1754,7 @@ textarea {
   box-shadow: var(--pop);
 }
 
-.list .notice.good,
-.list .notice.bad,
-.list .notice.info {
-  border-left-width: 6px;
-  border-left-color: var(--good);
-}
 
-.list .notice.bad {
-  border-left-color: var(--bad);
-}
-
-.list .notice.info {
-  border-left-color: var(--line);
-}
 
 .list-item:active {
   transform: translateY(2px);
@@ -1794,10 +1781,7 @@ h2 {
   border-radius: 18px;
 }
 
-.reception,
-.sequel-card {
-  border-left-width: 6px;
-}
+
 
 .stat,
 .icon-btn {
@@ -1939,4 +1923,194 @@ nav.tabs .dot {
 
 .toast.bad {
   background: #f9e1da;
+}
+
+/* =========================================================================
+ * Alignment
+ * One gutter for every edge of the screen, one inset inside every box, and
+ * one height per control row, so edges and baselines line up across tabs.
+ * ========================================================================= */
+
+:root {
+  --gutter: 16px;
+  --inset: 14px;
+  --control-h: 46px;
+}
+
+/* Screen edges */
+.hud {
+  padding-left: var(--gutter);
+  padding-right: var(--gutter);
+}
+
+.dock,
+nav.tabs {
+  left: var(--gutter);
+  right: var(--gutter);
+}
+
+.panel main {
+  padding-left: var(--gutter);
+  padding-right: var(--gutter);
+}
+
+.sheet {
+  padding-left: calc(var(--gutter) - 2px);
+  padding-right: calc(var(--gutter) - 2px);
+}
+
+.toasts {
+  width: calc(100% - 2 * var(--gutter));
+}
+
+/* Headings sit flush with the cards below them */
+.panel-head {
+  padding-left: 0;
+  padding-right: 0;
+}
+
+h2,
+.sheet h4 {
+  margin-left: 0;
+  margin-right: 0;
+}
+
+/* HUD: every control in the top row is the same height; the resource pills
+   share the row equally so its right edge matches the speed button. */
+.hud-pill {
+  height: var(--control-h);
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.studio-logo {
+  width: 34px;
+  height: 34px;
+  margin-left: 4px;
+  font-size: 18px;
+}
+
+.hud-btn {
+  height: var(--control-h);
+  min-width: var(--control-h);
+}
+
+.hud-res {
+  display: grid;
+  grid-template-columns: 1.35fr 1fr 1fr;
+}
+
+.res {
+  justify-content: center;
+  min-width: 0;
+  overflow: hidden;
+  padding: 0 8px;
+}
+
+/* Boxes: same inner inset everywhere */
+.card,
+.dock-card,
+.summary,
+.slider,
+.reception,
+.sequel-card {
+  padding: var(--inset);
+}
+
+.list-item,
+.list .notice,
+.option {
+  padding: 12px var(--inset);
+}
+
+.list-item .emoji,
+.option .emoji {
+  flex: none;
+  width: 32px;
+  font-size: 26px;
+  text-align: center;
+}
+
+/* News: tint instead of a coloured edge */
+.list .notice {
+  border: 2px solid var(--ink);
+}
+
+.list .notice.good {
+  background: #e2f1e5;
+}
+
+.list .notice.bad {
+  background: #f9e1da;
+}
+
+.reception.good {
+  background: #edf3dc;
+}
+
+.reception.mid {
+  background: #fbefd0;
+}
+
+/* Buttons: labels stay centred when they wrap */
+.btn {
+  min-height: var(--control-h);
+  padding: 8px 18px;
+  line-height: 1.2;
+  text-align: center;
+  white-space: normal;
+}
+
+.btn.small {
+  min-height: 36px;
+  padding: 4px 12px;
+  white-space: nowrap;
+}
+
+.btn.big {
+  min-height: 58px;
+}
+
+.btn.tile {
+  min-height: 58px;
+  padding: 0;
+}
+
+.btn-row {
+  align-items: stretch;
+}
+
+/* Inputs line up with the button beside them */
+.text-input {
+  min-height: var(--control-h);
+}
+
+.row > .icon-btn {
+  flex: none;
+  width: var(--control-h);
+  height: var(--control-h);
+}
+
+/* Counter tiles and stat tiles: centred, equal heights */
+.counters,
+.stats {
+  align-items: stretch;
+}
+
+.stat {
+  padding: 8px var(--inset);
+}
+
+/* Vertical rhythm: the same 10px gap between stacked HUD, dock and tab-bar rows */
+.hud-res {
+  margin-top: 10px;
+}
+
+nav.tabs {
+  bottom: calc(var(--safe-bottom) + 10px);
+}
+
+.dock {
+  bottom: calc(var(--safe-bottom) + 10px + var(--nav-h) + 14px);
+  gap: 10px;
 }
