@@ -7,13 +7,16 @@ import {
   availableMarketing,
   availablePlatforms,
   availableSizes,
+  bookBooth,
   doResearch,
   gameCost,
   hire,
   monthlyCosts,
   officeCapacity,
+  pushSales,
   releaseGame,
   researchBlocker,
+  runPromo,
   setPhaseFocus,
   startContract,
   startGame,
@@ -41,6 +44,13 @@ export function botTurn(state: GameState, style: BotStyle, reports: ReleaseRepor
   const act = state.activity;
 
   if (act?.kind === 'game') {
+    // Marketing: everyone sensible runs a preview; the smart bot hypes bigger games and goes to GameExpo.
+    if (style === 'smart' || style === 'casual') runPromo(state, 'preview');
+    if (style === 'smart' && act.size !== 'small') {
+      runPromo(state, 'trailer');
+      if (state.cash > monthlyCosts(state) * 12) runPromo(state, 'influencers');
+    }
+    if (style === 'smart' && state.cash > monthlyCosts(state) * 6) bookBooth(state, act.size === 'small' ? 'small' : 'medium');
     if (act.awaitingFocus) setPhaseFocus(state, style === 'smart' ? smartFocus(act.genre, act.phase) : [50, 50, 50]);
     if (act.phase >= 3) {
       const total = act.design + act.tech;
@@ -73,6 +83,10 @@ export function botTurn(state: GameState, style: BotStyle, reports: ReleaseRepor
     }
   }
 
+  if (style === 'smart') {
+    for (const g of state.released) if (g.weeksOnMarket < 4 && g.score >= 7) pushSales(state, g.id, 'ads');
+  }
+
   if (act) return;
 
   const reserve = monthlyCosts(state) * 3 + 5000;
@@ -81,7 +95,7 @@ export function botTurn(state: GameState, style: BotStyle, reports: ReleaseRepor
     return;
   }
 
-  const spec = style === 'smart' ? smartSpec(state) : style === 'casual' ? smartSpec(state, 2) : style === 'eager' ? eagerSpec(state) : naiveSpec(state);
+  const spec = style === 'smart' ? smartSpec(state) : style === 'casual' ? smartSpec(state, 2, true) : style === 'eager' ? eagerSpec(state) : naiveSpec(state);
   if (!spec) {
     if (state.contractOffers.length) startContract(state, state.contractOffers[0].id);
     return;
@@ -93,12 +107,15 @@ export function botTurn(state: GameState, style: BotStyle, reports: ReleaseRepor
 }
 
 /** The best-selling spec it can afford; `minFit` 3 only takes great topic/genre matches, 2 takes good ones too. */
-function smartSpec(state: GameState, minFit = 3): GameSpec | null {
+function smartSpec(state: GameState, minFit = 3, modestAds = false): GameSpec | null {
   const year = yearFraction(state.week);
   const recent = state.released.slice(-3);
   let best: { spec: GameSpec; value: number } | null = null;
   const sizes = availableSizes(state).filter((s) => state.staff.length >= s.minStaff);
   const marketing = availableMarketing(state);
+  // An average player sizes ads to the game: none for small, magazine ads for medium, up to a big campaign for large.
+  const allowed: Record<string, string[]> = { small: ['none'], medium: ['none', 'ads'], large: ['none', 'ads', 'campaign'] };
+  const adsFor = (size: string) => (modestAds ? marketing.filter((m) => allowed[size].includes(m.id)) : marketing);
   for (const platform of availablePlatforms(state)) {
     for (const genre of GENRES) {
       for (const topic of state.topics) {
@@ -106,7 +123,7 @@ function smartSpec(state: GameState, minFit = 3): GameSpec | null {
         const fit = topicFit(topic, genre.id);
         if (fit < minFit) continue;
         for (const size of sizes) {
-          for (const m of marketing) {
+          for (const m of adsFor(size.id)) {
             const spec: GameSpec = { name: `Game ${state.released.length + 1}`, topic, genre: genre.id, platform: platform.id, size: size.id, marketing: m.id };
             const cost = gameCost(state, spec).total;
             if (cost > state.cash - monthlyCosts(state) * 4) continue;

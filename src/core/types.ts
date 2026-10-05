@@ -44,6 +44,9 @@ export interface GameProject extends GameSpec {
   polishMode?: PolishMode;
   /** Weeks spent polishing design or tech; each one yields less than the last. */
   pointPolishWeeks?: number;
+  /** Hype built by marketing during development (0..100), and the promos already run. */
+  hype?: number;
+  promos?: string[];
   design: number;
   tech: number;
   bugs: number;
@@ -90,6 +93,9 @@ export interface ReleasedGame extends GameSpec {
   cost: number;
   /** Part number in its series: 1 for an original, 2 for its sequel, and so on. */
   series?: number;
+  /** Hype at launch, and the post-launch pushes used on it. */
+  hype?: number;
+  pushes?: string[];
 }
 
 export interface Knowledge {
@@ -139,6 +145,8 @@ export interface GameState {
   upgrades?: string[];
   /** The studio cat: whose lap it's on (boosting them), and how long until it wants another lap. */
   cat?: CatState;
+  /** This year's GameExpo booth booking. */
+  expo?: { year: number; booth: string };
 }
 
 export interface CatState {

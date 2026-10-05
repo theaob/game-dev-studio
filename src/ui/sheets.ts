@@ -21,9 +21,14 @@ import {
   staffWeeklyPoints,
   storeBlocker,
   storePrice,
+  SALES_WEEKS,
+  boothBlocker,
+  promoBlocker,
+  salesPushBlocker,
 } from '../core/sim';
 import { SEQUEL_TOO_SOON_WEEKS, sequelCandidates, sequelSalesMult, seriesNumber } from '../core/sequels';
-import { formatShortDate, yearFraction } from '../core/time';
+import { WEEKS_PER_YEAR, formatShortDate, yearFraction, yearOf } from '../core/time';
+import { BOOTHS, EXPO_BOOKING_WEEKS, PROMOS, SALES_PUSHES, boothById, boothPrice, promoPrice, salesPushPrice, weeksToExpo } from '../core/marketing';
 import type { GameProject, GameSpec, GameState, ReleaseReport } from '../core/types';
 import { esc, money, num, scoreClass } from './format';
 import type { StoreItem } from '../core/data';
@@ -43,6 +48,7 @@ export type Sheet =
   | { kind: 'confirm'; text: string; action: string; arg?: string; confirmLabel: string }
   | { kind: 'contracts' }
   | { kind: 'store' }
+  | { kind: 'marketing' }
   | { kind: 'gameOver' };
 
 export const OUTLETS = ['Game Weekly', 'Pixel Press', 'PlayZone', 'Joystick Journal'];
@@ -82,6 +88,8 @@ export function renderSheet(state: GameState | null, sheet: Sheet): string {
       return contracts(state);
     case 'store':
       return store(state);
+    case 'marketing':
+      return marketing(state);
   }
 }
 
@@ -105,6 +113,7 @@ function help(): string {
       <p><b>Set the focus.</b> Development has 3 phases with 3 areas each. Put your team's effort where the genre needs it. Reviews reveal what matters.</p>
       <p><b>Design vs Tech.</b> Every genre has a sweet spot between creative (design) and technical (tech) points.</p>
       <p><b>Polish.</b> After development you can keep polishing before you release: fix bugs (they hurt reviews), or add more design or tech points to fix the game's balance. Design and tech polishing gives less each week.</p>
+      <p><b>Marketing.</b> Pick an ad budget when you start a game. Tap 📣 Promote while making it to build hype with previews and trailers, and book a booth at the yearly GameExpo. Hype sells more copies of a good game, but a hyped flop gets a backlash. After launch, 📣 Push sales runs ads or a discount sale.</p>
       <p><b>The cat.</b> Sometimes the studio cat curls up on a developer's lap, and they work 30% faster while it stays. You can carry the cat over and drop it on someone too, but it needs some alone time between laps.</p>
       <p><b>Store.</b> Spend cash on power-ups: boosts like an espresso bar or pizza night last a few weeks of development, and studio upgrades help forever. Find it next to Contracts, or tap ⚡ Boost while making a game.</p>
       <p><b>Raise the bar.</b> Players expect each game to beat your last one, and the industry keeps moving. Grow your team, train them and research better tech.</p>
@@ -297,7 +306,7 @@ function newGameStep2(state: GameState, d: GameSpec, error?: string): string {
             .map(
               (m) => `
         <button class="option ${d.marketing === m.id ? 'on' : ''}" data-action="pick-marketing" data-arg="${m.id}">
-          <span class="grow"><b>${m.name}</b><br/><span class="sub">${m.cost ? `${money(marketingCost(state, m.id))} · ` : ''}${m.salesMult > 1 ? `+${Math.round((m.salesMult - 1) * 100)}% sales` : 'word of mouth only'}</span></span>
+          <span class="grow"><b>${m.name}</b><br/><span class="sub">${m.cost ? `${money(marketingCost(state, m.id, d.size))} · ` : ''}${m.salesMult > 1 ? `+${Math.round((m.salesMult - 1) * 100)}% sales` : 'word of mouth only'}</span></span>
         </button>`,
             )
             .join('')}</div>`
@@ -534,6 +543,68 @@ function store(state: GameState): string {
     <h4>Studio upgrades</h4>
     <div class="options">${upgrades.map((x) => storeRow(state, x)).join('')}</div>
     <div class="btn-row"><button class="btn ghost" data-action="close">Close</button></div>`;
+}
+
+/** One buyable marketing option: icon, name, what it does, and a price button (or why not). */
+function marketingRow(icon: string, name: string, desc: string, status: string, action: string, arg: string, price: number, blocked: string | null, done: boolean): string {
+  return `
+    <div class="option store-item">
+      <span class="emoji">${icon}</span>
+      <span class="grow"><b>${name}</b> ${status}<br/><span class="sub">${desc}</span>${blocked && !done ? `<br/><span class="sub warn">${blocked}</span>` : ''}</span>
+      <button class="btn small" data-action="${action}" data-arg="${arg}" ${blocked ? 'disabled' : ''}>${done ? 'Done' : price ? money(price) : 'Free'}</button>
+    </div>`;
+}
+
+function marketing(state: GameState): string {
+  const parts: string[] = ['<h3>Marketing</h3>'];
+  const p = state.activity;
+
+  // Hype for the game in development.
+  if (p?.kind === 'game') {
+    const hype = Math.round(p.hype ?? 0);
+    parts.push(`
+    <h4>Build hype for ${esc(p.name)}</h4>
+    <div class="hype-row big">
+      <span class="hype-label">📣 Hype</span>
+      <div class="hype-bar"><i style="width:${hype}%"></i></div>
+      <b>${hype}</b>
+    </div>
+    <p class="sub">Hype fades a little every week. At launch it boosts sales and fans, but only if the reviews live up to it: a hyped flop gets a backlash.</p>
+    <div class="options">${PROMOS.map((pr) => {
+      const done = !!p.promos?.includes(pr.id);
+      return marketingRow(pr.icon, pr.name, `${pr.desc} +${pr.hype} hype.`, done ? '<span class="tag good">Done</span>' : '', 'promo', pr.id, promoPrice(state, pr.id), promoBlocker(state, pr.id), done);
+    }).join('')}</div>`);
+  }
+
+  // GameExpo.
+  const weeks = weeksToExpo(state, WEEKS_PER_YEAR);
+  const year = yearOf(state.week);
+  const booked = state.expo?.year === year ? boothById(state.expo.booth) : null;
+  let expo: string;
+  if (booked) {
+    expo = `<p class="sub">Your ${booked.name.toLowerCase()} is booked${weeks ? ` · opens in ${weeks} week${weeks === 1 ? '' : 's'}` : ''}. ${p?.kind === 'game' ? `${esc(p.name)} will be on show.` : 'Start a game before then to show it off.'}</p>`;
+  } else if (weeks !== null && weeks >= 1 && weeks <= EXPO_BOOKING_WEEKS) {
+    expo = `<p class="sub">Opens in ${weeks} week${weeks === 1 ? '' : 's'}. A game in development gets hype and you win fans; with nothing to show, you win fewer fans.</p>
+    <div class="options">${BOOTHS.map((b) => marketingRow('🎪', b.name, `+${b.hype} hype, +${b.fans.toLocaleString('en-US')} fans.`, '', 'booth', b.id, boothPrice(state, b.id), boothBlocker(state, b.id), false)).join('')}</div>`;
+  } else {
+    const next = weeks === null || weeks < 1 ? year + 1 : year;
+    expo = `<p class="sub">GameExpo ${next} is in June. Booking opens ${EXPO_BOOKING_WEEKS} weeks before.</p>`;
+  }
+  parts.push(`<h4>🎪 GameExpo ${booked || (weeks !== null && weeks >= 1) ? year : year + 1}</h4>${expo}`);
+
+  // Games on sale.
+  const selling = state.released.filter((g) => g.weeksOnMarket < SALES_WEEKS);
+  parts.push('<h4>Games on sale</h4>');
+  if (!selling.length) parts.push('<p class="sub">Nothing on sale right now.</p>');
+  for (const g of selling) {
+    parts.push(`<p class="sub"><b>${esc(g.name)}</b> · ${SALES_WEEKS - g.weeksOnMarket} weeks left on the charts</p>
+    <div class="options">${SALES_PUSHES.map((sp) => {
+      const done = !!g.pushes?.includes(sp.id);
+      return marketingRow(sp.icon, sp.name, sp.desc, done ? '<span class="tag good">Done</span>' : '', 'push', `${g.id}:${sp.id}`, salesPushPrice(state, sp.id), salesPushBlocker(state, g.id, sp.id), done);
+    }).join('')}</div>`);
+  }
+  parts.push('<div class="btn-row"><button class="btn ghost" data-action="close">Close</button></div>');
+  return parts.join('');
 }
 
 function gameOver(state: GameState): string {

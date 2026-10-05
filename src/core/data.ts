@@ -229,7 +229,7 @@ export interface MarketingDef {
 
 export const MARKETING: MarketingDef[] = [
   { id: 'none', name: 'No marketing', cost: 0, salesMult: 1 },
-  { id: 'ads', name: 'Magazine ads', cost: 20000, salesMult: 1.3, research: 'marketing' },
+  { id: 'ads', name: 'Magazine ads', cost: 20000, salesMult: 1.3 },
   { id: 'campaign', name: 'Big campaign', cost: 150000, salesMult: 1.75, research: 'marketing' },
   { id: 'global', name: 'Global TV & web campaign', cost: 600000, salesMult: 2.4, research: 'marketing', fromYear: 1998 },
 ];
@@ -263,7 +263,7 @@ export const RESEARCH: ResearchItem[] = [
   { id: 'design3', name: 'Narrative Tools', desc: '+20% design points.', cost: 400, requires: 'design2', category: 'Technology' },
   { id: 'qa1', name: 'QA Process', desc: '30% fewer bugs during development.', cost: 60, category: 'Technology' },
   { id: 'qa2', name: 'Automated Testing', desc: 'Another 30% fewer bugs, faster polishing.', cost: 220, requires: 'qa1', category: 'Technology' },
-  { id: 'marketing', name: 'Marketing Department', desc: 'Unlocks ad campaigns when starting a game.', cost: 80, category: 'Business' },
+  { id: 'marketing', name: 'Marketing Department', desc: 'Unlocks big ad campaigns when starting a game.', cost: 80, category: 'Business' },
 ];
 
 export interface OfficeDef {

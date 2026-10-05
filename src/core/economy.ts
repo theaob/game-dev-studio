@@ -44,9 +44,12 @@ export function sizeCost(state: Pick<GameState, 'week'>, size: SizeId): number {
   return friendly(def.cost * priceIndex(state.week));
 }
 
-export function marketingCost(state: Pick<GameState, 'week'>, id: MarketingId): number {
+/** Ad campaigns are sized to the game: a small game buys smaller ads. */
+export const MARKETING_SIZE_SCALE: Record<SizeId, number> = { small: 0.4, medium: 1, large: 2 };
+
+export function marketingCost(state: Pick<GameState, 'week'>, id: MarketingId, size: SizeId = 'medium'): number {
   const def = MARKETING.find((m) => m.id === id)!;
-  return friendly(def.cost * priceIndex(state.week));
+  return friendly(def.cost * MARKETING_SIZE_SCALE[size] * priceIndex(state.week));
 }
 
 export function officeRent(state: Pick<GameState, 'week'>, level: number): number {

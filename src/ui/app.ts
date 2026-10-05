@@ -1,5 +1,6 @@
-import { availablePlatforms, createGame, doResearch, fire, hire, randomTitle, buyStoreItem, catLeaveLap, placeCatOnLap, releaseGame, setPhaseFocus, setPolishMode, startContract, startGame, tick, train, upgradeOffice, validateGame } from '../core/sim';
+import { availablePlatforms, createGame, doResearch, fire, hire, randomTitle, bookBooth, buyStoreItem, catLeaveLap, pushSales, runPromo, placeCatOnLap, releaseGame, setPhaseFocus, setPolishMode, startContract, startGame, tick, train, upgradeOffice, validateGame } from '../core/sim';
 import { storeItemById } from '../core/data';
+import type { BoothId, PromoId, SalesPushId } from '../core/marketing';
 import { normalizeFocus } from '../core/scoring';
 import { sequelName } from '../core/sequels';
 import type { GameSpec, GameState, GenreId, MarketingId, NoticeKind, PolishMode, SimEvent, SizeId } from '../core/types';
@@ -620,6 +621,24 @@ export class App {
       case 'store':
         this.open({ kind: 'store' });
         return;
+      case 'marketing':
+        this.open({ kind: 'marketing' });
+        return;
+      case 'promo':
+      case 'booth':
+      case 'push': {
+        const err =
+          name === 'promo'
+            ? runPromo(s, arg as PromoId)
+            : name === 'booth'
+              ? bookBooth(s, arg as BoothId)
+              : pushSales(s, Number(arg.split(':')[0]), arg.split(':')[1] as SalesPushId);
+        if (report(err)) {
+          this.office.cheer(name === 'push' ? ['📈', 'Sales!', '💸'] : name === 'booth' ? ['🎪', 'Expo!', '🤩'] : ['📣', 'Hype!', '🔥']);
+          if (sheet?.kind === 'marketing') this.renderSheet();
+        }
+        return;
+      }
       case 'buy': {
         const item = storeItemById(arg);
         const bugsBefore = s.activity?.kind === 'game' ? s.activity.bugs : 0;

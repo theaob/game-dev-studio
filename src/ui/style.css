@@ -2279,3 +2279,57 @@ nav.tabs {
 canvas.office {
   touch-action: none;
 }
+
+/* Marketing: hype meter */
+.hype-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.hype-label {
+  flex: none;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.hype-bar {
+  flex: 1;
+  height: 10px;
+  border-radius: 99px;
+  border: 1.5px solid var(--ink);
+  background: var(--card2);
+  overflow: hidden;
+}
+
+.hype-bar > i {
+  display: block;
+  height: 100%;
+  background: var(--accent2);
+  transition: width 0.3s;
+}
+
+.hype-row > b {
+  flex: none;
+  min-width: 22px;
+  text-align: right;
+  font-family: var(--display);
+}
+
+.hype-row .btn.small {
+  flex: none;
+  min-height: 32px;
+}
+
+.hype-row.big .hype-bar {
+  height: 14px;
+}
+
+.ticker.expo {
+  background: #ffe3a3;
+}
+
+.btn.wide {
+  width: 100%;
+}

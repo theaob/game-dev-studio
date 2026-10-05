@@ -26,8 +26,13 @@ import {
   catLeaveLap,
   fire,
   placeCatOnLap,
+  bookBooth,
+  pushSales,
+  runPromo,
+  SALES_WEEKS,
 } from './sim';
-import { TOTAL_WEEKS, formatDate } from './time';
+import { TOTAL_WEEKS, WEEKS_PER_YEAR, formatDate } from './time';
+import { EXPO_BOOKING_WEEKS, EXPO_WEEK, HYPE_DECAY, hypeEffect } from './marketing';
 import type { GameProject, GameSpec } from './types';
 
 const spec: GameSpec = { name: 'Dragon Quest', topic: 'fantasy', genre: 'rpg', platform: 'pc', size: 'small', marketing: 'none' };
@@ -475,5 +480,98 @@ describe('studio cat', () => {
     expect(placeCatOnLap(s, 501)).toBeNull();
     expect(fire(s, 501)).toBeNull();
     expect(s.cat?.lap).toBeUndefined();
+  });
+});
+
+describe('marketing', () => {
+  const studio = (seed: number) => {
+    const s = createGame('Hype', seed);
+    s.cash = 1e7;
+    s.staff.push({ ...s.candidates[0], id: 701, design: 6, tech: 6, speed: 1 });
+    return s;
+  };
+  const finish = (s: ReturnType<typeof createGame>) => {
+    while (s.activity?.kind === 'game' && s.activity.phase < 3) {
+      if (s.activity.awaitingFocus) setPhaseFocus(s, [33, 33, 33]);
+      tick(s);
+    }
+    const r = releaseGame(s);
+    if (typeof r === 'string') throw new Error(r);
+    return r;
+  };
+
+  it('builds hype with promos once each, in the right phase, and it fades', () => {
+    const s = studio(81);
+    startGame(s, spec, [33, 33, 33]);
+    expect(runPromo(s, 'trailer')).toBe('Needs more of the game to show.');
+    const cash = s.cash;
+    expect(runPromo(s, 'preview')).toBeNull();
+    expect(s.cash).toBeLessThan(cash);
+    expect(runPromo(s, 'preview')).toBe('Already done for this game.');
+    expect(runPromo(s, 'influencers')).toMatch(/Available from/);
+    const p = s.activity!;
+    if (p.kind !== 'game') throw new Error('expected a game');
+    expect(p.hype).toBe(12);
+    tick(s);
+    expect(p.hype).toBeCloseTo(12 * HYPE_DECAY, 1);
+  });
+
+  it('hype pays off for good games and backfires on bad ones', () => {
+    expect(hypeEffect(50, 8).salesMult).toBeGreaterThan(1.15);
+    expect(hypeEffect(50, 8, 2.4).salesMult).toBeLessThan(hypeEffect(50, 8).salesMult);
+    expect(hypeEffect(0, 8).salesMult).toBe(1);
+    expect(hypeEffect(50, 6).salesMult).toBeGreaterThan(1);
+    expect(hypeEffect(50, 6).salesMult).toBeLessThan(hypeEffect(50, 8).salesMult);
+    expect(hypeEffect(80, 3).salesMult).toBeLessThan(1);
+    expect(hypeEffect(80, 3).fansMult).toBeLessThan(1);
+    expect(hypeEffect(80, 2).salesMult).toBeLessThan(hypeEffect(20, 2).salesMult);
+  });
+
+  it('sells more at launch with hype', () => {
+    const plain = studio(82);
+    startGame(plain, spec, [33, 33, 33]);
+    const hyped = studio(82);
+    startGame(hyped, spec, [33, 33, 33]);
+    const p = hyped.activity!;
+    if (p.kind !== 'game') throw new Error('expected a game');
+    p.hype = 60; // set directly so both runs use the same random numbers
+    const a = finish(plain);
+    const b = finish(hyped);
+    expect(b.game.score).toBe(a.game.score);
+    expect(b.game.targetUnits / a.game.targetUnits).toBeCloseTo(hypeEffect(60 * HYPE_DECAY ** 9, b.game.score).salesMult, 1);
+  });
+
+  it('runs GameExpo: booking window, one booth a year, hype and fans on expo week', () => {
+    const s = studio(83);
+    expect(bookBooth(s, 'small')).toMatch(/Booking opens/);
+    while (s.week % WEEKS_PER_YEAR !== EXPO_WEEK - EXPO_BOOKING_WEEKS + 1) tick(s);
+    startGame(s, spec, [33, 33, 33]);
+    expect(bookBooth(s, 'medium')).toBeNull();
+    expect(bookBooth(s, 'big')).toBe('You already have a booth this year.');
+    const fans = s.fans;
+    while (s.week % WEEKS_PER_YEAR !== EXPO_WEEK) {
+      if (s.activity?.kind === 'game' && s.activity.awaitingFocus) setPhaseFocus(s, [33, 33, 33]);
+      tick(s);
+    }
+    const p = s.activity!;
+    if (p.kind !== 'game') throw new Error('expected a game');
+    expect(p.hype).toBeGreaterThanOrEqual(30 * 0.99);
+    expect(s.fans).toBeGreaterThanOrEqual(fans + 1000);
+  });
+
+  it('pushes sales after launch: ads and a discount sale, once each, while on the charts', () => {
+    const s = studio(84);
+    startGame(s, spec, [33, 33, 33]);
+    const g = finish(s).game;
+    const target = g.targetUnits;
+    expect(pushSales(s, g.id, 'ads')).toBeNull();
+    expect(g.targetUnits).toBeGreaterThan(target);
+    expect(pushSales(s, g.id, 'ads')).toBe('Already done for this game.');
+    const price = g.unitPrice;
+    expect(pushSales(s, g.id, 'sale')).toBeNull();
+    expect(g.unitPrice).toBeCloseTo(price * 0.6);
+    for (let w = 0; w < SALES_WEEKS; w++) tick(s);
+    expect(g.unitsSold).toBe(g.targetUnits);
+    expect(pushSales(s, g.id, 'ads')).toBe('It has left the charts.');
   });
 });

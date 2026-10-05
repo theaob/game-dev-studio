@@ -11,7 +11,8 @@ import {
   researchCost,
   trainingCost,
 } from '../core/sim';
-import { formatDate, formatShortDate } from '../core/time';
+import { WEEKS_PER_YEAR, formatDate, formatShortDate, yearOf } from '../core/time';
+import { EXPO_BOOKING_WEEKS, weeksToExpo } from '../core/marketing';
 import type { GameProject, GameState, PolishMode, ReleasedGame, Staff } from '../core/types';
 import { esc, money, num, scoreClass } from './format';
 import { officeCost, officeRent } from '../core/economy';
@@ -66,7 +67,18 @@ export function renderDock(state: GameState): string {
   const ticker = selling.length
     ? `<button class="ticker" data-action="tab" data-arg="games">📈 ${selling.length} on sale · ${money(selling.reduce((a, g) => a + g.revenue, 0))} earned</button>`
     : '';
-  return `${ticker}${renderActivity(state)}`;
+  return `${expoChip(state)}${ticker}${renderActivity(state)}`;
+}
+
+/** While GameExpo booking is open: a reminder that opens the Marketing sheet. */
+function expoChip(state: GameState): string {
+  const weeks = weeksToExpo(state, WEEKS_PER_YEAR);
+  if (weeks === null || weeks < 1 || weeks > EXPO_BOOKING_WEEKS) return '';
+  const booked = state.expo?.year === yearOf(state.week);
+  const when = `${weeks} week${weeks === 1 ? '' : 's'}`;
+  return booked
+    ? `<button class="ticker" data-action="marketing">🎪 GameExpo in ${when} · booth booked</button>`
+    : `<button class="ticker expo" data-action="marketing">🎪 GameExpo in ${when} · Book a booth</button>`;
 }
 
 // ---------------------------------------------------------------------------
@@ -129,6 +141,12 @@ function renderActivity(state: GameState): string {
       <button class="boost-btn" data-action="store" aria-label="Store: boosts and upgrades">⚡<small>Boost</small></button>
     </div>
     ${activeBoosts(state)}
+    <div class="hype-row">
+      <span class="hype-label">📣 Hype</span>
+      <div class="hype-bar"><i style="width:${Math.round(a.hype ?? 0)}%"></i></div>
+      <b>${Math.round(a.hype ?? 0)}</b>
+      <button class="btn small" data-action="marketing">Promote</button>
+    </div>
     <div class="steps-row">
       <span class="phase-chip">${polishing ? '🧹 Polish' : `${a.phase + 1}/3 ${PHASES[a.phase].name}`}</span>
       <div class="steps">${steps.map((_, i) => `<i class="${i < a.phase ? 'done' : i === a.phase ? 'now' : ''}"></i>`).join('')}</div>
@@ -185,8 +203,9 @@ function renderOnMarket(state: GameState): string {
   return `
   <h2>On sale now</h2>
   <div class="list">
-    ${selling.map((g) => gameRow(g, `${num(g.unitsSold)} sold · ${money(g.revenue)}`)).join('')}
-  </div>`;
+    ${selling.map((g) => gameRow(g, `${num(g.unitsSold)} sold · ${money(g.revenue)}${g.pushes?.length ? ` · ${g.pushes.map((x) => (x === 'sale' ? '🏷️' : '📣')).join('')}` : ''}`)).join('')}
+  </div>
+  <button class="btn ghost mt-s wide" data-action="marketing">📣 Push sales</button>`;
 }
 
 function gameRow(g: ReleasedGame, detail: string): string {

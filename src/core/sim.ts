@@ -23,6 +23,20 @@ import {
   topicById,
 } from './data';
 import type { StoreItemId } from './data';
+import {
+  EXPO_BOOKING_WEEKS,
+  EXPO_WEEK,
+  HYPE_DECAY,
+  MAX_HYPE,
+  boothById,
+  boothPrice,
+  hypeEffect,
+  promoById,
+  promoPrice,
+  salesPushPrice,
+  weeksToExpo,
+} from './marketing';
+import type { BoothId, PromoId, SalesPushId } from './marketing';
 import { STARTING_CASH, founderSalary, friendly, marketingCost, officeCost, officeRent, priceIndex, reachableUsers, sizeCost } from './economy';
 import { int, pick, random, range } from './rng';
 import { hasSequel, sequelSalesMult, seriesNumber } from './sequels';
@@ -290,7 +304,7 @@ export interface CostBreakdown {
 export function gameCost(state: GameState, spec: Pick<GameSpec, 'platform' | 'size' | 'marketing'>): CostBreakdown {
   const license = state.licenses.includes(spec.platform) ? 0 : platformById(spec.platform).license;
   const size = sizeCost(state, spec.size);
-  const marketing = marketingCost(state, spec.marketing);
+  const marketing = marketingCost(state, spec.marketing, spec.size);
   return { license, size, marketing, total: license + size + marketing };
 }
 
@@ -484,7 +498,10 @@ export function releaseGame(state: GameState): ReleaseReport | string {
   const sequelMult = original ? sequelSalesMult(original) : 1;
   const audience = (reachableUsers(users) * 1e6 * 0.0008 + 3000) * sf * platformGenreFit(platform, p.genre) * size.unitMult * market.salesMult;
   const fanBuyers = state.fans * 0.2 * (score / 10) * Math.sqrt(size.unitMult);
-  const targetUnits = Math.round((audience * range(state, 0.85, 1.15) + fanBuyers) * sequelMult);
+  // Hype: launch buzz for a game that delivers, a backlash for one that doesn't.
+  const hype = p.hype ?? 0;
+  const buzz = hypeEffect(hype, score, market.salesMult);
+  const targetUnits = Math.round((audience * range(state, 0.85, 1.15) + fanBuyers) * sequelMult * buzz.salesMult);
   const unitPrice = size.price * platform.priceMult * (1 + 0.025 * years);
 
   const game: ReleasedGame = {
@@ -512,6 +529,7 @@ export function releaseGame(state: GameState): ReleaseReport | string {
     cost: p.cost,
     sequelOf: original?.id,
     series: original ? seriesNumber(original) + 1 : 1,
+    hype: Math.round(hype),
   };
 
   // Learning: knowledge about combos, area importance and balance.
@@ -560,6 +578,15 @@ export function releaseGame(state: GameState): ReleaseReport | string {
     insights.push({ text: 'Players feel they have seen this from you recently.', kind: 'bad' });
   }
   if (ev.pointsRatio < 0.9 && state.released.length > 0) insights.push({ text: 'Fans expected a bigger step up from your previous work.', kind: 'bad' });
+  if (hype >= 5) {
+    const pct = Math.round((buzz.salesMult - 1) * 100);
+    if (pct > 0) insights.push({ text: `The hype paid off: +${pct}% launch sales.`, kind: 'good' });
+    else if (pct < 0) {
+      const lost = Math.round(state.fans * (1 - buzz.fansMult) * 0.2);
+      state.fans = Math.max(0, state.fans - lost);
+      insights.push({ text: `Backlash: players were promised more. ${pct}% sales${lost ? ` and ${lost.toLocaleString('en-US')} fans lost` : ''}.`, kind: 'bad' });
+    } else insights.push({ text: "The hype didn't move sales: the reviews were only average.", kind: 'info' });
+  }
   if (ev.staffMult < 1) insights.push({ text: `A ${size.name.toLowerCase()} game really needs a team of ${size.minStaff}+.`, kind: 'bad' });
   const pFit = platformGenreFit(platform, p.genre);
   if (pFit > 1.05) insights.push({ text: `${platform.name} owners love ${genre.name} games.`, kind: 'good' });
@@ -643,6 +670,7 @@ export function tick(state: GameState): SimEvent[] {
   tickCat(state, events);
   tickSales(state);
 
+  tickExpo(state);
   if (state.week % WEEKS_PER_MONTH === 0) monthly(state);
   if (state.week % WEEKS_PER_YEAR === 0) yearly(state);
 
@@ -657,6 +685,7 @@ export function tick(state: GameState): SimEvent[] {
 }
 
 function tickProject(state: GameState, p: GameProject, events: SimEvent[]) {
+  if (p.hype) p.hype = Math.round(p.hype * HYPE_DECAY * 10) / 10;
   // Saves from before points were whole numbers.
   p.bugs = Math.round(p.bugs);
   p.design = Math.round(p.design);
@@ -780,6 +809,96 @@ function salesWeight(week: number): number {
   return ((1 - SALES_DECAY) * Math.pow(SALES_DECAY, week)) / (1 - Math.pow(SALES_DECAY, SALES_WEEKS));
 }
 
+// ---------------------------------------------------------------------------
+// Marketing
+
+/** Why a promo can't run right now, or null if it can. */
+export function promoBlocker(state: GameState, id: PromoId): string | null {
+  const p = state.activity;
+  if (!p || p.kind !== 'game') return 'Only while making a game.';
+  const promo = promoById(id);
+  if (p.promos?.includes(id)) return 'Already done for this game.';
+  if (promo.fromYear && yearOf(state.week) < promo.fromYear) return `Available from ${promo.fromYear}.`;
+  if (p.phase < promo.fromPhase) return 'Needs more of the game to show.';
+  if (promoPrice(state, id) > state.cash) return 'Not enough cash.';
+  return null;
+}
+
+/** Runs a promo for the game in development: costs money, builds hype. */
+export function runPromo(state: GameState, id: PromoId): string | null {
+  const blocked = promoBlocker(state, id);
+  if (blocked) return blocked;
+  const p = state.activity as GameProject;
+  state.cash -= promoPrice(state, id);
+  p.hype = Math.min(MAX_HYPE, (p.hype ?? 0) + promoById(id).hype);
+  p.promos = [...(p.promos ?? []), id];
+  return null;
+}
+
+/** Why a booth can't be booked right now, or null if it can. */
+export function boothBlocker(state: GameState, id: BoothId): string | null {
+  const weeks = weeksToExpo(state, WEEKS_PER_YEAR);
+  if (weeks === null || weeks < 1 || weeks > EXPO_BOOKING_WEEKS) return 'Booking opens 8 weeks before GameExpo.';
+  if (state.expo?.year === yearOf(state.week)) return 'You already have a booth this year.';
+  if (boothPrice(state, id) > state.cash) return 'Not enough cash.';
+  return null;
+}
+
+export function bookBooth(state: GameState, id: BoothId): string | null {
+  const blocked = boothBlocker(state, id);
+  if (blocked) return blocked;
+  state.cash -= boothPrice(state, id);
+  state.expo = { year: yearOf(state.week), booth: id };
+  return null;
+}
+
+/** Announces GameExpo when booking opens, and runs it on expo week. */
+function tickExpo(state: GameState) {
+  const w = state.week % WEEKS_PER_YEAR;
+  if (w === EXPO_WEEK - EXPO_BOOKING_WEEKS) {
+    notify(state, `GameExpo ${yearOf(state.week)} opens in ${EXPO_BOOKING_WEEKS} weeks. Book a booth to show off your game.`, 'info');
+  }
+  if (w !== EXPO_WEEK || state.expo?.year !== yearOf(state.week)) return;
+  const booth = boothById(state.expo.booth);
+  const p = state.activity;
+  if (p?.kind === 'game') {
+    // A game in development is the star of the show.
+    p.hype = Math.min(MAX_HYPE, (p.hype ?? 0) + booth.hype);
+    state.fans += booth.fans;
+    notify(state, `GameExpo: crowds lined up to play ${p.name}! +${booth.hype} hype, +${booth.fans.toLocaleString('en-US')} fans.`, 'good');
+  } else {
+    const fans = Math.round(booth.fans / 2);
+    state.fans += fans;
+    notify(state, `GameExpo: with nothing new to show, the booth won ${fans.toLocaleString('en-US')} fans.`, 'info');
+  }
+}
+
+/** Why a post-launch push can't run on this game, or null if it can. */
+export function salesPushBlocker(state: GameState, gameId: number, id: SalesPushId): string | null {
+  const g = state.released.find((x) => x.id === gameId);
+  if (!g) return 'Game not found.';
+  if (g.weeksOnMarket >= SALES_WEEKS) return 'It has left the charts.';
+  if (g.pushes?.includes(id)) return 'Already done for this game.';
+  if (salesPushPrice(state, id) > state.cash) return 'Not enough cash.';
+  return null;
+}
+
+/** Ad push (+25% of the copies left to sell) or discount sale (40% off, 70% more copies, more fans). */
+export function pushSales(state: GameState, gameId: number, id: SalesPushId): string | null {
+  const blocked = salesPushBlocker(state, gameId, id);
+  if (blocked) return blocked;
+  const g = state.released.find((x) => x.id === gameId)!;
+  state.cash -= salesPushPrice(state, id);
+  const remaining = Math.max(0, g.targetUnits - g.unitsSold);
+  if (id === 'ads') g.targetUnits += Math.round(remaining * 0.15);
+  else {
+    g.targetUnits += Math.round(remaining * 0.7);
+    g.unitPrice *= 0.6;
+  }
+  g.pushes = [...(g.pushes ?? []), id];
+  return null;
+}
+
 function tickSales(state: GameState) {
   for (const g of state.released) {
     if (g.weeksOnMarket >= SALES_WEEKS) continue;
@@ -791,7 +910,9 @@ function tickSales(state: GameState) {
     g.revenue += revenue;
     state.cash += revenue;
     state.totalRevenue += revenue;
-    const fans = Math.round(units * 0.1 * clamp((g.score - 4) / 6, -0.3, 1));
+    let fans = units * 0.1 * clamp((g.score - 4) / 6, -0.3, 1);
+    if (fans > 0) fans *= hypeEffect(g.hype ?? 0, g.score, marketingById(g.marketing).salesMult).fansMult * (g.pushes?.includes('sale') ? 1.5 : 1);
+    fans = Math.round(fans);
     g.fansGained += fans;
     state.fans = Math.max(0, state.fans + fans);
     if (isLast) {
