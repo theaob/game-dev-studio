@@ -73,10 +73,7 @@ export function evaluate(state: GameState, project: GameProject): Evaluation {
   const bugRatio = total > 0 ? project.bugs / total : 0;
   const bugMult = clamp(1 - bugRatio * 2.2, 0.55, 1);
 
-  const recent = state.released.slice(-3);
-  let repeatMult = 1;
-  if (recent.some((g) => g.topic === project.topic && g.genre === project.genre)) repeatMult = 0.85;
-  else if (recent.length && recent[recent.length - 1].genre === project.genre) repeatMult = 0.95;
+  const repeatMult = repeatMultiplier(state.released, project.topic, project.genre);
 
   const staffMult = state.staff.length < size.minStaff ? 0.9 - 0.05 * (size.minStaff - state.staff.length) : 1;
   const platformMult = Math.sqrt(platformGenreFit(platformById(project.platform), project.genre));
@@ -111,6 +108,14 @@ export function rollReviews(rng: RngHolder, score: number): number[] {
 
 export function average(xs: number[]): number {
   return xs.reduce((a, b) => a + b, 0) / xs.length;
+}
+
+/** Players tire of seeing the same thing: same combo in the last 3 games, or the same genre twice in a row. */
+export function repeatMultiplier(released: { topic: string; genre: string }[], topic: string, genre: string): number {
+  const recent = released.slice(-3);
+  if (recent.some((g) => g.topic === topic && g.genre === genre)) return 0.85;
+  if (recent.length && recent[recent.length - 1].genre === genre) return 0.95;
+  return 1;
 }
 
 export function clamp(v: number, min: number, max: number): number {

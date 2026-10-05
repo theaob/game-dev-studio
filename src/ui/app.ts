@@ -4,7 +4,7 @@ import type { GameSpec, GameState, GenreId, MarketingId, NoticeKind, SimEvent, S
 import { clearSave, loadGame, saveGame } from '../save';
 import { OfficeScene } from './office';
 import { focusLean, renderSheet, type Sheet } from './sheets';
-import { SPEEDS, renderGames, renderNav, renderResearch, renderStaff, renderStudio, renderTopbar, type Tab } from './views';
+import { SPEEDS, renderGames, renderNav, renderNews, renderResearch, renderStaff, renderStudio, renderTopbar, type Tab } from './views';
 
 /** Real-time milliseconds per in-game week at 1x speed. */
 const WEEK_MS = 1500;
@@ -24,6 +24,8 @@ export class App {
   private html: Record<string, string> = {};
   private els: Record<'top' | 'scene' | 'main' | 'nav' | 'sheet' | 'fx' | 'toasts', HTMLElement>;
   private office = new OfficeScene();
+  /** Identifies the newest notice the player has seen on the News tab. */
+  private newsSeen = '';
   private lastDraw = 0;
 
   constructor(root: HTMLElement) {
@@ -40,6 +42,7 @@ export class App {
     window.addEventListener('pagehide', () => this.save());
 
     this.state = loadGame();
+    this.markNewsRead();
     if (!this.state) this.open({ kind: 'welcome', name: '' });
     else this.resumePrompts();
 
@@ -118,6 +121,22 @@ export class App {
     }
   }
 
+  private noticeKey(i: number): string {
+    const n = this.state?.notices[i];
+    return n ? `${n.week}|${n.text}` : '';
+  }
+
+  private markNewsRead() {
+    if (this.state) this.newsSeen = this.noticeKey(this.state.notices.length - 1);
+  }
+
+  private unreadNews(): number {
+    const s = this.state;
+    if (!s) return 0;
+    for (let i = s.notices.length - 1; i >= 0; i--) if (this.noticeKey(i) === this.newsSeen) return s.notices.length - 1 - i;
+    return s.notices.length;
+  }
+
   private save() {
     if (this.state) saveGame(this.state);
   }
@@ -137,9 +156,10 @@ export class App {
     if (s) {
       this.set('top', renderTopbar(s, this.speed));
       this.els.scene.hidden = this.tab !== 'studio';
-      const view = { studio: renderStudio, games: renderGames, research: renderResearch, staff: renderStaff }[this.tab];
+      if (this.tab === 'news') this.markNewsRead();
+      const view = { studio: renderStudio, games: renderGames, research: renderResearch, staff: renderStaff, news: renderNews }[this.tab];
       this.set('main', view(s));
-      this.set('nav', renderNav(this.tab, s));
+      this.set('nav', renderNav(this.tab, s, this.unreadNews()));
     } else {
       this.set('top', '');
       this.els.scene.hidden = true;
@@ -209,7 +229,8 @@ export class App {
     const items: [number, string, string][] = [
       [design, `+${design.toFixed(1)}`, 'var(--design)'],
       [tech, `+${tech.toFixed(1)}`, 'var(--tech)'],
-      [bugs, bugs < 0 ? `−${(-bugs).toFixed(1)}` : `+${bugs.toFixed(1)}`, bugs < 0 ? 'var(--good)' : 'var(--bugs)'],
+      // Bugs are whole numbers: shown as e.g. "+2 🐛" or "−3 🐛".
+      [bugs, bugs < 0 ? `−${-bugs} 🐛` : `+${bugs} 🐛`, bugs < 0 ? 'var(--good)' : 'var(--bugs)'],
     ];
     items.forEach(([v, label, color], i) => {
       if (Math.abs(v) < 0.05) return;
@@ -327,6 +348,7 @@ export class App {
       case 'start-studio': {
         const name = sheet?.kind === 'welcome' ? sheet.name : '';
         this.state = createGame(name);
+        this.markNewsRead();
         this.save();
         this.close();
         this.toast('Tip: start with a small game, or take a contract for quick cash.', 'info');

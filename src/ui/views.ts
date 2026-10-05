@@ -11,7 +11,7 @@ import { formatDate, formatShortDate } from '../core/time';
 import type { GameState, ReleasedGame, Staff } from '../core/types';
 import { esc, money, num, scoreClass } from './format';
 
-export type Tab = 'studio' | 'games' | 'research' | 'staff';
+export type Tab = 'studio' | 'games' | 'research' | 'staff' | 'news';
 export const SPEEDS = [0, 1, 2, 4];
 
 export function renderTopbar(state: GameState, speed: number): string {
@@ -35,13 +35,14 @@ export function renderTopbar(state: GameState, speed: number): string {
   </div>`;
 }
 
-export function renderNav(tab: Tab, state: GameState): string {
+export function renderNav(tab: Tab, state: GameState, unreadNews: number): string {
   const canResearch = [...RESEARCH.map((r) => r.id), ...TOPICS.map((t) => t.id)].some((id) => !researchBlocker(state, id));
   const items: [Tab, string, string, boolean][] = [
     ['studio', '🏠', 'Studio', false],
     ['games', '🏆', 'Games', false],
     ['research', '🔬', 'Research', canResearch],
     ['staff', '👥', 'Team', false],
+    ['news', '📰', 'News', unreadNews > 0 && tab !== 'news'],
   ];
   return `<nav class="tabs">${items
     .map(([id, icon, label, dot]) => `<button data-action="tab" data-arg="${id}" class="${tab === id ? 'on' : ''}"><span>${icon}</span>${label}${dot ? '<i class="dot"></i>' : ''}</button>`)
@@ -55,17 +56,23 @@ export function renderNav(tab: Tab, state: GameState): string {
 export function renderStudio(state: GameState): string {
   return `
     ${renderActivity(state)}
-    ${renderOnMarket(state)}
-    <h2>News</h2>
-    <div class="list">
-      ${
-        state.notices
-          .slice(-8)
-          .reverse()
-          .map((n) => `<div class="notice ${n.kind}"><div class="when">${formatShortDate(n.week)}</div>${esc(n.text)}</div>`)
-          .join('') || '<div class="empty">Nothing yet.</div>'
-      }
-    </div>`;
+    ${renderOnMarket(state)}`;
+}
+
+// ---------------------------------------------------------------------------
+// News
+// ---------------------------------------------------------------------------
+
+export function renderNews(state: GameState): string {
+  if (!state.notices.length) return '<h2>News</h2><div class="card empty">Nothing has happened yet.</div>';
+  // Newest first, grouped by month.
+  const groups: { label: string; items: string[] }[] = [];
+  for (const n of [...state.notices].reverse()) {
+    const label = formatShortDate(n.week);
+    if (groups[groups.length - 1]?.label !== label) groups.push({ label, items: [] });
+    groups[groups.length - 1].items.push(`<div class="notice ${n.kind}">${esc(n.text)}</div>`);
+  }
+  return groups.map((g) => `<h2>${g.label}</h2><div class="list">${g.items.join('')}</div>`).join('');
 }
 
 function renderActivity(state: GameState): string {

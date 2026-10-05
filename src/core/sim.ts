@@ -480,8 +480,10 @@ function tickProject(state: GameState, p: GameProject, events: SimEvent[]) {
   if (p.phase >= 3) {
     // Polishing: the team squashes bugs.
     p.polishWeeks++;
+    p.bugs = Math.round(p.bugs); // saves from before bugs were whole numbers
     const fixPower = state.staff.reduce((a, s) => a + s.tech * s.speed, 0) * (hasResearch(state, 'qa2') ? 0.75 : 0.5);
-    const fixed = Math.min(p.bugs, fixPower * range(state, 0.8, 1.2));
+    // Bugs are squashed one whole bug at a time, at least one per week.
+    const fixed = Math.min(p.bugs, Math.max(1, Math.round(fixPower * range(state, 0.8, 1.2))));
     p.bugs -= fixed;
     events.push({ type: 'points', design: 0, tech: 0, bugs: -fixed });
     return;
@@ -512,7 +514,7 @@ function tickProject(state: GameState, p: GameProject, events: SimEvent[]) {
     });
     if (s.zone) s.zone--;
   }
-  const bugs = bugWeight * 0.12 * bugMultiplier(state) * range(state, 0.6, 1.4);
+  const bugs = wholeNumber(state, bugWeight * 0.12 * bugMultiplier(state) * range(state, 0.6, 1.4));
   p.design += design;
   p.tech += tech;
   p.bugs += bugs;
@@ -641,6 +643,12 @@ export function randomTitle(): string {
 export function notify(state: GameState, text: string, kind: NoticeKind) {
   state.notices.push({ week: state.week, text, kind });
   if (state.notices.length > MAX_NOTICES) state.notices.splice(0, state.notices.length - MAX_NOTICES);
+}
+
+/** Rounds randomly up or down so whole-number totals keep the same average (2.3 → 3 thirty percent of the time). */
+function wholeNumber(state: GameState, v: number): number {
+  const base = Math.floor(v);
+  return base + (random(state) < v - base ? 1 : 0);
 }
 
 function round1(v: number): number {

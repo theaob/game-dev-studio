@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { GENRES, PLATFORMS, TOPICS, platformUsers } from './data';
 import { playThrough } from './bot';
-import { benchmark, normalizeFocus, phaseAlignment } from './scoring';
+import { benchmark, normalizeFocus, phaseAlignment, repeatMultiplier } from './scoring';
 import {
   createGame,
   doResearch,
@@ -166,5 +166,38 @@ describe('in the zone', () => {
     }
     expect(zoned).toBeGreaterThan(0);
     expect(s.staff.every((x) => !x.zone)).toBe(true);
+  });
+});
+
+describe('whole-number bugs', () => {
+  it('adds and removes bugs in whole numbers, at least one per polish week', () => {
+    const s = createGame('Bugs', 21);
+    s.staff.push({ ...s.candidates[0], id: 999, tech: 9, speed: 1.2 });
+    startGame(s, spec, [33, 33, 33]);
+    while (s.activity?.kind === 'game' && s.activity.phase < 3) {
+      if (s.activity.awaitingFocus) setPhaseFocus(s, [33, 33, 33]);
+      tick(s);
+      expect(Number.isInteger(s.activity!.kind === 'game' && s.activity.bugs)).toBe(true);
+    }
+    const p = s.activity!;
+    if (p.kind !== 'game') throw new Error('expected a game');
+    p.bugs = 3.4; // e.g. an old save with fractional bugs
+    let before = Infinity;
+    while (p.bugs > 0) {
+      const events = tick(s);
+      const fixed = events.find((e) => e.type === 'points');
+      expect(fixed && fixed.type === 'points' && Number.isInteger(fixed.bugs) && fixed.bugs <= -1).toBe(true);
+      expect(Number.isInteger(p.bugs) && p.bugs < before).toBe(true);
+      before = p.bugs;
+    }
+    expect(p.bugs).toBe(0);
+  });
+
+  it('shares the repeat penalty with the reception preview', () => {
+    const g = (topic: string, genre: string) => ({ topic, genre });
+    expect(repeatMultiplier([], 'fantasy', 'rpg')).toBe(1);
+    expect(repeatMultiplier([g('fantasy', 'rpg'), g('space', 'action')], 'fantasy', 'rpg')).toBe(0.85);
+    expect(repeatMultiplier([g('space', 'rpg')], 'fantasy', 'rpg')).toBe(0.95);
+    expect(repeatMultiplier([g('fantasy', 'rpg'), g('a', 'b'), g('c', 'd'), g('e', 'f')], 'fantasy', 'rpg')).toBe(1);
   });
 });

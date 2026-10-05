@@ -9,7 +9,7 @@ import {
   sizeById,
   topicById,
 } from '../core/data';
-import { normalizeFocus } from '../core/scoring';
+import { normalizeFocus, repeatMultiplier } from '../core/scoring';
 import {
   availableMarketing,
   availablePlatforms,
@@ -97,8 +97,59 @@ function help(): string {
     <div class="btn-row"><button class="btn" data-action="close">Got it</button></div>`;
 }
 
+const RECEPTION = [
+  { face: '😬', title: "Players won't get it", text: (t: string, g: string) => `${t} and ${g} don't mix. Expect harsh reviews.`, cls: 'bad' },
+  { face: '😐', title: 'Mixed reception', text: (t: string, g: string) => `Some players will enjoy a ${t} ${g} game, but many won't be convinced.`, cls: 'mid' },
+  { face: '🙂', title: 'Players will like it', text: (t: string, g: string) => `${t} ${g} is a solid combination that fans enjoy.`, cls: 'good' },
+  { face: '🤩', title: 'Players will love it', text: (t: string, g: string) => `${t} ${g} games are a proven hit!`, cls: 'great' },
+];
+
+/**
+ * How players are expected to receive a topic + genre combination. Only revealed
+ * once the player has discovered the combination by releasing a game with it.
+ */
+function receptionPreview(state: GameState, d: Pick<GameSpec, 'topic' | 'genre'>, platformId?: string): string {
+  const topic = topicById(d.topic).name;
+  const genre = genreById(d.genre);
+  const fit = state.knowledge.combos[`${d.topic}|${d.genre}`];
+  if (fit === undefined) {
+    return `
+    <div class="reception unknown mt">
+      <div class="face">❓</div>
+      <div class="grow">
+        <b>Unknown reception</b>
+        <div class="sub">You haven't released a ${esc(topic)} ${genre.name} game yet. Make one to discover how players react.</div>
+      </div>
+    </div>`;
+  }
+  const r = RECEPTION[fit];
+  const notes: string[] = [];
+  const past = state.released.filter((g) => g.topic === d.topic && g.genre === d.genre);
+  const last = past[past.length - 1];
+  if (last) notes.push(`📊 Last time, <b>${esc(last.name)}</b> scored <b>${last.score.toFixed(1)}</b>${past.length > 1 ? ` (${past.length} games so far)` : ''}.`);
+  const repeat = repeatMultiplier(state.released, d.topic, d.genre);
+  if (repeat < 0.9) notes.push('🥱 You released this combination recently. Players may feel they have seen it before.');
+  else if (repeat < 1) notes.push(`🥱 Your last game was also ${genre.name}. Some players want variety.`);
+  if (state.knowledge.balance[d.genre]) notes.push(`🎯 ${genre.name} fans like about ${Math.round(genre.designTarget * 100)}% design, ${100 - Math.round(genre.designTarget * 100)}% tech.`);
+  if (platformId) {
+    const platform = platformById(platformId);
+    const pf = platformGenreFit(platform, d.genre);
+    if (pf > 1.05) notes.push(`🎮 ${platform.name} owners love ${genre.name} games.`);
+    else if (pf < 0.95) notes.push(`🎮 ${genre.name} games are a hard sell on ${platform.name}.`);
+  }
+  return `
+    <div class="reception ${r.cls} mt">
+      <div class="face">${r.face}</div>
+      <div class="grow">
+        <b>${r.title}</b>
+        <div class="meter" aria-label="Combination rating ${FIT_LABELS[fit]}">${[0, 1, 2, 3].map((i) => `<i class="${i <= fit ? 'on' : ''}"></i>`).join('')}<span>${FIT_LABELS[fit]}</span></div>
+        <div class="sub">${esc(r.text(topic, genre.name))}</div>
+        ${notes.length ? `<ul class="reception-notes">${notes.map((n) => `<li>${n}</li>`).join('')}</ul>` : ''}
+      </div>
+    </div>`;
+}
+
 function newGameStep1(state: GameState, d: GameSpec, error?: string): string {
-  const combo = d.topic && d.genre ? state.knowledge.combos[`${d.topic}|${d.genre}`] : undefined;
   return `
     <h3>New game</h3>
     <p class="muted">Step 1 of 3 · Concept</p>
@@ -122,13 +173,7 @@ function newGameStep1(state: GameState, d: GameSpec, error?: string): string {
         })
         .join('')}
     </div>
-    <p class="sub mt">${
-      combo !== undefined
-        ? `You know this combo is <span class="tag ${combo >= 3 ? 'good' : combo >= 2 ? 'good' : combo >= 1 ? 'mid' : 'bad'}">${FIT_LABELS[combo]}</span>`
-        : d.topic && d.genre
-          ? 'You have not tried this combination yet.'
-          : 'Coloured dots show combos you already know.'
-    }</p>
+    ${d.topic && d.genre ? receptionPreview(state, d) : '<p class="sub mt">Coloured dots show combinations you have already discovered.</p>'}
     ${error ? `<div class="error">${esc(error)}</div>` : ''}
     <div class="btn-row">
       <button class="btn ghost" data-action="close">Cancel</button>
@@ -145,6 +190,7 @@ function newGameStep2(state: GameState, d: GameSpec, error?: string): string {
   return `
     <h3>New game</h3>
     <p class="muted">Step 2 of 3 · ${esc(d.name)} · ${topicById(d.topic).name} ${genreById(d.genre).name}</p>
+    ${receptionPreview(state, d, d.platform)}
     <h4>Platform</h4>
     <div class="options">
       ${availablePlatforms(state)
