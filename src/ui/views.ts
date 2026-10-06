@@ -1,5 +1,7 @@
 import { OFFICES, PHASES, PLATFORMS, RESEARCH, STORE, TOPICS, genreById, platformById, platformUsers, sizeById, topicById } from '../core/data';
 import { TREND_GENRE_BONUS, TREND_TOPIC_BONUS } from '../core/industry';
+import { profit, verdict } from '../core/results';
+import { profitChart, sparkline } from './charts';
 import {
   SALES_WEEKS,
   boostWeeks,
@@ -262,12 +264,12 @@ function renderOnMarket(state: GameState): string {
   return `
   <h2>On sale now</h2>
   <div class="list">
-    ${selling.map((g) => gameRow(g, `${num(g.unitsSold)} sold · ${money(g.revenue)}${g.pushes?.length ? ` · ${g.pushes.map((x) => (x === 'sale' ? '🏷️' : '📣')).join('')}` : ''}`)).join('')}
+    ${selling.map((g) => gameRow(g, `Week ${g.weeksOnMarket}/${SALES_WEEKS} · ${num(g.unitsSold)} sold · ${money(g.revenue)}${g.pushes?.length ? ` · ${g.pushes.map((x) => (x === 'sale' ? '🏷️' : '📣')).join('')}` : ''}`, sparkline(g))).join('')}
   </div>
   <button class="btn ghost mt-s wide" data-action="marketing">📣 Push sales</button>`;
 }
 
-function gameRow(g: ReleasedGame, detail: string): string {
+function gameRow(g: ReleasedGame, detail: string, aside = ''): string {
   return `
   <button class="list-item" data-action="game-detail" data-arg="${g.id}">
     <div class="score ${scoreClass(g.score)}">${g.score.toFixed(1)}</div>
@@ -276,6 +278,7 @@ function gameRow(g: ReleasedGame, detail: string): string {
       <div class="sub">${topicById(g.topic).name} ${genreById(g.genre).name} · ${platformById(g.platform).name}</div>
       <div class="sub">${detail}</div>
     </div>
+    ${aside}
   </button>`;
 }
 
@@ -289,6 +292,9 @@ export function renderGames(state: GameState): string {
     return `<h2>Your games</h2><div class="card empty">You haven't released any games yet.<br/>Head to the Studio tab to start one!</div>`;
   }
   const avg = games.reduce((a, g) => a + g.score, 0) / games.length;
+  const totalProfit = games.reduce((a, g) => a + profit(g), 0);
+  const hits = games.filter((g) => ['blockbuster', 'hit'].includes(verdict(g).id)).length;
+  const flops = games.filter((g) => verdict(g).id === 'flop').length;
   const best = games.reduce((a, g) => (g.score > a.score ? g : a));
   const top = games.reduce((a, g) => (g.revenue > a.revenue ? g : a));
   return `
@@ -299,6 +305,15 @@ export function renderGames(state: GameState): string {
     <div class="stat"><small>Avg score</small><b>${avg.toFixed(1)}</b></div>
     <div class="stat"><small>Revenue</small><b>${money(state.totalRevenue)}</b></div>
   </div>
+  <h2>Profit per game</h2>
+  <div class="card chart-card">
+    <div class="chart-head">
+      <small class="sub">Total ${totalProfit >= 0 ? 'profit' : 'loss'} from all games</small>
+      <b>${totalProfit >= 0 ? '▲ ' : '▼ '}${money(Math.abs(totalProfit))}</b>
+      <div class="chips-row"><span class="tag good">⭐ ${hits} hit${hits === 1 ? '' : 's'}</span><span class="tag bad">💸 ${flops} flop${flops === 1 ? '' : 's'}</span></div>
+    </div>
+    ${profitChart(games)}
+  </div>
   <div class="card mt">
     <div class="sub">Best reviewed</div>
     <div class="row"><div class="grow"><b>${esc(best.name)}</b></div><span class="tag good">${best.score.toFixed(1)}</span></div>
@@ -306,6 +321,13 @@ export function renderGames(state: GameState): string {
     <div class="row"><div class="grow"><b>${esc(top.name)}</b></div><span class="tag">${money(top.revenue)}</span></div>
   </div>
   ${releasesByYear(games)}`;
+}
+
+/** "Mar 1997 · 💸 Flop · -$12.0K" or "⭐ Hit · +$1.20M" for a game list row. */
+function resultLine(g: ReleasedGame): string {
+  const vd = verdict(g);
+  const p = profit(g);
+  return `${formatShortDate(g.releaseWeek)} · ${vd.icon} ${vd.label} · ${p >= 0 ? '+' : '-'}${money(Math.abs(p))}`;
 }
 
 /** Every release in order, oldest first, grouped by year. */
@@ -321,7 +343,7 @@ function releasesByYear(games: ReleasedGame[]): string {
       ([y, list]) => `
   <h2>${y}</h2>
   <div class="list">
-    ${list.map((g) => gameRow(g, `${formatShortDate(g.releaseWeek)} · ${num(g.unitsSold)} sold · ${money(g.revenue)}`)).join('')}
+    ${list.map((g) => gameRow(g, resultLine(g))).join('')}
   </div>`,
     )
     .join('');

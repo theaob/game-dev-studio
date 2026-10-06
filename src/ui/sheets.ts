@@ -29,6 +29,8 @@ import {
 import { SEQUEL_TOO_SOON_WEEKS, sequelCandidates, sequelSalesMult, seriesNumber } from '../core/sequels';
 import { WEEKS_PER_YEAR, formatShortDate, yearFraction, yearOf } from '../core/time';
 import { RIVAL_CLASH_MULT, RIVAL_CLASH_WEEKS, rivalClash, trendMult } from '../core/industry';
+import { onSale, paybackWeek, profit, returnMultiple, revenueRank, totalCost, verdict } from '../core/results';
+import { moneyChart, spendBar, weeklyChart } from './charts';
 import { BOOTHS, EXPO_BOOKING_WEEKS, PROMOS, SALES_PUSHES, boothById, boothPrice, promoPrice, salesPushPrice, weeksToExpo } from '../core/marketing';
 import type { GameProject, GameSpec, GameState, ReleaseReport } from '../core/types';
 import { esc, money, num, scoreClass } from './format';
@@ -118,6 +120,7 @@ function help(): string {
       <p><b>Read the news.</b> Each year has a trending genre and topic (marked 🔥 when you start a game) that sell better. Rival studios release games too: right after a rival's hit, the same topic and genre sells less for a while. The News tab also shows which platforms are growing or on their way out.</p>
       <p><b>The cat.</b> Sometimes the studio cat curls up on a developer's lap, and they work 30% faster while it stays. You can carry the cat over and drop it on someone too, but it needs some alone time between laps.</p>
       <p><b>Store.</b> Spend cash on power-ups: boosts like an espresso bar or pizza night last a few weeks of development, and studio upgrades help forever. Find it next to Contracts, or tap ⚡ Boost while making a game.</p>
+      <p><b>Track your results.</b> Tap any game to see what it cost, what it made each week, when it paid for itself and whether it was a hit or a flop. The Games tab charts the profit of every release.</p>
       <p><b>Raise the bar.</b> Players expect each game to beat your last one, and the industry keeps moving. Grow your team, train them and research better tech.</p>
       <p><b>Stay solvent.</b> Rent and salaries are paid monthly. Three months in the red and you're bankrupt. Contract work pays the bills.</p>
       <p><b>Grow.</b> Earn research points (RP) to unlock topics, bigger games and better engines. You earn RP every week you're making a game (more with a bigger team) and with every release (more for better reviews). Move offices to hire more people.</p>
@@ -480,18 +483,40 @@ function gameDetail(state: GameState, id: number): string {
   if (!g) return '';
   const prequel = g.sequelOf !== undefined ? state.released.find((x) => x.id === g.sequelOf) : undefined;
   const next = state.released.find((x) => x.sequelOf === g.id);
+  const selling = onSale(g);
+  const vd = verdict(g);
+  const mult = returnMultiple(g);
+  const p = profit(g);
+  const pay = paybackWeek(g);
+  const rank = revenueRank(state.released, g);
+  const multText = !isFinite(mult) ? '' : mult >= 1 ? `${mult.toFixed(1)}× its cost` : `${Math.round(mult * 100)}% of its cost back`;
+  const payText = pay !== null ? `Paid for itself in week ${pay} on sale.` : g.weekly?.revenue.length ? (selling ? "Hasn't paid for itself yet." : 'Never paid for itself.') : '';
   return `
     <h3>${esc(g.name)}</h3>
     ${prequel || next ? `<p class="sub">${prequel ? `Part ${seriesNumber(g)} · sequel to <b>${esc(prequel.name)}</b> (${prequel.score.toFixed(1)})` : 'Part 1'}${next ? ` · followed by <b>${esc(next.name)}</b> (${next.score.toFixed(1)})` : ''}</p>` : ''}
     <p class="muted">${topicById(g.topic).name} ${genreById(g.genre).name} · ${platformById(g.platform).name} · ${sizeById(g.size).name} · ${formatShortDate(g.releaseWeek)}</p>
+    <div class="verdict v-${vd.id} mt">
+      <span class="emoji">${vd.icon}</span>
+      <div class="grow"><b>${vd.label}${selling ? ' so far' : ''}</b><div class="sub">${selling ? 'On track to make' : 'Made'} ${multText}${rank <= 3 && state.released.length > 1 ? ` · your #${rank} best seller` : ` · #${rank} of ${state.released.length} by revenue`}</div></div>
+    </div>
+    <div class="stats kpis mt">
+      <div class="stat"><small>Revenue</small><b>${money(g.revenue)}</b></div>
+      <div class="stat"><small>${p >= 0 ? 'Profit' : 'Loss'}</small><b>${p >= 0 ? '▲ ' : '▼ '}${money(Math.abs(p))}</b></div>
+      <div class="stat"><small>Copies</small><b>${num(g.unitsSold)}</b></div>
+      <div class="stat"><small>Score</small><b>${g.score.toFixed(1)}</b></div>
+    </div>
+    ${selling ? `<p class="sub mt-s">Still selling: week ${g.weeksOnMarket} of ${SALES_WEEKS}.</p>` : ''}
+    <h4>Money made vs cost</h4>
+    ${moneyChart(g)}
+    ${payText ? `<p class="sub">${payText}</p>` : ''}
+    ${g.weekly?.units.length ? `<h4>Copies sold per week</h4>${weeklyChart(g)}` : ''}
+    ${g.spend ? `<h4>Where the money went · ${money(totalCost(g))}</h4>${spendBar(g)}` : ''}
+    <h4>Reviews</h4>
     <div class="reviews">
       ${g.reviews.map((r, i) => `<div class="review"><div class="outlet">${OUTLETS[i]}</div><div class="num" style="animation:none">${r}</div></div>`).join('')}
     </div>
     <div class="summary">
-      <div class="line"><span>Average score</span><b>${g.score.toFixed(1)}</b></div>
-      <div class="line"><span>Copies sold</span><span>${num(g.unitsSold)}${g.weeksOnMarket < 16 ? ' (still selling)' : ''}</span></div>
-      <div class="line"><span>Revenue</span><span>${money(g.revenue)}</span></div>
-      <div class="line"><span>Upfront cost</span><span>${money(g.cost)}</span></div>
+      ${g.spend ? '' : `<div class="line"><span>Upfront cost</span><span>${money(g.cost)}</span></div>`}
       <div class="line"><span>Fans gained</span><span>${num(g.fansGained)}</span></div>
       <div class="line"><span>Design / Tech / Bugs</span><span>${g.design} / ${g.tech} / ${g.bugs}</span></div>
       <div class="line"><span>Development time</span><span>${g.devWeeks} weeks</span></div>

@@ -47,6 +47,8 @@ export interface GameProject extends GameSpec {
   /** Hype built by marketing during development (0..100), and the promos already run. */
   hype?: number;
   promos?: string[];
+  /** Money spent on the game so far, by kind. */
+  spend?: Spend;
   design: number;
   tech: number;
   bugs: number;
@@ -96,6 +98,19 @@ export interface ReleasedGame extends GameSpec {
   /** Hype at launch, and the post-launch pushes used on it. */
   hype?: number;
   pushes?: string[];
+  /** Everything spent on the game (saves from before this was tracked only have `cost`). */
+  spend?: Spend;
+  /** Copies sold and money made in each week on the market. */
+  weekly?: { units: number[]; revenue: number[] };
+}
+
+export interface Spend {
+  /** Production budget and dev kit license. */
+  budget: number;
+  /** Ad campaign, promos, GameExpo booth and post-launch pushes. */
+  marketing: number;
+  /** Salaries and rent while the team worked on it. */
+  team: number;
 }
 
 export interface Knowledge {
