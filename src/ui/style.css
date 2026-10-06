@@ -687,6 +687,250 @@ h2 {
   border-left: 3px solid var(--line);
 }
 
+/* ---------- Charts ---------- */
+
+.chart {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+  font-family: inherit;
+}
+
+.chart .grid {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.chart .axis {
+  stroke: var(--muted);
+  stroke-width: 1;
+}
+
+.chart .ref,
+.spark .ref {
+  stroke: var(--ink);
+  stroke-width: 1;
+  opacity: 0.55;
+}
+
+.chart .tick {
+  fill: var(--muted);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.chart .ref-label {
+  fill: var(--text);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.chart .end-label {
+  fill: var(--text);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.chart .hit {
+  cursor: pointer;
+  outline: none;
+}
+
+.chart .xhair,
+.chart .xdot {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.chart .xhair {
+  stroke: var(--muted);
+  stroke-width: 1;
+}
+
+.chart .hit:hover .xhair,
+.chart .hit:hover .xdot,
+.chart .hit.tip-on .xhair,
+.chart .hit.tip-on .xdot,
+.chart .hit:focus-visible .xhair,
+.chart .hit:focus-visible .xdot {
+  opacity: 1;
+}
+
+.chart .bar path {
+  transition: opacity 0.12s;
+}
+
+.chart .bar:hover path,
+.chart .bar.tip-on path,
+.chart .bar:focus-visible path {
+  opacity: 0.75;
+}
+
+.chart-frame {
+  position: relative;
+}
+
+.chart-scroll {
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.chart-yaxis {
+  position: absolute;
+  left: 0;
+  top: 0;
+  background: linear-gradient(90deg, var(--card) 85%, transparent);
+  pointer-events: none;
+}
+
+.chart-card {
+  padding: 12px 12px 10px;
+}
+
+.chart-head {
+  margin: 0 2px 8px;
+}
+
+.chart-head b {
+  display: block;
+  font-size: 22px;
+}
+
+.chart-head .chips-row {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.chart-legend,
+.spend-legend {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.chart-legend li,
+.spend-legend li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.chart-legend i,
+.spend-legend i {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  flex: none;
+}
+
+.spend-legend {
+  flex-direction: column;
+  font-size: 13px;
+}
+
+.spend-legend b {
+  font-variant-numeric: tabular-nums;
+}
+
+.spend-bar {
+  display: flex;
+  gap: 2px;
+  height: 16px;
+  margin-top: 4px;
+}
+
+.spend-bar .seg {
+  min-width: 4px;
+  cursor: pointer;
+  outline: none;
+}
+
+.spend-bar .seg:first-child {
+  border-radius: 4px 0 0 4px;
+}
+
+.spend-bar .seg:last-child {
+  border-radius: 0 4px 4px 0;
+}
+
+.spend-bar .seg:only-child {
+  border-radius: 4px;
+}
+
+.spend-bar .seg.tip-on,
+.spend-bar .seg:hover {
+  opacity: 0.8;
+}
+
+.spark {
+  flex: none;
+  align-self: center;
+}
+
+.chart-tip {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 100;
+  max-width: 220px;
+  padding: 7px 10px;
+  border-radius: 10px;
+  background: var(--ink);
+  color: #fff8ea;
+  font-size: 12px;
+  line-height: 1.35;
+  pointer-events: none;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2);
+}
+
+.chart-tip b {
+  display: block;
+  font-size: 14px;
+}
+
+.chart-tip span {
+  display: block;
+  opacity: 0.8;
+}
+
+.verdict {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 14px;
+  background: var(--card);
+  box-shadow: inset 0 0 0 2px var(--line);
+}
+
+.verdict .emoji {
+  font-size: 28px;
+}
+
+.verdict b {
+  font-size: 17px;
+}
+
+.verdict.v-blockbuster,
+.verdict.v-hit {
+  box-shadow: inset 0 0 0 2px var(--good);
+}
+
+.verdict.v-flop {
+  box-shadow: inset 0 0 0 2px var(--bad);
+}
+
+.stats.kpis {
+  grid-template-columns: 1fr 1fr;
+}
+
 /* ---------- News ---------- */
 
 .news-date {

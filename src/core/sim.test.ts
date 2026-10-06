@@ -32,6 +32,7 @@ import {
   SALES_WEEKS,
 } from './sim';
 import { TOTAL_WEEKS, WEEKS_PER_YEAR, formatDate } from './time';
+import { cumulativeRevenue, paybackWeek, profit, returnMultiple, totalCost, verdict } from './results';
 import { RIVAL_CLASH_MULT, TREND_GENRE_BONUS, TREND_TOPIC_BONUS, trendMult } from './industry';
 import { EXPO_BOOKING_WEEKS, EXPO_WEEK, HYPE_DECAY, hypeEffect } from './marketing';
 import type { GameProject, GameSpec } from './types';
@@ -630,5 +631,49 @@ describe('industry news', () => {
     expect(clashed.game.targetUnits / plain.game.targetUnits).toBeCloseTo(RIVAL_CLASH_MULT, 1);
     expect(trendy.insights.some((i) => /trend/.test(i.text))).toBe(true);
     expect(clashed.insights.some((i) => /Dragon Saga/.test(i.text))).toBe(true);
+  });
+});
+
+describe('game results', () => {
+  it('records weekly sales and everything the game cost', () => {
+    const s = createGame('Results', 101);
+    s.cash = 1e7;
+    startGame(s, spec, [33, 33, 33]);
+    expect(runPromo(s, 'preview')).toBeNull();
+    while (s.activity?.kind === 'game' && s.activity.phase < 3) {
+      if (s.activity.awaitingFocus) setPhaseFocus(s, [33, 33, 33]);
+      tick(s);
+    }
+    const r = releaseGame(s);
+    if (typeof r === 'string') throw new Error(r);
+    const g = r.game;
+    expect(g.spend!.budget).toBe(g.cost);
+    expect(g.spend!.marketing).toBeGreaterThan(0);
+    expect(g.spend!.team).toBeGreaterThan(0);
+    const before = g.spend!.marketing;
+    expect(pushSales(s, g.id, 'ads')).toBeNull();
+    expect(g.spend!.marketing).toBeGreaterThan(before);
+    for (let i = 0; i < SALES_WEEKS + 2; i++) tick(s);
+    expect(g.weekly!.units).toHaveLength(SALES_WEEKS);
+    expect(g.weekly!.units.reduce((a, b) => a + b, 0)).toBe(g.unitsSold);
+    expect(g.weekly!.revenue.reduce((a, b) => a + b, 0)).toBe(g.revenue);
+    expect(cumulativeRevenue(g)).toHaveLength(SALES_WEEKS + 1);
+    expect(totalCost(g)).toBe(g.spend!.budget + g.spend!.marketing + g.spend!.team);
+    expect(profit(g)).toBe(g.revenue - totalCost(g));
+    const pay = paybackWeek(g);
+    if (pay !== null) expect(cumulativeRevenue(g)[pay]).toBeGreaterThanOrEqual(totalCost(g));
+    else expect(g.revenue).toBeLessThan(totalCost(g));
+  });
+
+  it('rates games by how many times their cost they made', () => {
+    const base = { ...spec, id: 1, releaseWeek: 0, devWeeks: 10, design: 0, tech: 0, bugs: 0, ppw: 0, score: 7, reviews: [], targetUnits: 0, unitsSold: 0, weeksOnMarket: SALES_WEEKS, fansGained: 0, unitPrice: 10, cost: 100, spend: { budget: 60, marketing: 20, team: 20 } };
+    const at = (revenue: number) => verdict({ ...base, revenue }).id;
+    expect(at(600)).toBe('blockbuster');
+    expect(at(300)).toBe('hit');
+    expect(at(150)).toBe('success');
+    expect(at(100)).toBe('even');
+    expect(at(50)).toBe('flop');
+    // While still selling, the copies it is expected to sell count too.
+    expect(returnMultiple({ ...base, revenue: 50, weeksOnMarket: 2, targetUnits: 30, unitsSold: 5 })).toBeCloseTo(3);
   });
 });

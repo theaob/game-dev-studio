@@ -365,6 +365,7 @@ export function startGame(state: GameState, spec: GameSpec, firstFocus: number[]
     areaPoints: AREAS.map(() => 0),
     contrib: {},
     cost: cost.total,
+    spend: { budget: cost.license + cost.size, marketing: cost.marketing, team: 0 },
   };
   state.activity = project;
   return null;
@@ -536,6 +537,8 @@ export function releaseGame(state: GameState): ReleaseReport | string {
     sequelOf: original?.id,
     series: original ? seriesNumber(original) + 1 : 1,
     hype: Math.round(hype),
+    spend: p.spend ? { ...p.spend } : undefined,
+    weekly: { units: [], revenue: [] },
   };
 
   // Learning: knowledge about combos, area importance and balance.
@@ -694,6 +697,8 @@ export function tick(state: GameState): SimEvent[] {
 }
 
 function tickProject(state: GameState, p: GameProject, events: SimEvent[]) {
+  // The team's salaries and rent while they work on it count towards what the game cost.
+  if (p.spend) p.spend.team += Math.round(monthlyCosts(state) / WEEKS_PER_MONTH);
   if (p.hype) p.hype = Math.round(p.hype * HYPE_DECAY * 10) / 10;
   // Saves from before points were whole numbers.
   p.bugs = Math.round(p.bugs);
@@ -838,7 +843,9 @@ export function runPromo(state: GameState, id: PromoId): string | null {
   const blocked = promoBlocker(state, id);
   if (blocked) return blocked;
   const p = state.activity as GameProject;
-  state.cash -= promoPrice(state, id);
+  const price = promoPrice(state, id);
+  state.cash -= price;
+  if (p.spend) p.spend.marketing += price;
   p.hype = Math.min(MAX_HYPE, (p.hype ?? 0) + promoById(id).hype);
   p.promos = [...(p.promos ?? []), id];
   return null;
@@ -856,8 +863,12 @@ export function boothBlocker(state: GameState, id: BoothId): string | null {
 export function bookBooth(state: GameState, id: BoothId): string | null {
   const blocked = boothBlocker(state, id);
   if (blocked) return blocked;
-  state.cash -= boothPrice(state, id);
+  const price = boothPrice(state, id);
+  state.cash -= price;
   state.expo = { year: yearOf(state.week), booth: id };
+  // The booth shows off the game in development, if there is one.
+  const p = state.activity;
+  if (p?.kind === 'game' && p.spend) p.spend.marketing += price;
   return null;
 }
 
@@ -897,7 +908,9 @@ export function pushSales(state: GameState, gameId: number, id: SalesPushId): st
   const blocked = salesPushBlocker(state, gameId, id);
   if (blocked) return blocked;
   const g = state.released.find((x) => x.id === gameId)!;
-  state.cash -= salesPushPrice(state, id);
+  const price = salesPushPrice(state, id);
+  state.cash -= price;
+  if (g.spend) g.spend.marketing += price;
   const remaining = Math.max(0, g.targetUnits - g.unitsSold);
   if (id === 'ads') g.targetUnits += Math.round(remaining * 0.15);
   else {
@@ -917,6 +930,10 @@ function tickSales(state: GameState) {
     g.unitsSold += units;
     const revenue = Math.round(units * g.unitPrice);
     g.revenue += revenue;
+    if (g.weekly) {
+      g.weekly.units.push(units);
+      g.weekly.revenue.push(revenue);
+    }
     state.cash += revenue;
     state.totalRevenue += revenue;
     let fans = units * 0.1 * clamp((g.score - 4) / 6, -0.3, 1);

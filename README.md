@@ -28,6 +28,10 @@ The UI is laid out like a mobile game, not a web page. The office fills the scre
   - A yearly round-up of your studio's releases, and your own studio log.
 - **Reviews** from 4 outlets decide sales and fans. The bar keeps rising: the market expects each game to beat your best work.
 - **Store**: spend cash on power-ups. Boosts last a few game-development weeks: the Espresso Bar adds 20% more points, Pizza Night triples the chance of getting in the zone, and a Bug Bash fixes 40% of bugs at once. Permanent studio upgrades are Ergonomic Chairs (+5% points), Noise-cancelling Headphones (zone 50% more often) and Test Automation (15% fewer bugs). Boost prices scale with team size, and all prices rise over the years like salaries.
+- **Game results**: every game records what it cost (budget and license, marketing, and the team's salaries and rent while they made it) and what it sold each week.
+  - Tap a game for its report card: a verdict (🏆 Blockbuster, ⭐ Hit, 👍 Success, 😐 Broke even, 💸 Flop, from how many times its cost it made), revenue, profit, copies and score.
+  - Its charts show money made against cost (and the week it paid for itself), copies sold each week, and where the money went.
+  - The Games tab charts the profit or loss of every release (tap a column to open the game), and games on sale show a small sales line.
 - **Grow**: take contracts to pay the bills, earn research points (RP), unlock topics, game sizes, engines and QA, hire and train staff, and move to bigger offices.
   - Every week of development earns RP (more with a bigger team), and every release earns more, scaled by its review score and size. Contracts earn some too.
   - A solo founder earns roughly 50–60 RP a year, enough for medium-sized games within about a year and the first engine and design upgrades by the third or fourth.

@@ -11,6 +11,7 @@ import { CAT_ID } from './office-common';
 import type { OfficeView } from './office-view';
 import { money, num } from './format';
 import { focusLean, renderSheet, type Sheet } from './sheets';
+import { ChartTooltip } from './tooltip';
 import { SPEEDS, renderDock, renderGames, renderNav, renderNews, renderResearch, renderStaff, renderTopbar, type Tab } from './views';
 
 type StatKey = 'cash' | 'fans' | 'rp';
@@ -44,6 +45,7 @@ export class App {
   private lastStats: Record<StatKey, number> | null = null;
   /** Identifies the newest headline the player has seen on the News tab. */
   private newsSeen = '';
+  private tooltip!: ChartTooltip;
   private lastDraw = 0;
 
   constructor(root: HTMLElement) {
@@ -59,6 +61,7 @@ export class App {
     this.wireOffice(this.office);
     this.loadOffice3D();
     root.addEventListener('click', (e) => this.onClick(e));
+    this.tooltip = new ChartTooltip(root);
     root.addEventListener('input', (e) => this.onInput(e));
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) this.save();
@@ -362,7 +365,12 @@ export class App {
   private set(key: keyof typeof this.els, html: string) {
     if (this.html[key] === html) return;
     this.html[key] = html;
-    this.els[key].innerHTML = html;
+    const el = this.els[key];
+    // Wide charts start scrolled to the newest data and keep their place across re-renders.
+    const fromEnd = [...el.querySelectorAll<HTMLElement>('[data-scroll-end]')].map((c) => c.scrollWidth - c.clientWidth - c.scrollLeft);
+    el.innerHTML = html;
+    el.querySelectorAll<HTMLElement>('[data-scroll-end]').forEach((c, i) => (c.scrollLeft = c.scrollWidth - c.clientWidth - (fromEnd[i] ?? 0)));
+    this.tooltip.refresh();
   }
 
   private render() {
@@ -409,7 +417,10 @@ export class App {
     const inner = renderSheet(this.state, this.sheet);
     const existing = host.querySelector<HTMLElement>('.sheet');
     if (existing && host.dataset.kind === this.sheet.kind) {
-      if (this.html.sheet !== inner) existing.innerHTML = inner;
+      if (this.html.sheet !== inner) {
+        existing.innerHTML = inner;
+        this.tooltip.refresh();
+      }
     } else {
       host.innerHTML = `<div class="overlay" data-overlay><div class="sheet" role="dialog" aria-modal="true">${inner}</div></div>`;
       host.dataset.kind = this.sheet.kind;
@@ -526,6 +537,7 @@ export class App {
     }
     const btn = target.closest<HTMLElement>('[data-action]');
     if (!btn || (btn as HTMLButtonElement).disabled) return;
+    this.tooltip.hide();
     this.vibrate(5);
     this.action(btn.dataset.action!, btn.dataset.arg ?? '');
   }
