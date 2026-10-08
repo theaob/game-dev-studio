@@ -139,4 +139,6 @@ Once the secrets are set, the next run on `main` (or a manual run: Actions → C
 
 Keep `release.keystore` and its passwords backed up somewhere safe. If you lose them, players can't install updates and have to reinstall. Switching from the shared debug key to your release key also means players reinstall once.
 
+**Google Play:** the store listing text, privacy policy, graphics and a step-by-step Play Console checklist are in [`store/`](store/README.md).
+
 **Local builds:** `npm run android` builds the web game, syncs it into `android/` and opens Android Studio. You need Android Studio with JDK 21 and Android SDK 36.
