@@ -12,6 +12,8 @@ import type { OfficeView } from './office-view';
 import { money, num } from './format';
 import { focusLean, renderSheet, type Sheet } from './sheets';
 import { ChartTooltip } from './tooltip';
+import { Monetization } from './monetization';
+import { claimReward, investorCash, rewardBlocker, type RewardId } from '../core/rewards';
 import { SPEEDS, renderDock, renderGames, renderNav, renderNews, renderResearch, renderStaff, renderTopbar, type Tab } from './views';
 
 type StatKey = 'cash' | 'fans' | 'rp';
@@ -46,6 +48,8 @@ export class App {
   /** Identifies the newest headline the player has seen on the News tab. */
   private newsSeen = '';
   private tooltip!: ChartTooltip;
+  /** Ads and the "Remove ads" purchase (Android app only). */
+  private ads = new Monetization();
   private lastDraw = 0;
 
   constructor(root: HTMLElement) {
@@ -75,6 +79,12 @@ export class App {
 
     this.render();
     requestAnimationFrame((t) => this.loop(t));
+
+    this.ads.onChange = () => {
+      this.render();
+      if (this.sheet?.kind === 'store' || this.sheet?.kind === 'menu') this.renderSheet();
+    };
+    void this.ads.init();
   }
 
   // -------------------------------------------------------------------------
@@ -354,6 +364,13 @@ export class App {
     return Math.min(list.length, 9);
   }
 
+  /** When the studio is in the red, offer the investor video on the studio screen. */
+  private cashOffer(s: GameState): string {
+    const v = this.ads.view();
+    if (!v.rewardedReady || s.cash >= 0 || rewardBlocker(s, 'investor')) return '';
+    return `📺 In the red? Watch a video: +${money(investorCash(s))}`;
+  }
+
   private save() {
     if (this.state) saveGame(this.state);
   }
@@ -383,7 +400,7 @@ export class App {
       this.els.dock.hidden = !studio;
       this.els.scroll.hidden = studio;
       if (studio) {
-        this.set('dock', renderDock(s));
+        this.set('dock', renderDock(s, this.cashOffer(s)));
       } else {
         const titles: Record<Exclude<Tab, 'studio'>, [string, string]> = {
           games: ['Games', `${s.released.length} released`],
@@ -414,7 +431,7 @@ export class App {
       this.html.sheet = '';
       return;
     }
-    const inner = renderSheet(this.state, this.sheet);
+    const inner = renderSheet(this.state, this.sheet, this.ads.view());
     const existing = host.querySelector<HTMLElement>('.sheet');
     if (existing && host.dataset.kind === this.sheet.kind) {
       if (this.html.sheet !== inner) {
@@ -587,8 +604,25 @@ export class App {
         if (sheet?.kind === 'welcome') this.queue.unshift(sheet);
         this.replace({ kind: 'help' });
         return;
-      case 'close':
+      case 'close': {
+        const afterReviews = sheet?.kind === 'review';
         this.close();
+        // A natural break: maybe a full-screen ad (rare, never for ad-free players).
+        if (afterReviews && s) void this.ads.maybeInterstitial(s.released.length);
+        return;
+      }
+      case 'remove-ads':
+        void this.ads.buyRemoveAds().then((err) => {
+          if (err) this.toast(err, 'bad');
+          else this.toast('Ads removed. Thanks for your support!', 'good');
+          if (this.sheet?.kind === 'menu') this.renderSheet();
+        });
+        return;
+      case 'restore-purchases':
+        void this.ads.restore().then((msg) => this.toast(msg, 'info'));
+        return;
+      case 'privacy-options':
+        void this.ads.showPrivacyOptions();
         return;
       case 'save':
         if (s && saveGame(s) && sheet?.kind === 'menu') {
@@ -650,6 +684,20 @@ export class App {
           this.office.cheer(name === 'push' ? ['📈', 'Sales!', '💸'] : name === 'booth' ? ['🎪', 'Expo!', '🤩'] : ['📣', 'Hype!', '🔥']);
           if (sheet?.kind === 'marketing') this.renderSheet();
         }
+        return;
+      }
+      case 'ad-reward': {
+        const id = arg as RewardId;
+        if (!report(rewardBlocker(s, id))) return;
+        void this.ads.showRewarded().then((watched) => {
+          if (!watched) {
+            this.toast('Watch the whole video to get the reward.', 'info');
+          } else if (report(claimReward(s, id))) {
+            this.office.cheer(id === 'investor' ? ['💼', '💰', 'Yes!'] : id === 'research' ? ['🔬', '💡', 'Eureka!'] : ['☕', 'Yum!', '⚡']);
+            this.save();
+          }
+          if (this.sheet?.kind === 'store') this.renderSheet();
+        });
         return;
       }
       case 'buy': {

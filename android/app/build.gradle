@@ -10,6 +10,8 @@ android {
         // CI passes -PversionCode=<run number> -PversionName=<web version>; local builds use 1 / dev.
         versionCode((project.findProperty('versionCode') ?: '1') as Integer)
         versionName(project.findProperty('versionName') ?: 'dev')
+        // The AdMob app ID (not secret). Without one, Google's sample app ID shows test ads only.
+        manifestPlaceholders = [admobAppId: System.getenv('ADMOB_APP_ID') ?: 'ca-app-pub-3940256099942544~3347511713']
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.

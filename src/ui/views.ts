@@ -65,12 +65,14 @@ export function renderNav(tab: Tab, state: GameState, unreadNews: number): strin
 // Studio: an action dock floating over the office
 // ---------------------------------------------------------------------------
 
-export function renderDock(state: GameState): string {
+/** `cashOffer`: the text of a "watch a video for cash" chip, when the studio is in the red (Android only). */
+export function renderDock(state: GameState, cashOffer = ''): string {
   const selling = state.released.filter((g) => g.weeksOnMarket < SALES_WEEKS);
   const ticker = selling.length
     ? `<button class="ticker" data-action="tab" data-arg="games">📈 ${selling.length} on sale · ${money(selling.reduce((a, g) => a + g.revenue, 0))} earned</button>`
     : '';
-  return `${expoChip(state)}${ticker}${renderActivity(state)}`;
+  const offer = cashOffer ? `<button class="ticker expo" data-action="ad-reward" data-arg="investor">${esc(cashOffer)}</button>` : '';
+  return `${offer}${expoChip(state)}${ticker}${renderActivity(state)}`;
 }
 
 /** While GameExpo booking is open: a reminder that opens the Marketing sheet. */

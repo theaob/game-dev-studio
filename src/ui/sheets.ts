@@ -31,6 +31,8 @@ import { WEEKS_PER_YEAR, formatShortDate, yearFraction, yearOf } from '../core/t
 import { RIVAL_CLASH_MULT, RIVAL_CLASH_WEEKS, rivalClash, trendMult } from '../core/industry';
 import { onSale, paybackWeek, profit, returnMultiple, revenueRank, totalCost, verdict } from '../core/results';
 import { moneyChart, spendBar, weeklyChart } from './charts';
+import { REWARDS, rewardAmount, rewardBlocker, type Reward } from '../core/rewards';
+import type { MonetizationView } from './monetization';
 import { BOOTHS, EXPO_BOOKING_WEEKS, PROMOS, SALES_PUSHES, boothById, boothPrice, promoPrice, salesPushPrice, weeksToExpo } from '../core/marketing';
 import type { GameProject, GameSpec, GameState, ReleaseReport } from '../core/types';
 import { esc, money, num, scoreClass } from './format';
@@ -54,9 +56,12 @@ export type Sheet =
   | { kind: 'marketing' }
   | { kind: 'gameOver' };
 
+/** The web build: no ads, no purchases. */
+const NO_ADS: MonetizationView = { native: false, rewardedReady: false, adFree: false, privacyOptions: false, busy: false };
+
 export const OUTLETS = ['Game Weekly', 'Pixel Press', 'PlayZone', 'Joystick Journal'];
 
-export function renderSheet(state: GameState | null, sheet: Sheet): string {
+export function renderSheet(state: GameState | null, sheet: Sheet, ads: MonetizationView = NO_ADS): string {
   switch (sheet.kind) {
     case 'welcome':
       return welcome(sheet.name);
@@ -84,13 +89,13 @@ export function renderSheet(state: GameState | null, sheet: Sheet): string {
     case 'gameDetail':
       return gameDetail(state, sheet.id);
     case 'menu':
-      return menu(sheet.saved);
+      return menu(sheet.saved, ads);
     case 'gameOver':
       return gameOver(state);
     case 'contracts':
       return contracts(state);
     case 'store':
-      return store(state);
+      return store(state, ads);
     case 'marketing':
       return marketing(state);
   }
@@ -121,6 +126,7 @@ function help(): string {
       <p><b>The cat.</b> Sometimes the studio cat curls up on a developer's lap, and they work 30% faster while it stays. You can carry the cat over and drop it on someone too, but it needs some alone time between laps.</p>
       <p><b>Store.</b> Spend cash on power-ups: boosts like an espresso bar or pizza night last a few weeks of development, and studio upgrades help forever. Find it next to Contracts, or tap ⚡ Boost while making a game.</p>
       <p><b>Track your results.</b> Tap any game to see what it cost, what it made each week, when it paid for itself and whether it was a hit or a flop. The Games tab charts the profit of every release.</p>
+      <p><b>Free with a video.</b> In the Android app, the Store has rewards for watching an optional video: an investor's cash, a free Espresso Bar or a research grant. Each one can be claimed again after a few weeks.</p>
       <p><b>Raise the bar.</b> Players expect each game to beat your last one, and the industry keeps moving. Grow your team, train them and research better tech.</p>
       <p><b>Stay solvent.</b> Rent and salaries are paid monthly. Three months in the red and you're bankrupt. Contract work pays the bills.</p>
       <p><b>Grow.</b> Earn research points (RP) to unlock topics, bigger games and better engines. You earn RP every week you're making a game (more with a bigger team) and with every release (more for better reviews). Move offices to hire more people.</p>
@@ -524,12 +530,24 @@ function gameDetail(state: GameState, id: number): string {
     <div class="btn-row"><button class="btn ghost" data-action="close">Close</button></div>`;
 }
 
-function menu(saved?: boolean): string {
+function menu(saved: boolean | undefined, ads: MonetizationView): string {
+  // Ads and purchases only exist in the Android app.
+  const shop = ads.native
+    ? `
+      ${
+        ads.adFree
+          ? '<div class="option"><span class="emoji">💖</span><span class="grow"><b>Ads removed</b><br/><span class="sub">Thanks for supporting the game! Optional videos for rewards stay available.</span></span></div>'
+          : `<button class="option" data-action="remove-ads" ${ads.busy ? 'disabled' : ''}><span class="emoji">🚫</span><span class="grow"><b>Remove ads${ads.removeAdsPrice ? ` · ${esc(ads.removeAdsPrice)}` : ''}</b><br/><span class="sub">One-time purchase. No more full-screen ads; optional reward videos stay.</span></span></button>`
+      }
+      <button class="option" data-action="restore-purchases"><span class="emoji">♻️</span><span class="grow"><b>Restore purchases</b><br/><span class="sub">Bought "Remove ads" on another phone? Get it back here.</span></span></button>
+      ${ads.privacyOptions ? '<button class="option" data-action="privacy-options"><span class="emoji">🔒</span><span class="grow"><b>Privacy options</b><br/><span class="sub">Change your ad consent choices.</span></span></button>' : ''}`
+    : '';
   return `
     <h3>Menu</h3>
     <div class="options mt">
       <button class="option" data-action="help"><span class="emoji">📖</span><span class="grow"><b>How to play</b></span></button>
       <button class="option" data-action="save"><span class="emoji">💾</span><span class="grow"><b>Save game</b>${saved ? ' <span class="tag good">Saved!</span>' : '<br/><span class="sub">The game also saves automatically every month.</span>'}</span></button>
+      ${shop}
       <button class="option" data-action="ask-reset"><span class="emoji">🔄</span><span class="grow"><b>Start over</b><br/><span class="sub">Delete this save and found a new studio.</span></span></button>
     </div>
     <div class="btn-row"><button class="btn ghost" data-action="close">Close</button></div>`;
@@ -578,12 +596,26 @@ function storeRow(state: GameState, item: StoreItem): string {
     </div>`;
 }
 
-function store(state: GameState): string {
+/** A reward for watching an optional video, with what it gives now or why not. */
+function rewardRow(state: GameState, r: Reward, ads: MonetizationView): string {
+  const blocked = rewardBlocker(state, r.id) ?? (ads.busy ? 'Just a moment…' : !ads.rewardedReady ? 'Loading a video…' : null);
+  return `
+    <div class="option store-item">
+      <span class="emoji">${r.icon}</span>
+      <span class="grow"><b>${r.name}</b> <span class="tag good">${esc(rewardAmount(state, r.id))}</span><br/><span class="sub">${r.desc}</span>${
+        blocked ? `<br/><span class="sub warn">${esc(blocked)}</span>` : ''
+      }</span>
+      <button class="btn small" data-action="ad-reward" data-arg="${r.id}" ${blocked ? 'disabled' : ''}>▶ Watch</button>
+    </div>`;
+}
+
+function store(state: GameState, ads: MonetizationView): string {
   const boosts = STORE.filter((x) => x.kind !== 'upgrade');
   const upgrades = STORE.filter((x) => x.kind === 'upgrade');
   return `
     <h3>Store</h3>
     <p class="muted">Power-ups for your team. Boosts only count down while a game is in development.</p>
+    ${ads.native ? `<h4>Free with a video</h4><div class="options">${REWARDS.map((r) => rewardRow(state, r, ads)).join('')}</div>` : ''}
     <h4>Boosts</h4>
     <div class="options">${boosts.map((x) => storeRow(state, x)).join('')}</div>
     <h4>Studio upgrades</h4>

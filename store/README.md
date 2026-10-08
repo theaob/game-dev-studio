@@ -15,8 +15,8 @@ The app bundle (AAB) comes from CI: open the latest run of *CI & itch.io deploy*
 | Package name | `io.github.theaob.gamedevstudio` (can't change after the first upload) |
 | Target SDK | 36 |
 | Version code | the CI run number, so every build is higher than the last |
-| Ads | none |
-| In-app purchases | none |
+| Ads | Google AdMob: rewarded videos (Store, and when cash is negative) and an occasional interstitial after a game's reviews |
+| In-app purchases | `remove_ads`, a one-time product |
 
 ## Checklist
 
@@ -33,7 +33,7 @@ Play Console → **Create app**:
 | Section | Answer |
 |---|---|
 | Privacy policy | https://github.com/theaob/game-dev-studio/blob/main/store/privacy-policy.md |
-| Ads | No, the app does not contain ads |
+| Ads | **Yes**, the app contains ads |
 | App access | All functionality is available without special access |
 | Content rating | Fill in the IARC questionnaire (see below) |
 | Target audience | 13–15, 16–17 and 18+ (leaving out under-13s avoids the extra Families policy requirements) |
@@ -43,12 +43,35 @@ Play Console → **Create app**:
 | Health | None |
 | News app | No (the in-game News tab is fiction) |
 
-**Content rating questionnaire (IARC).** Category: *Game*. Answer **No** to everything: violence, fear, sexuality, gambling, language, controlled substances, crude humour, user interaction or chat, sharing location, digital purchases. Some game topics have dark names (Horror, Zombies, Military, Post-Apocalyptic), but they're text labels only, with nothing shown. Expect *Everyone* / PEGI 3.
+**Content rating questionnaire (IARC).** Category: *Game*. Answer **No** to violence, fear, sexuality, gambling, language, controlled substances, crude humour, user interaction or chat and sharing location. Answer **Yes** to *digital purchases* (Remove ads). Some game topics have dark names (Horror, Zombies, Military, Post-Apocalyptic), but they're text labels only, with nothing shown. Expect *Everyone* / PEGI 3.
 
-**Data safety.**
-- Does your app collect or share any of the required user data types? **No**.
-- That gives the listing "No data collected" and "No data shared".
-- The game makes no network requests. Saves stay on the device.
+**Data safety.** The game itself collects nothing; the AdMob SDK does. Answer:
+- Does your app collect or share any of the required user data types? **Yes**.
+- Is all of the user data collected by your app encrypted in transit? **Yes**.
+- Do you provide a way for users to request that their data be deleted? **No** (the game keeps no user data; Google handles ad data).
+- Data types, all *collected* and *shared*, *not* processed ephemerally, *required* (can't be turned off), for **Advertising or marketing**, **Analytics** and **Fraud prevention, security and compliance**:
+  - **Location → Approximate location** (from the IP address).
+  - **App activity → App interactions** (ads seen and tapped).
+  - **App info and performance → Crash logs** and **Diagnostics**.
+  - **Device or other IDs → Device or other IDs** (the advertising ID).
+- Purchases go through Google Play Billing, so the game doesn't collect purchase history itself.
+
+**Advertising ID.** In App content → Advertising ID, answer **Yes**, the app uses it, for **Advertising or marketing** and **Analytics**. The AdMob SDK adds the `AD_ID` permission automatically.
+
+### 2b. AdMob and the Remove ads product
+1. **AdMob** (https://admob.google.com): add an Android app, link it to the Play listing once it exists, and create two ad units: one **Rewarded** and one **Interstitial**.
+2. In GitHub → Settings → Secrets and variables → Actions → **Variables** (not secrets, the IDs ship inside the app), add:
+
+   | Variable | Value |
+   |---|---|
+   | `ADMOB_APP_ID` | the app ID, `ca-app-pub-…~…` |
+   | `ADMOB_REWARDED_ID` | the rewarded ad unit, `ca-app-pub-…/…` |
+   | `ADMOB_INTERSTITIAL_ID` | the interstitial ad unit |
+
+   Until these are set, builds show Google's **test ads**, which is what you want while testing. Never tap your own real ads.
+3. **Privacy & messaging** in AdMob: create a **GDPR** consent message for the app (and a US state message if you like). The game shows it automatically to players who need it and adds a *Privacy options* menu entry for them.
+4. **app-ads.txt**: AdMob asks for an `app-ads.txt` on the developer website listed on your Play listing. If you don't have a website, AdMob still serves ads but may limit them; you can add one later (e.g. on GitHub Pages).
+5. **Play Console → Monetize → Products → In-app products**: create a one-time product with ID **`remove_ads`** (it must match exactly), a name like "Remove ads" and a price, then activate it. This needs a payments profile (merchant account) in the Play Console. The product only shows a price in the app once a build with billing has been uploaded to a testing track.
 
 ### 3. Store listing
 Grow users → Store presence → **Main store listing**: paste the text from `listing.md` and upload `graphics/icon-512.png`, `graphics/feature-graphic.png` and `graphics/phone/*` in order. Also set **Store settings**: category *Simulation* and a contact email.
@@ -60,7 +83,10 @@ Grow users → Store presence → **Main store listing**: paste the text from `l
 4. Install it from the Play Store link on a real phone and check:
    - the top bar and the bottom tabs aren't hidden under the status bar or the navigation bar (Android 15+ draws apps edge to edge);
    - the back button behaves sensibly;
-   - the game saves and resumes after you close it.
+   - the game saves and resumes after you close it;
+   - the Store's *Free with a video* rewards play a test ad and pay out;
+   - after your third release, closing the reviews sometimes shows a full-screen test ad (at most every 4 minutes);
+   - *Remove ads* in the menu opens the Google Play purchase sheet. Add your account under Settings → **License testing** to buy without being charged.
 
 ### 5. Closed test (new personal developer accounts)
 Personal developer accounts created after November 2023 must run a **closed test with at least 12 testers who stay opted in for 14 days** before they can apply for production access. Set up Testing → **Closed testing**, add the testers' Google accounts (or a Google Group), and share the opt-in link. Organisation accounts skip this step.
