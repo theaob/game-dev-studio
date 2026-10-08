@@ -48,7 +48,12 @@ jobs:
       - name: Unit tests & bot playthroughs
         run: npm test
 
+      # AdMob ad unit IDs are repository variables (not secrets: they ship inside the app).
+      # Without them the Android app shows Google's test ads. The web build never shows ads.
       - name: Build
+        env:
+          VITE_ADMOB_REWARDED_ID: ${{ vars.ADMOB_REWARDED_ID }}
+          VITE_ADMOB_INTERSTITIAL_ID: ${{ vars.ADMOB_INTERSTITIAL_ID }}
         run: npx vite build
 
       - name: Check the build is a valid HTML5 upload
@@ -180,6 +185,7 @@ jobs:
         working-directory: android
         env:
           SIGNED: ${{ steps.signing.outputs.signed }}
+          ADMOB_APP_ID: ${{ vars.ADMOB_APP_ID }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}

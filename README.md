@@ -139,6 +139,13 @@ Once the secrets are set, the next run on `main` (or a manual run: Actions → C
 
 Keep `release.keystore` and its passwords backed up somewhere safe. If you lose them, players can't install updates and have to reinstall. Switching from the shared debug key to your release key also means players reinstall once.
 
+**Ads and Remove ads (Android only).** The Android app shows Google AdMob ads (`src/ui/monetization.ts`, plugins `@capacitor-community/admob` and `@capgo/native-purchases`):
+- **Rewarded videos** (`src/core/rewards.ts`): in the Store, players can watch a video for an investor's cash, a free Espresso Bar or a research grant, each with a cooldown in game weeks. When the studio is in the red, the investor offer also shows on the studio screen.
+- **Interstitials**: rarely, after closing a game's reviews. Never in the first 3 minutes of a session, never within 4 minutes of another ad, and not before the player's third release.
+- **Remove ads**: a one-time Google Play purchase (`remove_ads`) turns off interstitials; reward videos stay optional. *Restore purchases* and, where required, *Privacy options* (Google's consent form) are in the menu.
+- AdMob IDs come from the repository variables `ADMOB_APP_ID`, `ADMOB_REWARDED_ID` and `ADMOB_INTERSTITIAL_ID`. Without them the app shows Google's test ads.
+- The web and itch.io builds never load the ad or billing plugins. To try the ad UI in a browser, open the dev server with `?fake-ads`.
+
 **Google Play:** the store listing text, privacy policy, graphics and a step-by-step Play Console checklist are in [`store/`](store/README.md).
 
 **Local builds:** `npm run android` builds the web game, syncs it into `android/` and opens Android Studio. You need Android Studio with JDK 21 and Android SDK 36.

@@ -164,6 +164,8 @@ export interface GameState {
   expo?: { year: number; booth: string };
   /** Industry news: this year's trend, rival releases and headlines. */
   industry?: IndustryState;
+  /** Week each ad reward was last claimed (Android app only). */
+  adRewards?: Partial<Record<string, number>>;
 }
 
 export interface Headline {

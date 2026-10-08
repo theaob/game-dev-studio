@@ -32,6 +32,7 @@ import {
   SALES_WEEKS,
 } from './sim';
 import { TOTAL_WEEKS, WEEKS_PER_YEAR, formatDate } from './time';
+import { claimReward, investorCash, researchGrant, rewardBlocker } from './rewards';
 import { cumulativeRevenue, paybackWeek, profit, returnMultiple, totalCost, verdict } from './results';
 import { RIVAL_CLASH_MULT, TREND_GENRE_BONUS, TREND_TOPIC_BONUS, trendMult } from './industry';
 import { EXPO_BOOKING_WEEKS, EXPO_WEEK, HYPE_DECAY, hypeEffect } from './marketing';
@@ -675,5 +676,39 @@ describe('game results', () => {
     expect(at(50)).toBe('flop');
     // While still selling, the copies it is expected to sell count too.
     expect(returnMultiple({ ...base, revenue: 50, weeksOnMarket: 2, targetUnits: 30, unitsSold: 5 })).toBeCloseTo(3);
+  });
+});
+
+describe('ad rewards', () => {
+  it('gives each reward once per cooldown', () => {
+    const s = createGame('Ads', 111);
+    const cash = s.cash;
+    expect(claimReward(s, 'investor')).toBeNull();
+    expect(s.cash).toBe(cash + investorCash(s));
+    expect(claimReward(s, 'investor')).toMatch(/Available again in 12 weeks/);
+    for (let i = 0; i < 12; i++) {
+      s.activity = null;
+      tick(s);
+    }
+    expect(rewardBlocker(s, 'investor')).toBeNull();
+  });
+
+  it('gives research points, and a free Espresso Bar only while making a game', () => {
+    const s = createGame('Ads', 112);
+    const rp = s.rp;
+    expect(claimReward(s, 'research')).toBeNull();
+    expect(s.rp).toBe(rp + researchGrant(s));
+    expect(claimReward(s, 'espresso')).toBe('Only while making a game.');
+    startGame(s, spec, [33, 33, 33]);
+    expect(claimReward(s, 'espresso')).toBeNull();
+    expect(boostWeeks(s, 'coffee')).toBe(4);
+  });
+
+  it('scales the investor with the studio', () => {
+    const s = createGame('Ads', 113);
+    const small = investorCash(s);
+    for (let i = 0; i < 5; i++) s.staff.push({ ...s.candidates[0], id: 900 + i, salary: 5000 });
+    expect(investorCash(s)).toBeGreaterThan(small);
+    expect(small).toBeGreaterThanOrEqual(6000);
   });
 });

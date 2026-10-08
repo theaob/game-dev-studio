@@ -47,7 +47,7 @@ TRACK YOUR SUCCESS
 • See what every game cost and earned, the week it paid for itself, and whether it was a blockbuster or a flop.
 • Charts for weekly sales, money made against cost, and the profit of every game you've ever released.
 
-No ads. No in-app purchases. No account. Plays offline.
+No account needed and no forced waiting. Optional videos give in-game rewards, and a one-time purchase removes the full-screen ads.
 ```
 
 ## Category and tags
