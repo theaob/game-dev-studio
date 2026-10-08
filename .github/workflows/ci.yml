@@ -126,7 +126,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   android:
-    name: Android APK
+    name: Android APK & AAB
     needs: build
     runs-on: ubuntu-latest
     outputs:
@@ -175,7 +175,8 @@ jobs:
       - name: Copy the web build into the Android project
         run: npx cap sync android
 
-      - name: Build the APK
+      # The APK is for itch.io; the AAB (Android App Bundle) is what Google Play takes.
+      - name: Build the APK and AAB
         working-directory: android
         env:
           SIGNED: ${{ steps.signing.outputs.signed }}
@@ -186,7 +187,7 @@ jobs:
           if [ "$SIGNED" = "true" ]; then
             export ANDROID_KEYSTORE_PATH="$RUNNER_TEMP/release.keystore"
           fi
-          ./gradlew assembleRelease --no-daemon -PversionCode="$GITHUB_RUN_NUMBER" -PversionName="$VERSION"
+          ./gradlew assembleRelease bundleRelease --no-daemon -PversionCode="$GITHUB_RUN_NUMBER" -PversionName="$VERSION"
 
       - name: Name the APK
         id: apk
@@ -203,6 +204,39 @@ jobs:
           name: android-apk
           path: apk
           retention-days: 14
+
+      - name: Name the AAB
+        env:
+          SIGNED: ${{ steps.signing.outputs.signed }}
+        run: |
+          src=$(ls android/app/build/outputs/bundle/release/*.aab | head -1)
+          [ -n "$src" ] || { echo "::error::No AAB was produced"; ls -R android/app/build/outputs; exit 1; }
+          mkdir -p aab
+          if [ "$SIGNED" = "true" ]; then
+            name="game-dev-studio-$VERSION.aab"
+            note="Signed with your upload key: ready for Google Play."
+          else
+            # Google Play rejects bundles signed with a debug key, so say so in the file name.
+            name="game-dev-studio-$VERSION-debug-signed.aab"
+            note="Signed with the shared debug key: Google Play will reject it. Add the ANDROID_* secrets (see README) for a Play-ready bundle."
+            # Expected on pull requests (they never get the release key); worth flagging everywhere else.
+            if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then echo "::notice::$note"; else echo "::warning::$note"; fi
+          fi
+          cp "$src" "aab/$name"
+          ls -la aab
+          {
+            echo "### Android App Bundle 📦"
+            echo ""
+            echo "- File: \`$name\` (artifact \`android-aab\`)"
+            echo "- versionCode $GITHUB_RUN_NUMBER, versionName \`$VERSION\`"
+            echo "- $note"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: android-aab
+          path: aab
+          retention-days: 30
 
   deploy-android:
     name: Push APK to itch.io
