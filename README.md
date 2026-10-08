@@ -108,7 +108,8 @@ public/        PWA manifest, icon, service worker
 The game is wrapped as a native Android app with [Capacitor](https://capacitorjs.com/). The Android Studio project is in `android/`, configured by `capacitor.config.ts` (app id `io.github.theaob.gamedevstudio`). It's portrait-only and uses the game's icon and a paper-coloured splash screen. Those images are generated from `assets/` with `npx @capacitor/assets generate --android`.
 
 **CI** (`.github/workflows/ci.yml`, job *Android APK*):
-- Every run copies the web build into the Android project and builds an APK with Gradle. The APK is saved as the `android-apk` artifact.
+- Every run copies the web build into the Android project and builds an APK and an Android App Bundle (AAB) with Gradle. They are saved as the `android-apk` and `android-aab` artifacts on the workflow run (Actions → the run → Artifacts).
+- The **AAB is for Google Play**. It is only Play-ready when it's signed with your own upload key (see Signing below). Without the key it's named `…-debug-signed.aab`, and Play will reject it.
 - On `main`, `v*` tags and manual runs, the APK is pushed to itch.io on the `android` channel, so it shows up as an Android download on the game page.
 - Pull requests build the same APK for testing and never deploy.
 - `versionCode` is the run number, so every build installs as an update. `versionName` matches the web version.
@@ -133,6 +134,8 @@ Then add four repository secrets (Settings → Secrets and variables → Actions
 | `ANDROID_KEYSTORE_PASSWORD` | the keystore password you chose |
 | `ANDROID_KEY_ALIAS` | `upload` (or the alias you used) |
 | `ANDROID_KEY_PASSWORD` | the key password (same as the keystore password if you pressed Enter) |
+
+Once the secrets are set, the next run on `main` (or a manual run: Actions → CI & itch.io deploy → Run workflow) produces a signed `game-dev-studio-<version>.aab` in the `android-aab` artifact. Upload it in the Play Console under Testing or Production → Create new release. The first time, accept **Play App Signing**: Google keeps the key that signs the app players download, and your key is only the *upload* key, so if you lose it Google can reset it.
 
 Keep `release.keystore` and its passwords backed up somewhere safe. If you lose them, players can't install updates and have to reinstall. Switching from the shared debug key to your release key also means players reinstall once.
 
