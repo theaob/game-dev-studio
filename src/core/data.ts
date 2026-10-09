@@ -342,7 +342,7 @@ export const GENRE_TITLES: Record<GenreId, { patterns: string[]; topicPatterns: 
 // Store: power-ups bought with cash. Boosts last a number of game-development
 // weeks (they only count down while a game is being made); upgrades are permanent.
 
-export type StoreItemId = 'coffee' | 'pizza' | 'bugbash' | 'chairs' | 'headphones' | 'tests';
+export type StoreItemId = 'coffee' | 'pizza' | 'bugbash' | 'chairs' | 'whiteboard' | 'headphones' | 'courses' | 'forum' | 'tests' | 'playtest';
 
 export interface StoreItem {
   id: StoreItemId;
@@ -363,8 +363,12 @@ export const STORE: StoreItem[] = [
   { id: 'pizza', name: 'Pizza Night', icon: '🍕', desc: 'Developers get in the zone three times as often.', kind: 'boost', price: 1200, weeks: 4, cheer: ['🍕', 'Pizza!', '😋'] },
   { id: 'bugbash', name: 'Bug Bash', icon: '🐞', desc: 'Hire testers for a weekend: fixes 40% of the current bugs right away.', kind: 'instant', price: 900, cheer: ['🐛', 'Squash!', '🔨'] },
   { id: 'chairs', name: 'Ergonomic Chairs', icon: '🪑', desc: 'Comfier team, more output: +5% design and tech points, forever.', kind: 'upgrade', price: 25000, cheer: ['😌', 'Ahh…', '🪑'] },
+  { id: 'whiteboard', name: 'Whiteboard Wall', icon: '📝', desc: 'Ideas get written down, not forgotten: +20% research points from development, forever.', kind: 'upgrade', price: 30000, cheer: ['📝', '💡', '🤓'] },
   { id: 'headphones', name: 'Noise-cancelling Headphones', icon: '🎧', desc: 'Fewer distractions: developers get in the zone 50% more often, forever.', kind: 'upgrade', price: 35000, cheer: ['🎧', '🎶', '😎'] },
+  { id: 'courses', name: 'Course Library', icon: '📚', desc: 'A shelf of books and online courses: training costs 25% less cash and RP, forever.', kind: 'upgrade', price: 40000, cheer: ['📚', '🎓', '🧠'] },
+  { id: 'forum', name: 'Fan Forum', icon: '💬', desc: 'Fans keep talking between announcements: hype fades half as fast, forever.', kind: 'upgrade', price: 45000, cheer: ['💬', '📣', '🙌'] },
   { id: 'tests', name: 'Test Automation', icon: '🧪', desc: 'A build server runs the tests: 15% fewer new bugs, forever.', kind: 'upgrade', price: 50000, cheer: ['🧪', '✅', '🤖'] },
+  { id: 'playtest', name: 'Playtest Lab', icon: '🕹️', desc: 'Real players try every build: polishing weeks add 25% more design and tech, forever.', kind: 'upgrade', price: 60000, cheer: ['🕹️', '👍', '🔍'] },
 ];
 
 export function storeItemById(id: string): StoreItem {

@@ -180,6 +180,11 @@ export function zoneChance(state: GameState): number {
   return ZONE_CHANCE * (boostWeeks(state, 'pizza') > 0 ? 3 : 1) * (hasUpgrade(state, 'headphones') ? 1.5 : 1);
 }
 
+/** How much hype is left after a week: a fan forum halves how much fades away. */
+export function hypeDecay(state: GameState): number {
+  return hasUpgrade(state, 'forum') ? 1 - (1 - HYPE_DECAY) / 2 : HYPE_DECAY;
+}
+
 /** Price today: boosts scale with team size, and everything with the years like salaries. */
 export function storePrice(state: GameState, id: StoreItemId): number {
   const item = storeItemById(id);
@@ -520,7 +525,11 @@ export function fire(state: GameState, staffId: number): string | null {
 }
 
 export function trainingCost(state: GameState, s: Staff, skill: 'design' | 'tech') {
-  return { cash: Math.max(2000, s.salary || salaryFor(state, s.design, s.tech)), rp: Math.round(5 + s[skill] * 4) };
+  const cash = Math.max(2000, s.salary || salaryFor(state, s.design, s.tech));
+  const rp = 5 + s[skill] * 4;
+  // The course library makes every course cheaper.
+  const m = hasUpgrade(state, 'courses') ? 0.75 : 1;
+  return { cash: Math.round(cash * m), rp: Math.round(rp * m) };
 }
 
 /** Sends a staff member on a course: +0.5 to a skill. Uses research points and money. */
@@ -720,7 +729,7 @@ export const RP_PER_SCORE_POINT = 1.2;
  * steady progress (contracts teach half as much).
  */
 export function weeklyRp(state: GameState): number {
-  return 1 + 0.5 * state.staff.length;
+  return (1 + 0.5 * state.staff.length) * (hasUpgrade(state, 'whiteboard') ? 1.2 : 1);
 }
 
 export function tick(state: GameState): SimEvent[] {
@@ -772,7 +781,7 @@ export function tick(state: GameState): SimEvent[] {
 function tickProject(state: GameState, p: GameProject, events: SimEvent[]) {
   // The team's salaries and rent while they work on it count towards what the game cost.
   if (p.spend) p.spend.team += Math.round(monthlyCosts(state) / WEEKS_PER_MONTH);
-  if (p.hype) p.hype = Math.round(p.hype * HYPE_DECAY * 10) / 10;
+  if (p.hype) p.hype = Math.round(p.hype * hypeDecay(state) * 10) / 10;
   // Saves from before points were whole numbers.
   p.bugs = Math.round(p.bugs);
   p.design = Math.round(p.design);
@@ -861,7 +870,7 @@ export const POLISH_DECAY = 0.8;
 function polishPoints(state: GameState, p: GameProject, kind: 'design' | 'tech', events: SimEvent[]) {
   const n = p.pointPolishWeeks ?? 0;
   p.pointPolishWeeks = n + 1;
-  const mult = POLISH_RATE * Math.pow(POLISH_DECAY, n) * range(state, 0.85, 1.15);
+  const mult = POLISH_RATE * Math.pow(POLISH_DECAY, n) * (hasUpgrade(state, 'playtest') ? 1.25 : 1) * range(state, 0.85, 1.15);
   let raw = 0;
   for (const s of state.staff) {
     const skill = kind === 'design' ? s.design * designMultiplier(state) : s.tech * techMultiplier(state);
