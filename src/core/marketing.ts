@@ -7,9 +7,25 @@ import { friendly, priceIndex } from './economy';
 import { yearOf } from './time';
 import type { GameState, SizeId } from './types';
 
-/** Hype is 0..100. It fades a little every week until launch. */
+/** Hype is 0..100. It fades a little every week until launch, unless the game is shaping up well. */
 export const MAX_HYPE = 100;
 export const HYPE_DECAY = 0.97;
+
+/** How far word of mouth alone can carry hype, and how fast it gets there. */
+export const BUZZ_MAX_HYPE = 60;
+export const BUZZ_PER_WEEK = 1;
+
+/**
+ * Hype after a week of development. `ratio` is the game's points per week so
+ * far against what the market expects. A game ahead of expectations gets word
+ * of mouth: its hype grows each week towards a level that rises with how far
+ * ahead it is. Hype above that level (or for a game that isn't ahead) fades.
+ */
+export function weeklyHype(hype: number, ratio: number): number {
+  const buzz = Math.max(0, Math.min(BUZZ_MAX_HYPE, 300 * (ratio - 1)));
+  const next = hype < buzz ? Math.min(buzz, hype + BUZZ_PER_WEEK) : Math.max(buzz, hype * HYPE_DECAY);
+  return Math.round(next * 10) / 10;
+}
 
 export type PromoId = 'preview' | 'trailer' | 'influencers';
 

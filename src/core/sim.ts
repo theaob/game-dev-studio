@@ -34,6 +34,7 @@ import {
   promoById,
   promoPrice,
   salesPushPrice,
+  weeklyHype,
   weeksToExpo,
 } from './marketing';
 import type { BoothId, PromoId, SalesPushId } from './marketing';
@@ -41,7 +42,7 @@ import { STARTING_CASH, founderSalary, friendly, marketingCost, officeCost, offi
 import { int, pick, random, range } from './rng';
 import { RIVAL_CLASH_MULT, newTrend, rivalClash, tickIndustry, trendMult } from './industry';
 import { hasSequel, sequelSalesMult, seriesNumber } from './sequels';
-import { average, clamp, evaluate, normalizeFocus, rollReviews, scoreFactor } from './scoring';
+import { average, benchmark, clamp, evaluate, normalizeFocus, rollReviews, scoreFactor } from './scoring';
 import { START_YEAR, TOTAL_WEEKS, WEEKS_PER_MONTH, WEEKS_PER_YEAR, yearFraction, yearOf } from './time';
 import type {
   ContractOffer,
@@ -699,7 +700,8 @@ export function tick(state: GameState): SimEvent[] {
 function tickProject(state: GameState, p: GameProject, events: SimEvent[]) {
   // The team's salaries and rent while they work on it count towards what the game cost.
   if (p.spend) p.spend.team += Math.round(monthlyCosts(state) / WEEKS_PER_MONTH);
-  if (p.hype) p.hype = Math.round(p.hype * HYPE_DECAY * 10) / 10;
+  // Hype fades while polishing; during development it depends on how the game is shaping up (below).
+  if (p.hype && p.phase >= 3) p.hype = Math.round(p.hype * HYPE_DECAY * 10) / 10;
   // Saves from before points were whole numbers.
   p.bugs = Math.round(p.bugs);
   p.design = Math.round(p.design);
@@ -761,6 +763,10 @@ function tickProject(state: GameState, p: GameProject, events: SimEvent[]) {
   p.bugs += bugs;
   state.rp += wholeNumber(state, weeklyRp(state));
   events.push({ type: 'points', design: designGain, tech: techGain, bugs });
+
+  // Word of mouth: a game with good points so far builds hype, one falling behind loses it.
+  const weeksDone = p.phase * p.phaseWeeks + p.weekInPhase + 1;
+  p.hype = weeklyHype(p.hype ?? 0, (p.design + p.tech) / weeksDone / benchmark(state));
 
   p.weekInPhase++;
   if (p.weekInPhase >= p.phaseWeeks) {
