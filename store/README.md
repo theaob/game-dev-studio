@@ -70,7 +70,7 @@ Play Console → **Create app**:
 
    Until these are set, builds show Google's **test ads**, which is what you want while testing. Never tap your own real ads.
 3. **Privacy & messaging** in AdMob: create a **GDPR** consent message for the app (and a US state message if you like). The game shows it automatically to players who need it and adds a *Privacy options* menu entry for them.
-4. **app-ads.txt**: AdMob asks for an `app-ads.txt` on the developer website listed on your Play listing. If you don't have a website, AdMob still serves ads but may limit them; you can add one later (e.g. on GitHub Pages).
+4. **app-ads.txt**: it's at https://theaob.github.io/app-ads.txt (repo `theaob/theaob.github.io`), authorising publisher `pub-3615836489279250`. In the Play Console's **Store settings → Store listing contact details**, set the website to `https://theaob.github.io/` (the game's page is https://theaob.github.io/games/game-dev-studio/). AdMob checks the file within about a day of the app being linked to its Play listing; see AdMob → Apps → app-ads.txt.
 5. **Play Console → Monetize → Products → In-app products**: create a one-time product with ID **`remove_ads`** (it must match exactly), a name like "Remove ads" and a price, then activate it. This needs a payments profile (merchant account) in the Play Console. The product only shows a price in the app once a build with billing has been uploaded to a testing track.
 
 ### 3. Store listing
