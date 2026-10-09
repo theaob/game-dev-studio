@@ -33,6 +33,7 @@ import {
   hypeEffect,
   promoById,
   promoPrice,
+  salesPushById,
   salesPushPrice,
   weeksToExpo,
 } from './marketing';
@@ -916,6 +917,7 @@ export function promoBlocker(state: GameState, id: PromoId): string | null {
   if (!p || p.kind !== 'game') return 'Only while making a game.';
   const promo = promoById(id);
   if (p.promos?.includes(id)) return 'Already done for this game.';
+  if (promo.research && !hasResearch(state, promo.research)) return 'Research Marketing Department to unlock.';
   if (promo.fromYear && yearOf(state.week) < promo.fromYear) return `Available from ${promo.fromYear}.`;
   if (p.phase < promo.fromPhase) return 'Needs more of the game to show.';
   if (promoPrice(state, id) > state.cash) return 'Not enough cash.';
@@ -991,11 +993,13 @@ export function salesPushBlocker(state: GameState, gameId: number, id: SalesPush
   if (!g) return 'Game not found.';
   if (g.weeksOnMarket >= SALES_WEEKS) return 'It has left the charts.';
   if (g.pushes?.includes(id)) return 'Already done for this game.';
+  const push = salesPushById(id);
+  if (push.research && !hasResearch(state, push.research)) return 'Research Marketing Department to unlock.';
   if (salesPushPrice(state, id) > state.cash) return 'Not enough cash.';
   return null;
 }
 
-/** Ad push (+25% of the copies left to sell) or discount sale (40% off, 70% more copies, more fans). */
+/** Ad push (+15%) or TV ad blitz (+35% of the copies left to sell) or discount sale (40% off, 70% more copies, more fans). */
 export function pushSales(state: GameState, gameId: number, id: SalesPushId): string | null {
   const blocked = salesPushBlocker(state, gameId, id);
   if (blocked) return blocked;
@@ -1005,6 +1009,7 @@ export function pushSales(state: GameState, gameId: number, id: SalesPushId): st
   if (g.spend) g.spend.marketing += price;
   const remaining = Math.max(0, g.targetUnits - g.unitsSold);
   if (id === 'ads') g.targetUnits += Math.round(remaining * 0.15);
+  else if (id === 'tv_ads') g.targetUnits += Math.round(remaining * 0.35);
   else {
     g.targetUnits += Math.round(remaining * 0.7);
     g.unitPrice *= 0.6;
