@@ -32,7 +32,7 @@ import {
   SALES_WEEKS,
 } from './sim';
 import { TOTAL_WEEKS, WEEKS_PER_YEAR, formatDate } from './time';
-import { claimReward, investorCash, researchGrant, rewardBlocker } from './rewards';
+import { bailoutCash, canBailout, claimBailout, claimReward, investorCash, researchGrant, rewardBlocker } from './rewards';
 import { cumulativeRevenue, paybackWeek, profit, returnMultiple, totalCost, verdict } from './results';
 import { RIVAL_CLASH_MULT, TREND_GENRE_BONUS, TREND_TOPIC_BONUS, trendMult } from './industry';
 import { EXPO_BOOKING_WEEKS, EXPO_WEEK, HYPE_DECAY, hypeEffect } from './marketing';
@@ -710,5 +710,34 @@ describe('ad rewards', () => {
     for (let i = 0; i < 5; i++) s.staff.push({ ...s.candidates[0], id: 900 + i, salary: 5000 });
     expect(investorCash(s)).toBeGreaterThan(small);
     expect(small).toBeGreaterThanOrEqual(6000);
+  });
+
+  it('bails out the first bankruptcy only', () => {
+    const s = createGame('Ads', 114);
+    s.cash = -100000;
+    for (let i = 0; i < 12 && !s.over; i++) tick(s);
+    expect(s.over).toBe('bankrupt');
+    expect(canBailout(s)).toBe(true);
+    const debt = -s.cash;
+    const cash = bailoutCash(s);
+    expect(cash).toBeGreaterThanOrEqual(debt + 3 * investorCash(s) - 1000);
+    expect(claimBailout(s)).toBeNull();
+    expect(s.over).toBeNull();
+    expect(s.debtStrikes).toBe(0);
+    expect(s.cash).toBeGreaterThan(0);
+    // The studio keeps running, and a second bankruptcy is final.
+    for (let i = 0; i < 4; i++) tick(s);
+    expect(s.over).toBeNull();
+    s.cash = -100000;
+    for (let i = 0; i < 12 && !s.over; i++) tick(s);
+    expect(s.over).toBe('bankrupt');
+    expect(canBailout(s)).toBe(false);
+    expect(claimBailout(s)).toMatch(/already had your bailout/);
+  });
+
+  it('offers no bailout while the studio is solvent', () => {
+    const s = createGame('Ads', 115);
+    expect(canBailout(s)).toBe(false);
+    expect(claimBailout(s)).toMatch(/not bankrupt/);
   });
 });

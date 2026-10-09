@@ -84,3 +84,28 @@ export function claimReward(state: GameState, id: RewardId): string | null {
   state.adRewards = { ...state.adRewards, [id]: state.week };
   return null;
 }
+
+/** Months of running costs (at least a small studio's) a bailout leaves in the bank once the debt is paid off. */
+export const BAILOUT_MONTHS = 3;
+
+/** A bailout pays off the debt and leaves a few months of running costs, so the studio has time to recover. */
+export function bailoutCash(state: GameState): number {
+  return friendly(Math.max(0, -state.cash) + BAILOUT_MONTHS * investorCash(state));
+}
+
+/** The first bankruptcy in a save can be undone once by watching a video. */
+export function canBailout(state: GameState): boolean {
+  return state.over === 'bankrupt' && !state.bailoutUsed;
+}
+
+/** Rescues a bankrupt studio (call once the ad has been watched). Returns an error message, or null on success. */
+export function claimBailout(state: GameState): string | null {
+  if (!canBailout(state)) return state.bailoutUsed ? 'You have already had your bailout.' : 'The studio is not bankrupt.';
+  const cash = bailoutCash(state);
+  state.cash += cash;
+  state.debtStrikes = 0;
+  state.over = null;
+  state.bailoutUsed = true;
+  notify(state, `A bailout saved the studio: +$${cash.toLocaleString('en-US')}. There won't be another one!`, 'good');
+  return null;
+}

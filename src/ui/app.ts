@@ -13,7 +13,7 @@ import { money, num } from './format';
 import { focusLean, renderSheet, type Sheet } from './sheets';
 import { ChartTooltip } from './tooltip';
 import { Monetization } from './monetization';
-import { claimReward, investorCash, rewardBlocker, type RewardId } from '../core/rewards';
+import { claimBailout, claimReward, investorCash, rewardBlocker, type RewardId } from '../core/rewards';
 import { SPEEDS, renderDock, renderGames, renderNav, renderNews, renderResearch, renderStaff, renderTopbar, type Tab } from './views';
 
 type StatKey = 'cash' | 'fans' | 'rp';
@@ -82,7 +82,7 @@ export class App {
 
     this.ads.onChange = () => {
       this.render();
-      if (this.sheet?.kind === 'store' || this.sheet?.kind === 'menu') this.renderSheet();
+      if (this.sheet?.kind === 'store' || this.sheet?.kind === 'menu' || this.sheet?.kind === 'gameOver') this.renderSheet();
     };
     void this.ads.init();
   }
@@ -700,6 +700,20 @@ export class App {
         });
         return;
       }
+      case 'bailout':
+        void this.ads.showRewarded().then((watched) => {
+          if (!watched) {
+            this.toast('Watch the whole video to get the bailout.', 'info');
+          } else if (report(claimBailout(s))) {
+            this.save();
+            this.close();
+            this.toast("🏦 The bank bailed you out. There won't be another one!", 'good');
+            this.office.cheer(['🏦', '💰', 'Saved!']);
+            this.vibrate(25);
+          }
+          if (this.sheet?.kind === 'gameOver') this.renderSheet();
+        });
+        return;
       case 'buy': {
         const item = storeItemById(arg);
         const bugsBefore = s.activity?.kind === 'game' ? s.activity.bugs : 0;

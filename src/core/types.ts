@@ -166,6 +166,8 @@ export interface GameState {
   industry?: IndustryState;
   /** Week each ad reward was last claimed (Android app only). */
   adRewards?: Partial<Record<string, number>>;
+  /** The one-time bankruptcy bailout (watched a video to escape the first bankruptcy). */
+  bailoutUsed?: boolean;
 }
 
 export interface Headline {
