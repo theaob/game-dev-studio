@@ -164,8 +164,8 @@ export interface GameState {
   upgrades?: string[];
   /** The studio cat: whose lap it's on (boosting them), and how long until it wants another lap. */
   cat?: CatState;
-  /** This year's GameExpo booth booking. */
-  expo?: { year: number; booth: string };
+  /** This year's GameExpo booth booking, what it cost and, once the expo has run, what it did. */
+  expo?: { year: number; booth: string; price?: number; report?: ExpoReport };
   /** Industry news: this year's trend, rival releases and headlines. */
   industry?: IndustryState;
   /** A headhunter's search for a rockstar developer, with the weeks it has left. */
@@ -205,6 +205,20 @@ export interface CatState {
   cooldown?: number;
 }
 
+/** What a GameExpo booth did for the studio. */
+export interface ExpoReport {
+  year: number;
+  booth: string;
+  /** What the booth cost (missing on saves from before this was tracked). */
+  price?: number;
+  /** The game in development that was on show, if any. */
+  game?: string;
+  hypeBefore?: number;
+  hypeAfter?: number;
+  fansBefore: number;
+  fansAfter: number;
+}
+
 /** Insight lines shown after a release. */
 export interface ReleaseReport {
   game: ReleasedGame;
@@ -221,4 +235,5 @@ export type SimEvent =
   | { type: 'notice'; notice: Notice }
   | { type: 'gameOver'; reason: 'bankrupt' | 'retired' }
   | { type: 'catLap'; staffId: number; name: string }
-  | { type: 'catLeft'; staffId: number };
+  | { type: 'catLeft'; staffId: number }
+  | { type: 'expo'; report: ExpoReport };

@@ -668,6 +668,38 @@ describe('marketing', () => {
     expect(s.fans).toBeGreaterThanOrEqual(fans + 1000);
   });
 
+  it('reports what GameExpo did, for the results screen', () => {
+    const s = studio(85);
+    while (s.week % WEEKS_PER_YEAR !== EXPO_WEEK - 1) tick(s);
+    startGame(s, spec, [33, 33, 33]);
+    expect(bookBooth(s, 'small')).toBeNull();
+    const price = s.expo!.price!;
+    expect(price).toBeGreaterThan(0);
+    const events = tick(s);
+    const ev = events.find((e) => e.type === 'expo');
+    if (ev?.type !== 'expo') throw new Error('expected an expo event');
+    const r = ev.report;
+    expect(s.expo!.report).toBe(r);
+    expect(r).toMatchObject({ year: s.expo!.year, booth: 'small', price, game: (s.activity as { name: string }).name });
+    expect(r.hypeAfter! - r.hypeBefore!).toBeCloseTo(15);
+    expect(r.fansAfter - r.fansBefore).toBe(300);
+  });
+
+  it('reports a smaller GameExpo when there is no game to show', () => {
+    const s = studio(86);
+    s.activity = null;
+    while (s.week % WEEKS_PER_YEAR !== EXPO_WEEK - 1) {
+      s.activity = null;
+      tick(s);
+    }
+    expect(bookBooth(s, 'medium')).toBeNull();
+    const ev = tick(s).find((e) => e.type === 'expo');
+    if (ev?.type !== 'expo') throw new Error('expected an expo event');
+    expect(ev.report.game).toBeUndefined();
+    expect(ev.report.hypeBefore).toBeUndefined();
+    expect(ev.report.fansAfter - ev.report.fansBefore).toBe(500);
+  });
+
   it('pushes sales after launch: ads and a discount sale, once each, while on the charts', () => {
     const s = studio(84);
     startGame(s, spec, [33, 33, 33]);

@@ -157,6 +157,10 @@ export class App {
       }
       case 'catLeft':
         break;
+      case 'expo':
+        this.office.cheer(ev.report.game ? ['🎪', 'Expo!', '🤩', '🔥'] : ['🎪', '👋', 'Hi!']);
+        this.open({ kind: 'expo' });
+        break;
       case 'contractDone':
         this.office.cheer(['💰', 'Paid!', '💵']);
         this.vibrate(15);
@@ -702,6 +706,9 @@ export class App {
         return;
       case 'marketing':
         this.open({ kind: 'marketing' });
+        return;
+      case 'expo-results':
+        this.open({ kind: 'expo' });
         return;
       case 'promo':
       case 'booth':

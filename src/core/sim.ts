@@ -46,6 +46,7 @@ import { average, clamp, evaluate, normalizeFocus, rollReviews, scoreFactor } fr
 import { START_YEAR, TOTAL_WEEKS, WEEKS_PER_MONTH, WEEKS_PER_YEAR, yearFraction, yearOf } from './time';
 import type {
   ContractOffer,
+  ExpoReport,
   GameProject,
   GameSpec,
   GenreId,
@@ -763,7 +764,7 @@ export function tick(state: GameState): SimEvent[] {
   tickHeadhunt(state);
   tickSales(state);
 
-  tickExpo(state);
+  tickExpo(state, events);
   tickIndustry(state);
   if (state.week % WEEKS_PER_MONTH === 0) monthly(state);
   if (state.week % WEEKS_PER_YEAR === 0) yearly(state);
@@ -947,7 +948,7 @@ export function bookBooth(state: GameState, id: BoothId): string | null {
   if (blocked) return blocked;
   const price = boothPrice(state, id);
   state.cash -= price;
-  state.expo = { year: yearOf(state.week), booth: id };
+  state.expo = { year: yearOf(state.week), booth: id, price };
   // The booth shows off the game in development, if there is one.
   const p = state.activity;
   if (p?.kind === 'game' && p.spend) p.spend.marketing += price;
@@ -955,24 +956,32 @@ export function bookBooth(state: GameState, id: BoothId): string | null {
 }
 
 /** Announces GameExpo when booking opens, and runs it on expo week. */
-function tickExpo(state: GameState) {
+function tickExpo(state: GameState, events: SimEvent[]) {
   const w = state.week % WEEKS_PER_YEAR;
   if (w === EXPO_WEEK - EXPO_BOOKING_WEEKS) {
     notify(state, `GameExpo ${yearOf(state.week)} opens in ${EXPO_BOOKING_WEEKS} weeks. Book a booth to show off your game.`, 'info');
   }
-  if (w !== EXPO_WEEK || state.expo?.year !== yearOf(state.week)) return;
-  const booth = boothById(state.expo.booth);
+  const expo = state.expo;
+  if (w !== EXPO_WEEK || expo?.year !== yearOf(state.week)) return;
+  const booth = boothById(expo.booth);
   const p = state.activity;
+  const report: ExpoReport = { year: expo.year, booth: booth.id, price: expo.price, fansBefore: state.fans, fansAfter: state.fans };
   if (p?.kind === 'game') {
     // A game in development is the star of the show.
-    p.hype = Math.min(MAX_HYPE, (p.hype ?? 0) + booth.hype);
+    report.game = p.name;
+    report.hypeBefore = p.hype ?? 0;
+    p.hype = Math.min(MAX_HYPE, report.hypeBefore + booth.hype);
+    report.hypeAfter = p.hype;
     state.fans += booth.fans;
-    notify(state, `GameExpo: crowds lined up to play ${p.name}! +${booth.hype} hype, +${booth.fans.toLocaleString('en-US')} fans.`, 'good');
+    notify(state, `GameExpo: crowds lined up to play ${p.name}! +${Math.round(p.hype - report.hypeBefore)} hype, +${booth.fans.toLocaleString('en-US')} fans.`, 'good');
   } else {
     const fans = Math.round(booth.fans / 2);
     state.fans += fans;
     notify(state, `GameExpo: with nothing new to show, the booth won ${fans.toLocaleString('en-US')} fans.`, 'info');
   }
+  report.fansAfter = state.fans;
+  expo.report = report;
+  events.push({ type: 'expo', report });
 }
 
 /** Why a post-launch push can't run on this game, or null if it can. */
