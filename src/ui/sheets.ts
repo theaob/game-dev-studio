@@ -37,7 +37,8 @@ import { BOOTHS, EXPO_BOOKING_WEEKS, PROMOS, SALES_PUSHES, boothById, boothPrice
 import type { GameProject, GameSpec, GameState, ReleaseReport } from '../core/types';
 import { esc, money, num, scoreClass } from './format';
 import type { StoreItem } from '../core/data';
-import { polishPicker } from './views';
+import { acclaimTag, polishPicker } from './views';
+import { acclaimOf, sequelHype } from '../core/acclaim';
 import { marketingCost, sizeCost } from '../core/economy';
 
 export type Sheet =
@@ -125,6 +126,7 @@ function help(): string {
       <p><b>Read the news.</b> Each year has a trending genre and topic (marked 🔥 when you start a game) that sell better. Rival studios release games too: right after a rival's hit, the same topic and genre sells less for a while. The News tab also shows which platforms are growing or on their way out.</p>
       <p><b>The cat.</b> Sometimes the studio cat curls up on a developer's lap, and they work 30% faster while it stays. You can carry the cat over and drop it on someone too, but it needs some alone time between laps.</p>
       <p><b>Store.</b> Spend cash on power-ups: boosts like an espresso bar or pizza night last a few weeks of development, and studio upgrades help forever. Find it next to Contracts, or tap ⚡ Boost while making a game.</p>
+      <p><b>Awards.</b> A game that reviews 9.0 or better is a 🏅 Critics' Choice, and 9.5 or better a 👑 Masterpiece. Its sequel starts development with hype already built: the better the original, the more.</p>
       <p><b>Track your results.</b> Tap any game to see what it cost, what it made each week, when it paid for itself and whether it was a hit or a flop. The Games tab charts the profit of every release.</p>
       <p><b>Free with a video.</b> In the Android app, the Store has rewards for watching an optional video: an investor's cash, a free Espresso Bar or a research grant. Each one can be claimed again after a few weeks.</p>
       <p><b>Raise the bar.</b> Players expect each game to beat your last one, and the industry keeps moving. Grow your team, train them and research better tech.</p>
@@ -216,7 +218,7 @@ function sequelPicker(state: GameState, d: GameSpec): string {
       .sort((a, b) => a.releaseWeek - b.releaseWeek || a.id - b.id)
       .map(
         (g) =>
-          `<button class="chip ${original?.id === g.id ? 'on' : ''}" data-action="pick-sequel" data-arg="${g.id}">🔁 ${esc(g.name)} <small class="muted">${yearOf(g.releaseWeek)}</small> <span class="tag ${g.score >= 7.5 ? 'good' : g.score >= 5 ? 'mid' : 'bad'}">${g.score.toFixed(1)}</span></button>`,
+          `<button class="chip ${original?.id === g.id ? 'on' : ''}" data-action="pick-sequel" data-arg="${g.id}">🔁 ${esc(g.name)}${acclaimOf(g) ? ` ${acclaimOf(g)!.icon}` : ''} <small class="muted">${yearOf(g.releaseWeek)}</small> <span class="tag ${g.score >= 7.5 ? 'good' : g.score >= 5 ? 'mid' : 'bad'}">${g.score.toFixed(1)}</span></button>`,
       ),
   ].join('');
   let info = '';
@@ -231,6 +233,8 @@ function sequelPicker(state: GameState, d: GameSpec): string {
           : `<li>🙂 ${esc(original.name)} was average, so no built-in audience.</li>`,
       `<li>🎯 Reviewers will compare it to the original's <b>${original.score.toFixed(1)}</b>.</li>`,
     ];
+    const award = acclaimOf(original);
+    if (award) notes.unshift(`<li>${award.icon} ${esc(original.name)} is a ${award.name}: the sequel starts with <b>+${sequelHype(original)} hype</b>.</li>`);
     if (state.week - original.releaseWeek < SEQUEL_TOO_SOON_WEEKS) notes.push(`<li>⏳ ${esc(original.name)} came out less than a year ago. A rushed sequel reviews worse.</li>`);
     if (part >= 4) notes.push(`<li>🥱 Part ${part} of a long series: players are starting to tire of it.</li>`);
     info = `
@@ -475,6 +479,7 @@ function review(report: ReleaseReport, shown: number): string {
       <div class="summary center">
         <div class="sub">Average score</div>
         <div class="score ${scoreClass(g.score)}" style="margin:6px auto;width:64px;height:64px;font-size:24px" data-countup="${g.score.toFixed(1)}">${g.score.toFixed(1)}</div>
+        ${acclaimOf(g) ? `<div class="mt-s">${acclaimTag(g).trim()}</div>` : ''}
         <div class="sub">+${report.rpEarned} RP · your team gained experience</div>
       </div>
       <h4>What we learned</h4>
@@ -499,6 +504,7 @@ function gameDetail(state: GameState, id: number): string {
   const payText = pay !== null ? `Paid for itself in week ${pay} on sale.` : g.weekly?.revenue.length ? (selling ? "Hasn't paid for itself yet." : 'Never paid for itself.') : '';
   return `
     <h3>${esc(g.name)}</h3>
+    ${acclaimOf(g) ? `<p>${acclaimTag(g).trim()}</p>` : ''}
     ${prequel || next ? `<p class="sub">${prequel ? `Part ${seriesNumber(g)} · sequel to <b>${esc(prequel.name)}</b> (${prequel.score.toFixed(1)})` : 'Part 1'}${next ? ` · followed by <b>${esc(next.name)}</b> (${next.score.toFixed(1)})` : ''}</p>` : ''}
     <p class="muted">${topicById(g.topic).name} ${genreById(g.genre).name} · ${platformById(g.platform).name} · ${sizeById(g.size).name} · ${formatShortDate(g.releaseWeek)}</p>
     <div class="verdict v-${vd.id} mt">

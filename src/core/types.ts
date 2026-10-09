@@ -98,6 +98,8 @@ export interface ReleasedGame extends GameSpec {
   /** Hype at launch, and the post-launch pushes used on it. */
   hype?: number;
   pushes?: string[];
+  /** Special recognition for a great score ('choice' or 'masterpiece'), see acclaim.ts. */
+  acclaim?: string;
   /** Everything spent on the game (saves from before this was tracked only have `cost`). */
   spend?: Spend;
   /** Copies sold and money made in each week on the market. */
