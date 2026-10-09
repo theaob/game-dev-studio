@@ -649,8 +649,9 @@ export function releaseGame(state: GameState): ReleaseReport | string {
     state.knowledge.balance[p.genre] = true;
   }
   const diff = ev.designShare - ev.designTarget;
-  if (diff > 0.08) insights.push({ text: `${genre.name} players wanted more technical polish (tech points).`, kind: 'bad' });
-  else if (diff < -0.08) insights.push({ text: `${genre.name} players wanted more creative depth (design points).`, kind: 'bad' });
+  const madeUp = ev.pointsRatio >= 1.2 ? ', but the sheer quality made up for a lot of it' : '';
+  if (diff > 0.08) insights.push({ text: `${genre.name} players wanted more technical polish (tech points)${madeUp}.`, kind: 'bad' });
+  else if (diff < -0.08) insights.push({ text: `${genre.name} players wanted more creative depth (design points)${madeUp}.`, kind: 'bad' });
   else insights.push({ text: 'The design/tech balance felt just right.', kind: 'good' });
 
   if (ev.align >= 0.7) insights.push({ text: 'Your focus during development was spot on.', kind: 'good' });
