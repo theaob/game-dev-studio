@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { GENRES, GENRE_TITLES, PLATFORMS, TOPICS, TOPIC_TITLE_WORDS, platformUsers } from './data';
 import { playThrough } from './bot';
-import { benchmark, evaluate, normalizeFocus, phaseAlignment, repeatMultiplier } from './scoring';
+import { BALANCE_BEST, BALANCE_WORST, balanceMultiplier, benchmark, evaluate, normalizeFocus, phaseAlignment, repeatMultiplier } from './scoring';
 import { SEQUEL_TOO_SOON_MULT, sequelCandidates, sequelName, sequelSalesMult } from './sequels';
 import {
   createGame,
@@ -65,6 +65,22 @@ describe('scoring helpers', () => {
     const rpg = GENRES.find((g) => g.id === 'rpg')!;
     // RPG foundation: engine low, gameplay normal, story high
     expect(phaseAlignment(rpg.importance, 0, [10, 30, 60])).toBeGreaterThan(phaseAlignment(rpg.importance, 0, [60, 30, 10]));
+  });
+
+  it('forgives part of a poor design/tech balance when the points are strong', () => {
+    // RPG players like 65% design; this game is only 35%.
+    const atPar = balanceMultiplier(0.35, 0.65, 1);
+    const strong = balanceMultiplier(0.35, 0.65, 1.3);
+    const great = balanceMultiplier(0.35, 0.65, 2);
+    expect(atPar).toBeCloseTo(BALANCE_WORST);
+    expect(strong).toBeGreaterThan(atPar);
+    expect(great).toBeGreaterThan(strong);
+    expect(great).toBeCloseTo(BALANCE_BEST - (BALANCE_BEST - BALANCE_WORST) * 0.4);
+    // Matching the genre still beats strong points with the wrong split.
+    expect(balanceMultiplier(0.65, 0.65, 1)).toBe(BALANCE_BEST);
+    expect(balanceMultiplier(0.65, 0.65, 2)).toBeGreaterThan(great);
+    // Weak points get no relief.
+    expect(balanceMultiplier(0.35, 0.65, 0.7)).toBeCloseTo(atPar);
   });
 
   it('raises the bar after strong games', () => {
