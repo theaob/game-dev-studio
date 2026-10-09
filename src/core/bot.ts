@@ -50,6 +50,7 @@ export function botTurn(state: GameState, style: BotStyle, reports: ReleaseRepor
     if (style === 'smart' && act.size !== 'small') {
       runPromo(state, 'trailer');
       if (state.cash > monthlyCosts(state) * 12) runPromo(state, 'influencers');
+      if (act.size === 'large' && state.cash > monthlyCosts(state) * 18) runPromo(state, 'tv_spot');
     }
     if (style === 'smart' && state.cash > monthlyCosts(state) * 6) bookBooth(state, act.size === 'small' ? 'small' : 'medium');
     if (act.awaitingFocus) setPhaseFocus(state, style === 'smart' ? smartFocus(act.genre, act.phase) : [50, 50, 50]);

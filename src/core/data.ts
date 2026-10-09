@@ -263,7 +263,7 @@ export const RESEARCH: ResearchItem[] = [
   { id: 'design3', name: 'Narrative Tools', desc: '+20% design points.', cost: 400, requires: 'design2', category: 'Technology' },
   { id: 'qa1', name: 'QA Process', desc: '30% fewer bugs during development.', cost: 60, category: 'Technology' },
   { id: 'qa2', name: 'Automated Testing', desc: 'Another 30% fewer bugs, faster polishing.', cost: 220, requires: 'qa1', category: 'Technology' },
-  { id: 'marketing', name: 'Marketing Department', desc: 'Unlocks big ad campaigns when starting a game.', cost: 80, category: 'Business' },
+  { id: 'marketing', name: 'Marketing Department', desc: 'Unlocks big ad campaigns when starting a game, plus press tours, TV commercials and TV ad blitzes in Marketing.', cost: 80, category: 'Business' },
 ];
 
 export interface OfficeDef {

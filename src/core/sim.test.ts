@@ -577,6 +577,25 @@ describe('marketing', () => {
     expect(g.unitsSold).toBe(g.targetUnits);
     expect(pushSales(s, g.id, 'ads')).toBe('It has left the charts.');
   });
+
+  it('the Marketing Department unlocks a press tour, a TV commercial and a TV ad blitz', () => {
+    const s = studio(85);
+    startGame(s, spec, [33, 33, 33]);
+    expect(runPromo(s, 'press_tour')).toBe('Research Marketing Department to unlock.');
+    s.researched.push('marketing');
+    expect(runPromo(s, 'tv_spot')).toBe('Needs more of the game to show.');
+    expect(runPromo(s, 'press_tour')).toBeNull();
+    const p = s.activity!;
+    if (p.kind !== 'game') throw new Error('expected a game');
+    expect(p.hype).toBe(30);
+    const g = finish(s).game;
+    s.researched = s.researched.filter((r) => r !== 'marketing');
+    expect(pushSales(s, g.id, 'tv_ads')).toBe('Research Marketing Department to unlock.');
+    s.researched.push('marketing');
+    const target = g.targetUnits;
+    expect(pushSales(s, g.id, 'tv_ads')).toBeNull();
+    expect(g.targetUnits).toBeGreaterThan(target);
+  });
 });
 
 describe('industry news', () => {
