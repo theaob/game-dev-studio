@@ -5,7 +5,8 @@
  */
 import { GENRES, PLATFORMS, TOPICS, genreById, topicById } from './data';
 import { pick, random, range } from './rng';
-import { randomTitle } from './sim';
+import { SALES_WEEKS, notify, randomTitle } from './sim';
+import { GOTY_ICON, GOTY_SALES_BOOST, gotyFans } from './acclaim';
 import { WEEKS_PER_YEAR, yearOf } from './time';
 import type { GameState, GenreId, IndustryState, NoticeKind } from './types';
 
@@ -131,7 +132,36 @@ function yearlyIndustry(state: GameState) {
     if (r.from === year && year > RIVALS[0].from) headline(state, '🏢', `A new studio, ${r.name}, has opened its doors.`);
     if (r.until === year) headline(state, '🏚️', `${r.name} has closed down.`, 'bad');
   }
+  gameOfTheYear(state, last);
   newTrend(state);
+}
+
+/**
+ * Names the best-reviewed game released in `year`, the studio's or a rival's
+ * (ties go to the studio). A winning studio game gets fans, more sales if it's
+ * still on sale, and the award saved on it.
+ */
+export function gameOfTheYear(state: GameState, year: number) {
+  const mine = state.released.filter((g) => yearOf(g.releaseWeek) === year);
+  const rivals = (state.industry?.rivalGames ?? []).filter((g) => yearOf(g.week) === year);
+  const best = mine.length ? mine.reduce((a, g) => (g.score > a.score ? g : a)) : undefined;
+  const rival = rivals.length ? rivals.reduce((a, g) => (g.score > a.score ? g : a)) : undefined;
+  if (best && (!rival || best.score >= rival.score)) {
+    best.goty = year;
+    const fans = gotyFans(state.fans);
+    state.fans += fans;
+    best.fansGained += fans;
+    const remaining = Math.max(0, best.targetUnits - best.unitsSold);
+    const onSale = remaining > 0 && best.weeksOnMarket < SALES_WEEKS;
+    if (onSale) best.targetUnits += Math.round(remaining * GOTY_SALES_BOOST);
+    const sales = onSale ? `, ${Math.round(GOTY_SALES_BOOST * 100)}% more copies of what it has left to sell` : '';
+    const beat = rival ? ` It beat ${rival.studio}'s ${rival.name} (${rival.score.toFixed(1)}).` : '';
+    headline(state, GOTY_ICON, `Game of the Year ${year}: ${state.studioName}'s ${best.name} (${best.score.toFixed(1)})!${beat}`, 'good');
+    notify(state, `${GOTY_ICON} ${best.name} is Game of the Year ${year}! +${fans.toLocaleString('en-US')} fans${sales}.`, 'good');
+  } else if (rival) {
+    const yours = best && best.score >= RIVAL_HIT_SCORE ? ` Your best, ${best.name} (${best.score.toFixed(1)}), was in the running.` : '';
+    headline(state, GOTY_ICON, `Game of the Year ${year}: ${rival.studio}'s ${rival.name} (${rival.score.toFixed(1)}).${yours}`, 'info');
+  }
 }
 
 /** Weekly industry news. Call after the week has advanced. */

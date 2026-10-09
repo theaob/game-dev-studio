@@ -665,6 +665,12 @@ h2 {
   box-shadow: inset 0 0 0 1px #e0b546;
 }
 
+.tag.acclaim.goty {
+  background: #2a2836;
+  color: #ffd25c;
+  box-shadow: inset 0 0 0 1px #f2b33d;
+}
+
 .tag.acclaim.masterpiece {
   background: linear-gradient(135deg, #ffe58a, #f2b33d);
   color: #5a3a00;

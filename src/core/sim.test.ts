@@ -3,7 +3,8 @@ import { GENRES, GENRE_TITLES, PLATFORMS, TOPICS, TOPIC_TITLE_WORDS, platformUse
 import { playThrough } from './bot';
 import { BALANCE_BEST, BALANCE_WORST, balanceMultiplier, benchmark, evaluate, normalizeFocus, phaseAlignment, repeatMultiplier } from './scoring';
 import { SEQUEL_TOO_SOON_MULT, sequelCandidates, sequelName, sequelSalesMult } from './sequels';
-import { acclaimFor, acclaimOf, sequelHype } from './acclaim';
+import { GOTY_SEQUEL_HYPE, acclaimFor, acclaimOf, gotyFans, sequelHype } from './acclaim';
+import { gameOfTheYear } from './industry';
 import {
   createGame,
   doResearch,
@@ -40,7 +41,7 @@ import {
   salaryFor,
   startHeadhunt,
 } from './sim';
-import { TOTAL_WEEKS, WEEKS_PER_YEAR, formatDate } from './time';
+import { TOTAL_WEEKS, WEEKS_PER_YEAR, formatDate, yearOf } from './time';
 import { bailoutCash, canBailout, claimBailout, claimReward, investorCash, researchGrant, rewardBlocker } from './rewards';
 import { cumulativeRevenue, paybackWeek, profit, returnMultiple, totalCost, verdict } from './results';
 import { RIVAL_CLASH_MULT, TREND_GENRE_BONUS, TREND_TOPIC_BONUS, trendMult } from './industry';
@@ -373,6 +374,32 @@ describe('sequels', () => {
     plain.acclaim = undefined;
     expect(startGame(t, { ...spec, name: 'DQ2', sequelOf: plain.id }, [10, 30, 60])).toBeNull();
     expect((t.activity as GameProject).hype ?? 0).toBe(0);
+  });
+
+  it('names Game of the Year: the best release of the year, the studio\'s or a rival\'s', () => {
+    const s = createGame('Seq', 3);
+    const game = releaseOne(s, spec).game;
+    const year = yearOf(game.releaseWeek);
+    const rival = { week: game.releaseWeek, studio: 'Lunar Soft', name: 'Moon Saga', genre: 'rpg' as const, topic: 'fantasy', score: game.score + 0.5 };
+    s.industry = { ...s.industry!, rivalGames: [rival] };
+    const fans = s.fans;
+    gameOfTheYear(s, year);
+    expect(game.goty).toBeUndefined();
+    expect(s.fans).toBe(fans);
+    expect(s.industry!.headlines.at(-1)!.text).toMatch(/Moon Saga/);
+    // A tie goes to the studio: fans, more copies to sell while it's on sale, and sequel hype.
+    rival.score = game.score;
+    game.weeksOnMarket = 0;
+    game.unitsSold = 0;
+    const target = game.targetUnits;
+    gameOfTheYear(s, year);
+    expect(game.goty).toBe(year);
+    expect(s.fans).toBe(fans + gotyFans(fans));
+    expect(game.targetUnits).toBe(target + Math.round(target * 0.25));
+    expect(sequelHype({ ...game, acclaim: undefined, score: 8 })).toBe(GOTY_SEQUEL_HYPE);
+    // Nothing released that year: no award.
+    gameOfTheYear(s, year + 5);
+    expect(s.released.filter((g) => g.goty !== undefined)).toHaveLength(1);
   });
 });
 
