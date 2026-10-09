@@ -3,6 +3,7 @@ import { GENRES, GENRE_TITLES, PLATFORMS, TOPICS, TOPIC_TITLE_WORDS, platformUse
 import { playThrough } from './bot';
 import { benchmark, evaluate, normalizeFocus, phaseAlignment, repeatMultiplier } from './scoring';
 import { SEQUEL_TOO_SOON_MULT, sequelCandidates, sequelName, sequelSalesMult } from './sequels';
+import { acclaimFor, acclaimOf, sequelHype } from './acclaim';
 import {
   createGame,
   doResearch,
@@ -30,9 +31,14 @@ import {
   pushSales,
   runPromo,
   SALES_WEEKS,
+  HEADHUNT_WEEKS,
+  ROCKSTAR_SALARY_MULT,
+  headhuntFee,
+  salaryFor,
+  startHeadhunt,
 } from './sim';
 import { TOTAL_WEEKS, WEEKS_PER_YEAR, formatDate } from './time';
-import { claimReward, investorCash, researchGrant, rewardBlocker } from './rewards';
+import { bailoutCash, canBailout, claimBailout, claimReward, investorCash, researchGrant, rewardBlocker } from './rewards';
 import { cumulativeRevenue, paybackWeek, profit, returnMultiple, totalCost, verdict } from './results';
 import { RIVAL_CLASH_MULT, TREND_GENRE_BONUS, TREND_TOPIC_BONUS, trendMult } from './industry';
 import { EXPO_BOOKING_WEEKS, EXPO_WEEK, HYPE_DECAY, hypeEffect } from './marketing';
@@ -140,6 +146,40 @@ describe('simulation', () => {
     expect(doResearch(s, 'horror')).toBeNull();
     expect(s.topics).toContain('horror');
     expect(hire(s, s.candidates[0].id)).toMatch(/office is full/);
+  });
+
+  it('a headhunter finds a rockstar developer after a few weeks', () => {
+    const s = createGame('Test', 11);
+    const fee = headhuntFee(s);
+    const cash = s.cash;
+    const best = Math.max(...s.candidates.flatMap((c) => [c.design, c.tech]));
+    expect(startHeadhunt(s)).toBeNull();
+    expect(s.cash).toBe(cash - fee);
+    expect(startHeadhunt(s)).toMatch(/already searching/);
+    for (let i = 0; i < HEADHUNT_WEEKS - 1; i++) tick(s);
+    expect(s.candidates.some((c) => c.rockstar)).toBe(false);
+    tick(s);
+    expect(s.headhunt).toBeUndefined();
+    const star = s.candidates.find((c) => c.rockstar)!;
+    expect(star).toBeDefined();
+    expect(Math.min(star.design, star.tech)).toBeGreaterThan(best);
+    expect(star.speed).toBeGreaterThanOrEqual(1.2);
+    expect(star.salary).toBeGreaterThan(salaryFor(s, star.design, star.tech) * (ROCKSTAR_SALARY_MULT - 0.05));
+    // Only one rockstar at a time, and they wait while ordinary applicants come and go.
+    expect(startHeadhunt(s)).toMatch(/still waiting/);
+    for (let i = 0; i < 16; i++) tick(s);
+    expect(s.candidates.filter((c) => c.rockstar).map((c) => c.id)).toEqual([star.id]);
+    s.officeLevel = 1;
+    expect(hire(s, star.id)).toBeNull();
+    expect(s.staff.find((x) => x.id === star.id)?.rockstar).toBe(true);
+    expect(startHeadhunt(s)).toBeNull();
+  });
+
+  it("can't afford a headhunter without the fee", () => {
+    const s = createGame('Test', 12);
+    s.cash = headhuntFee(s) - 1;
+    expect(startHeadhunt(s)).toMatch(/charges/);
+    expect(s.headhunt).toBeUndefined();
   });
 
   it('goes bankrupt after three months in the red', () => {
@@ -281,6 +321,39 @@ describe('sequels', () => {
     expect(evaluate(s, s.activity as GameProject).repeatMult).toBe(1);
     (s.activity as GameProject).sequelOf = undefined;
     expect(evaluate(s, s.activity as GameProject).repeatMult).toBe(0.85);
+  });
+
+  it('recognizes great games and saves the award with the game', () => {
+    expect(acclaimFor(8.75)).toBeUndefined();
+    expect(acclaimFor(9)?.id).toBe('choice');
+    expect(acclaimFor(9.5)?.id).toBe('masterpiece');
+    // Saves from before awards fall back to the score.
+    expect(acclaimOf({ score: 9.25 })?.id).toBe('choice');
+    expect(acclaimOf({ score: 9.25, acclaim: 'masterpiece' })?.id).toBe('masterpiece');
+    const s = createGame('Seq', 3);
+    const r = releaseOne(s, spec);
+    expect(r.game.acclaim).toBe(acclaimFor(r.game.score)?.id);
+  });
+
+  it('starts a sequel to an award winner with hype, more for a better original', () => {
+    expect(sequelHype({ score: 8.75 })).toBe(0);
+    expect(sequelHype({ score: 9 })).toBe(20);
+    expect(sequelHype({ score: 9.5 })).toBe(40);
+    expect(sequelHype({ score: 10 })).toBe(60);
+    const s = createGame('Seq', 3);
+    const first = releaseOne(s, spec).game;
+    first.score = 9.5;
+    first.acclaim = 'masterpiece';
+    s.week = first.releaseWeek + 60;
+    expect(startGame(s, { ...spec, name: 'DQ2', sequelOf: first.id }, [10, 30, 60])).toBeNull();
+    expect((s.activity as GameProject).hype).toBe(40);
+    // A sequel to an unrecognized game, or a new game, starts from nothing.
+    const t = createGame('Seq', 3);
+    const plain = releaseOne(t, spec).game;
+    plain.score = 8;
+    plain.acclaim = undefined;
+    expect(startGame(t, { ...spec, name: 'DQ2', sequelOf: plain.id }, [10, 30, 60])).toBeNull();
+    expect((t.activity as GameProject).hype ?? 0).toBe(0);
   });
 });
 
@@ -742,5 +815,34 @@ describe('ad rewards', () => {
     for (let i = 0; i < 5; i++) s.staff.push({ ...s.candidates[0], id: 900 + i, salary: 5000 });
     expect(investorCash(s)).toBeGreaterThan(small);
     expect(small).toBeGreaterThanOrEqual(6000);
+  });
+
+  it('bails out the first bankruptcy only', () => {
+    const s = createGame('Ads', 114);
+    s.cash = -100000;
+    for (let i = 0; i < 12 && !s.over; i++) tick(s);
+    expect(s.over).toBe('bankrupt');
+    expect(canBailout(s)).toBe(true);
+    const debt = -s.cash;
+    const cash = bailoutCash(s);
+    expect(cash).toBeGreaterThanOrEqual(debt + 3 * investorCash(s) - 1000);
+    expect(claimBailout(s)).toBeNull();
+    expect(s.over).toBeNull();
+    expect(s.debtStrikes).toBe(0);
+    expect(s.cash).toBeGreaterThan(0);
+    // The studio keeps running, and a second bankruptcy is final.
+    for (let i = 0; i < 4; i++) tick(s);
+    expect(s.over).toBeNull();
+    s.cash = -100000;
+    for (let i = 0; i < 12 && !s.over; i++) tick(s);
+    expect(s.over).toBe('bankrupt');
+    expect(canBailout(s)).toBe(false);
+    expect(claimBailout(s)).toMatch(/already had your bailout/);
+  });
+
+  it('offers no bailout while the studio is solvent', () => {
+    const s = createGame('Ads', 115);
+    expect(canBailout(s)).toBe(false);
+    expect(claimBailout(s)).toMatch(/not bankrupt/);
   });
 });

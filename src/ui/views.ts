@@ -1,11 +1,16 @@
 import { OFFICES, PHASES, PLATFORMS, RESEARCH, STORE, TOPICS, genreById, platformById, platformUsers, sizeById, topicById } from '../core/data';
 import { TREND_GENRE_BONUS, TREND_TOPIC_BONUS } from '../core/industry';
 import { profit, verdict } from '../core/results';
+import { acclaimOf } from '../core/acclaim';
 import { profitChart, sparkline } from './charts';
 import {
   SALES_WEEKS,
   boostWeeks,
   catLapStaff,
+  HEADHUNT_WEEKS,
+  ROCKSTAR_SALARY_MULT,
+  headhuntBlocker,
+  headhuntFee,
   monthlyCosts,
   officeCapacity,
   polishYield,
@@ -271,12 +276,18 @@ function renderOnMarket(state: GameState): string {
   <button class="btn ghost mt-s wide" data-action="marketing">📣 Push sales</button>`;
 }
 
+/** "🏅 Critics' Choice" badge for a recognized game, or nothing. */
+export function acclaimTag(g: ReleasedGame): string {
+  const a = acclaimOf(g);
+  return a ? ` <span class="tag acclaim ${a.id}">${a.icon} ${a.name}</span>` : '';
+}
+
 function gameRow(g: ReleasedGame, detail: string, aside = ''): string {
   return `
   <button class="list-item" data-action="game-detail" data-arg="${g.id}">
     <div class="score ${scoreClass(g.score)}">${g.score.toFixed(1)}</div>
     <div class="grow">
-      <div class="name">${esc(g.name)}${(g.series ?? 1) > 1 ? ` <span class="tag">Part ${g.series}</span>` : ''}</div>
+      <div class="name">${esc(g.name)}${(g.series ?? 1) > 1 ? ` <span class="tag">Part ${g.series}</span>` : ''}${acclaimTag(g)}</div>
       <div class="sub">${topicById(g.topic).name} ${genreById(g.genre).name} · ${platformById(g.platform).name}</div>
       <div class="sub">${detail}</div>
     </div>
@@ -296,6 +307,7 @@ export function renderGames(state: GameState): string {
   const avg = games.reduce((a, g) => a + g.score, 0) / games.length;
   const totalProfit = games.reduce((a, g) => a + profit(g), 0);
   const hits = games.filter((g) => ['blockbuster', 'hit'].includes(verdict(g).id)).length;
+  const awards = games.filter((g) => acclaimOf(g)).length;
   const flops = games.filter((g) => verdict(g).id === 'flop').length;
   const best = games.reduce((a, g) => (g.score > a.score ? g : a));
   const top = games.reduce((a, g) => (g.revenue > a.revenue ? g : a));
@@ -318,7 +330,8 @@ export function renderGames(state: GameState): string {
   </div>
   <div class="card mt">
     <div class="sub">Best reviewed</div>
-    <div class="row"><div class="grow"><b>${esc(best.name)}</b></div><span class="tag good">${best.score.toFixed(1)}</span></div>
+    <div class="row"><div class="grow"><b>${esc(best.name)}</b>${acclaimTag(best)}</div><span class="tag good">${best.score.toFixed(1)}</span></div>
+    ${awards ? `<div class="sub mt">🏅 ${awards} game${awards === 1 ? '' : 's'} recognized by the critics (9.0 or better)</div>` : ''}
     <div class="sub mt">Best seller</div>
     <div class="row"><div class="grow"><b>${esc(top.name)}</b></div><span class="tag">${money(top.revenue)}</span></div>
   </div>
@@ -427,9 +440,9 @@ export function renderStaff(state: GameState): string {
         .map(
           (c) => `
       <div class="list-item" style="align-items:flex-start">
-        <div class="emoji">🧑‍💻</div>
+        <div class="emoji">${c.rockstar ? '🎸' : '🧑‍💻'}</div>
         <div class="grow">
-          <div class="name">${esc(c.name)}</div>
+          <div class="name">${esc(c.name)}${c.rockstar ? ' <span class="tag good">Rockstar</span>' : ''}</div>
           <div class="sub">${money(c.salary)}/mo · speed ${c.speed.toFixed(1)}x</div>
           ${skillBars(c)}
         </div>
@@ -438,6 +451,28 @@ export function renderStaff(state: GameState): string {
         )
         .join('') || '<div class="empty">No applicants right now. New ones arrive every few months.</div>'
     }
+  </div>
+  ${headhuntCard(state)}`;
+}
+
+function headhuntCard(state: GameState): string {
+  const waiting = state.candidates.some((c) => c.rockstar);
+  const status = state.headhunt
+    ? `Searching… ${state.headhunt.weeks} week${state.headhunt.weeks === 1 ? '' : 's'} left.`
+    : waiting
+      ? 'Your rockstar is waiting above.'
+      : '';
+  return `
+  <div class="list mt">
+    <div class="list-item" style="align-items:flex-start">
+      <div class="emoji">🎸</div>
+      <div class="grow">
+        <div class="name">Search for a rockstar</div>
+        <div class="sub">A headhunter finds a rare developer with top skills and extra speed in ${HEADHUNT_WEEKS} weeks. Rockstars ask for ${Math.round((ROCKSTAR_SALARY_MULT - 1) * 100)}% more pay.</div>
+        ${status ? `<div class="sub" style="margin-top:4px"><b>${status}</b></div>` : ''}
+      </div>
+      ${state.headhunt || waiting ? '' : `<button class="btn small" data-action="headhunt" ${headhuntBlocker(state) ? 'disabled' : ''}>${money(headhuntFee(state))}</button>`}
+    </div>
   </div>`;
 }
 

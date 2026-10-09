@@ -13,6 +13,8 @@ export interface Staff {
   hiredWeek: number;
   /** Weeks left "in the zone" (boosted output). Absent or 0 = normal. */
   zone?: number;
+  /** Found by a headhunter: rare skills, faster, paid a premium. */
+  rockstar?: boolean;
 }
 
 export interface GameSpec {
@@ -98,6 +100,8 @@ export interface ReleasedGame extends GameSpec {
   /** Hype at launch, and the post-launch pushes used on it. */
   hype?: number;
   pushes?: string[];
+  /** Special recognition for a great score ('choice' or 'masterpiece'), see acclaim.ts. */
+  acclaim?: string;
   /** Everything spent on the game (saves from before this was tracked only have `cost`). */
   spend?: Spend;
   /** Copies sold and money made in each week on the market. */
@@ -164,8 +168,12 @@ export interface GameState {
   expo?: { year: number; booth: string; price?: number; report?: ExpoReport };
   /** Industry news: this year's trend, rival releases and headlines. */
   industry?: IndustryState;
+  /** A headhunter's search for a rockstar developer, with the weeks it has left. */
+  headhunt?: { weeks: number };
   /** Week each ad reward was last claimed (Android app only). */
   adRewards?: Partial<Record<string, number>>;
+  /** The one-time bankruptcy bailout (watched a video to escape the first bankruptcy). */
+  bailoutUsed?: boolean;
 }
 
 export interface Headline {
