@@ -14,6 +14,8 @@ import type { GameState, Staff } from '../core/types';
 import { CAT_ID, CODE, DESK_WOOD, LINES, SIP_TIME, daylight, eraFor, gestureFor, lookFor, pickLine } from './office-common';
 import type { Daylight, Era, Gesture, Look, Mode } from './office-common';
 import type { OfficeView } from './office-view';
+import { HOME_VIEW, clampView, panBy, viewRect, zoomAt } from './camera-view';
+import type { ViewRect, ViewState } from './camera-view';
 
 const CELL_X = 2.3;
 const CELL_Z = 2.6;
@@ -426,6 +428,13 @@ export class Office3D implements OfficeView {
   private height = 0;
   private insets = { top: 0, bottom: 0 };
   private roomBox = { minX: -5, maxX: 5, minY: -5, maxY: 5 };
+  /** The framed shot of the room, before the player zooms or pans. */
+  private baseView: ViewRect = { left: -5, right: 5, top: 5, bottom: -5 };
+  private view: ViewState = HOME_VIEW;
+  /** Fingers (or the mouse) on the office that aren't carrying the cat. */
+  private touches = new Map<number, { x: number; y: number; startX: number; startY: number }>();
+  /** Set once those fingers have moved enough to be a pan or pinch rather than a tap. */
+  private gesturing = false;
   private lastT = 0;
   private clock = 0;
   private screenTimer = 0;
@@ -531,6 +540,7 @@ export class Office3D implements OfficeView {
     renderer.domElement.addEventListener('pointermove', (e) => this.onPointerMove(e));
     renderer.domElement.addEventListener('pointerup', (e) => this.onPointerUp(e));
     renderer.domElement.addEventListener('pointercancel', (e) => this.onPointerUp(e));
+    renderer.domElement.addEventListener('wheel', (e) => this.onWheel(e), { passive: false });
     renderer.domElement.addEventListener('webglcontextlost', (e) => {
       e.preventDefault();
       this.onLost?.();
@@ -1128,10 +1138,19 @@ export class Office3D implements OfficeView {
     const cy = (minY + maxY) / 2;
     // Put the room's centre in the middle of the free band.
     const centreFromTop = (top + (h - top - bottom) / 2) / h;
-    this.camera.left = cx - frustumW / 2;
-    this.camera.right = cx + frustumW / 2;
-    this.camera.top = cy + frustumH * centreFromTop;
-    this.camera.bottom = this.camera.top - frustumH;
+    const baseTop = cy + frustumH * centreFromTop;
+    this.baseView = { left: cx - frustumW / 2, right: cx + frustumW / 2, top: baseTop, bottom: baseTop - frustumH };
+    this.setView(this.view);
+  }
+
+  /** Points the camera at the player's zoomed and panned view. */
+  private setView(v: ViewState) {
+    this.view = clampView(this.baseView, v);
+    const r = viewRect(this.baseView, this.view);
+    this.camera.left = r.left;
+    this.camera.right = r.right;
+    this.camera.top = r.top;
+    this.camera.bottom = r.bottom;
     this.camera.updateProjectionMatrix();
   }
 
@@ -1784,9 +1803,14 @@ export class Office3D implements OfficeView {
   }
 
   private onPointerDown(e: PointerEvent) {
-    if (this.carry || this.catState.mode === 'falling' || this.catState.mode === 'jump') return;
+    if (this.carry) return;
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    const catBusy = this.catState.mode === 'falling' || this.catState.mode === 'jump';
     this.raycaster.setFromCamera(this.ndcFor(e), this.camera);
-    if (!this.raycaster.intersectObject(this.cat, true).length) return;
+    if (this.touches.size || catBusy || !this.raycaster.intersectObject(this.cat, true).length) {
+      this.startTouch(e);
+      return;
+    }
     const start = this.cat.position.clone();
     start.y = 0;
     this.carry = {
@@ -1854,6 +1878,10 @@ export class Office3D implements OfficeView {
   }
 
   private onPointerMove(e: PointerEvent) {
+    if (this.touches.has(e.pointerId)) {
+      this.moveTouch(e);
+      return;
+    }
     const c = this.carry;
     if (!c || e.pointerId !== c.pointerId) return;
     if (!c.lifted && Math.hypot(e.clientX - c.startX, e.clientY - c.startY) > PICKUP_MOVE_PX) this.liftCat();
@@ -1863,6 +1891,10 @@ export class Office3D implements OfficeView {
   }
 
   private onPointerUp(e: PointerEvent) {
+    if (this.touches.has(e.pointerId)) {
+      this.endTouch(e);
+      return;
+    }
     const c = this.carry;
     if (!c || e.pointerId !== c.pointerId) return;
     this.carry = null;
@@ -1887,6 +1919,67 @@ export class Office3D implements OfficeView {
     cat.mode = 'falling';
     this.catY = Math.max(0.05, this.cat.position.y);
     this.catVy = 0;
+  }
+
+  // -------------------------------------------------------------------------
+  // Zooming and panning
+  // -------------------------------------------------------------------------
+
+  private startTouch(e: PointerEvent) {
+    this.touches.set(e.pointerId, { x: e.clientX, y: e.clientY, startX: e.clientX, startY: e.clientY });
+    this.renderer.domElement.setPointerCapture(e.pointerId);
+    // A second finger makes it a pinch straight away.
+    if (this.touches.size > 1) this.gesturing = true;
+  }
+
+  private moveTouch(e: PointerEvent) {
+    const t = this.touches.get(e.pointerId)!;
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    const [a, b] = [...this.touches.values()];
+    if (!this.gesturing && Math.hypot(e.clientX - t.startX, e.clientY - t.startY) <= PICKUP_MOVE_PX) return;
+    if (!this.gesturing) {
+      this.gesturing = true;
+      if (e.pointerType === 'mouse') this.renderer.domElement.style.cursor = 'grabbing';
+    }
+    if (b) {
+      // Pinch: zoom by the change in finger spread around their midpoint, and follow the midpoint.
+      const before = { d: Math.hypot(a.x - b.x, a.y - b.y), x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+      t.x = e.clientX;
+      t.y = e.clientY;
+      const after = { d: Math.hypot(a.x - b.x, a.y - b.y), x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+      let v = panBy(this.baseView, this.view, (after.x - before.x) / rect.width, (after.y - before.y) / rect.height);
+      if (before.d > 0 && after.d > 0) {
+        v = zoomAt(this.baseView, v, after.d / before.d, (after.x - rect.left) / rect.width, (after.y - rect.top) / rect.height);
+      }
+      this.setView(v);
+      return;
+    }
+    const dx = e.clientX - t.x;
+    const dy = e.clientY - t.y;
+    t.x = e.clientX;
+    t.y = e.clientY;
+    this.setView(panBy(this.baseView, this.view, dx / rect.width, dy / rect.height));
+  }
+
+  private endTouch(e: PointerEvent) {
+    this.touches.delete(e.pointerId);
+    if (this.touches.size) return;
+    this.renderer.domElement.style.cursor = '';
+    if (!this.gesturing) return; // a plain tap: the click handler deals with it
+    this.gesturing = false;
+    this.suppressClick = true;
+    window.setTimeout(() => (this.suppressClick = false), 400);
+  }
+
+  private onWheel(e: WheelEvent) {
+    e.preventDefault();
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    // Trackpad pinches arrive as wheel events with ctrl held and small deltas.
+    const px = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? rect.height : 1);
+    const factor = Math.exp(-px * (e.ctrlKey ? 0.01 : 0.0015));
+    this.setView(zoomAt(this.baseView, this.view, factor, (e.clientX - rect.left) / rect.width, (e.clientY - rect.top) / rect.height));
   }
 
   // -------------------------------------------------------------------------
