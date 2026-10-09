@@ -130,7 +130,7 @@ function help(): string {
       <p><b>Set the focus.</b> Development has 3 phases with 3 areas each. Put your team's effort where the genre needs it. Reviews reveal what matters.</p>
       <p><b>Design vs Tech.</b> Every genre has a sweet spot between creative (design) and technical (tech) points.</p>
       <p><b>Polish.</b> After development you can keep polishing before you release: fix bugs (they hurt reviews), or add more design or tech points to fix the game's balance. Design and tech polishing gives less each week.</p>
-      <p><b>Marketing.</b> Pick an ad budget when you start a game. Tap 📣 Promote while making it to build hype with previews and trailers, and book a booth at the yearly GameExpo. Hype sells more copies of a good game, but a hyped flop gets a backlash. After launch, 📣 Push sales runs ads or a discount sale. Research the Marketing Department to add press tours, TV commercials and TV ad blitzes.</p>
+      <p><b>Marketing.</b> Pick an ad budget when you start a game. Tap 📣 Promote while making it to build hype with previews and trailers, and book a booth at the yearly GameExpo. A game with good points builds hype on its own by word of mouth. Hype sells more copies of a good game, but a hyped flop gets a backlash. After launch, 📣 Push sales runs ads or a discount sale. Research the Marketing Department to add press tours, TV commercials and TV ad blitzes.</p>
       <p><b>Read the news.</b> Each year has a trending genre and topic (marked 🔥 when you start a game) that sell better. Rival studios release games too: right after a rival's hit, the same topic and genre sells less for a while. The News tab also shows which platforms are growing or on their way out.</p>
       <p><b>The cat.</b> Sometimes the studio cat curls up on a developer's lap, and they work 30% faster while it stays. You can carry the cat over and drop it on someone too, but it needs some alone time between laps.</p>
       <p><b>Store.</b> Spend cash on power-ups: boosts like an espresso bar or pizza night last a few weeks of development, and studio upgrades help forever. Find it next to Contracts, or tap ⚡ Boost while making a game.</p>
@@ -712,7 +712,7 @@ function marketing(state: GameState): string {
       <div class="hype-bar"><i style="width:${hype}%"></i></div>
       <b>${hype}</b>
     </div>
-    <p class="sub">Hype fades a little every week. At launch it boosts sales and fans, but only if the reviews live up to it: a hyped flop gets a backlash.</p>
+    <p class="sub">Hype grows by word of mouth while the game is shaping up well, and fades a little every week when it isn't. At launch it boosts sales and fans, but only if the reviews live up to it: a hyped flop gets a backlash.</p>
     <div class="options">${PROMOS.map((pr) => {
       const done = !!p.promos?.includes(pr.id);
       return marketingRow(pr.icon, pr.name, `${pr.desc} +${pr.hype} hype.`, done ? '<span class="tag good">Done</span>' : '', 'promo', pr.id, promoPrice(state, pr.id), promoBlocker(state, pr.id), done);
@@ -787,7 +787,7 @@ function expoResults(state: GameState): string {
     </div>
     <p class="sub">${
       hasHype
-        ? `${capped ? 'Hype was already near the top, so the booth could only add part of its +' + booth.hype + '. ' : ''}Hype fades a little every week until launch. Great reviews turn it into extra sales and fans; a flop that was hyped up gets a backlash.`
+        ? `${capped ? 'Hype was already near the top, so the booth could only add part of its +' + booth.hype + '. ' : ''}Hype fades a little every week until launch unless the game is shaping up well. Great reviews turn it into extra sales and fans; a flop that was hyped up gets a backlash.`
         : `With no game in development, the booth won half the usual ${num(booth.fans)} fans. Start a game before next year's expo to build hype too.`
     } More fans means more copies sold for every game you release.</p>
     <div class="btn-row"><button class="btn big" data-action="close">Continue</button></div>`;

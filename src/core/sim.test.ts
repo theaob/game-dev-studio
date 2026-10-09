@@ -44,7 +44,7 @@ import { TOTAL_WEEKS, WEEKS_PER_YEAR, formatDate } from './time';
 import { bailoutCash, canBailout, claimBailout, claimReward, investorCash, researchGrant, rewardBlocker } from './rewards';
 import { cumulativeRevenue, paybackWeek, profit, returnMultiple, totalCost, verdict } from './results';
 import { RIVAL_CLASH_MULT, TREND_GENRE_BONUS, TREND_TOPIC_BONUS, trendMult } from './industry';
-import { EXPO_BOOKING_WEEKS, EXPO_WEEK, HYPE_DECAY, hypeEffect } from './marketing';
+import { BUZZ_MAX_HYPE, EXPO_BOOKING_WEEKS, EXPO_WEEK, HYPE_DECAY, hypeEffect, weeklyHype } from './marketing';
 import type { GameProject, GameSpec } from './types';
 
 const spec: GameSpec = { name: 'Dragon Quest', topic: 'fantasy', genre: 'rpg', platform: 'pc', size: 'small', marketing: 'none' };
@@ -625,7 +625,7 @@ describe('marketing', () => {
     return r;
   };
 
-  it('builds hype with promos once each, in the right phase, and it fades', () => {
+  it('builds hype with promos once each, in the right phase', () => {
     const s = studio(81);
     startGame(s, spec, [33, 33, 33]);
     expect(runPromo(s, 'trailer')).toBe('Needs more of the game to show.');
@@ -637,8 +637,30 @@ describe('marketing', () => {
     const p = s.activity!;
     if (p.kind !== 'game') throw new Error('expected a game');
     expect(p.hype).toBe(12);
-    tick(s);
-    expect(p.hype).toBeCloseTo(12 * HYPE_DECAY, 1);
+  });
+
+  it('grows hype for a game with good points and lets it fade for one without', () => {
+    // Ahead of expectations: word of mouth adds hype each week, up to a level that rises with the lead.
+    expect(weeklyHype(12, 1.2)).toBeGreaterThan(12);
+    expect(weeklyHype(0, 1.2)).toBeGreaterThan(0);
+    expect(weeklyHype(59.5, 1.2)).toBeLessThanOrEqual(60);
+    // Behind expectations, or hyped beyond what the game earns: it fades.
+    expect(weeklyHype(12, 0.9)).toBeCloseTo(12 * HYPE_DECAY, 1);
+    expect(weeklyHype(90, 1.1)).toBeCloseTo(90 * HYPE_DECAY, 1);
+    expect(weeklyHype(30.5, 1.15)).toBe(30);
+    expect(weeklyHype(BUZZ_MAX_HYPE, 3)).toBe(BUZZ_MAX_HYPE);
+  });
+
+  it('a strong team builds hype during development without any promos', () => {
+    const s = studio(81);
+    startGame(s, spec, [33, 33, 33]);
+    const p = s.activity!;
+    if (p.kind !== 'game') throw new Error('expected a game');
+    const ratio = () => (p.design + p.tech) / (p.phase * p.phaseWeeks + p.weekInPhase) / benchmark(s);
+    const before = p.hype ?? 0;
+    for (let i = 0; i < 4; i++) tick(s);
+    expect(ratio()).toBeGreaterThan(1);
+    expect(p.hype).toBeGreaterThan(before);
   });
 
   it('hype pays off for good games and backfires on bad ones', () => {
