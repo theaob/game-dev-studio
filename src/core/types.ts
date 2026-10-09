@@ -174,6 +174,16 @@ export interface GameState {
   adRewards?: Partial<Record<string, number>>;
   /** The one-time bankruptcy bailout (watched a video to escape the first bankruptcy). */
   bailoutUsed?: boolean;
+  /** The studio's look: paint ids (absent = the office's own colours) and decorations. */
+  decor?: DecorState;
+}
+
+export interface DecorState {
+  wall?: string;
+  floor?: string;
+  /** Decorations bought, and the ones on show. */
+  owned?: string[];
+  placed?: string[];
 }
 
 export interface Headline {
