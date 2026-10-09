@@ -1,6 +1,7 @@
 /**
  * Special recognition for great games. A release that reviews 9 or better is
- * "Critics' Choice", 9.5 or better a "Masterpiece". The award is saved with the
+ * "Critics' Choice", 9.5 or better a "Masterpiece". Once a year the best-reviewed
+ * release, yours or a rival's, is Game of the Year. Awards are saved with the
  * game, and a sequel to an awarded game starts development already hyped.
  */
 import type { ReleasedGame } from './types';
@@ -36,7 +37,21 @@ export function acclaimOf(g: Pick<ReleasedGame, 'acclaim' | 'score'>): Acclaim |
 export const SEQUEL_HYPE_BASE = 20;
 export const SEQUEL_HYPE_PER_POINT = 40;
 
-export function sequelHype(original: Pick<ReleasedGame, 'acclaim' | 'score'>): number {
-  if (!acclaimOf(original)) return 0;
-  return Math.round(SEQUEL_HYPE_BASE + Math.max(0, original.score - 9) * SEQUEL_HYPE_PER_POINT);
+export function sequelHype(original: Pick<ReleasedGame, 'acclaim' | 'score' | 'goty'>): number {
+  const acclaimed = acclaimOf(original) ? SEQUEL_HYPE_BASE + Math.max(0, original.score - 9) * SEQUEL_HYPE_PER_POINT : 0;
+  return Math.round(acclaimed + (original.goty !== undefined ? GOTY_SEQUEL_HYPE : 0));
+}
+
+// ---------------------------------------------------------------------------
+// Game of the Year: judged when a new year starts, over last year's releases.
+
+export const GOTY_ICON = '🏆';
+/** What winning brings: fans (a share of the studio's, at least GOTY_MIN_FANS), more copies of what it has left to sell, and sequel hype. */
+export const GOTY_FANS_SHARE = 0.03;
+export const GOTY_MIN_FANS = 1000;
+export const GOTY_SALES_BOOST = 0.25;
+export const GOTY_SEQUEL_HYPE = 15;
+
+export function gotyFans(fans: number): number {
+  return Math.round(Math.max(GOTY_MIN_FANS, fans * GOTY_FANS_SHARE));
 }
