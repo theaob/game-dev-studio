@@ -7,6 +7,10 @@ import {
   SALES_WEEKS,
   boostWeeks,
   catLapStaff,
+  HEADHUNT_WEEKS,
+  ROCKSTAR_SALARY_MULT,
+  headhuntBlocker,
+  headhuntFee,
   monthlyCosts,
   officeCapacity,
   polishYield,
@@ -428,6 +432,7 @@ export function renderStaff(state: GameState): string {
            <div class="sub mt">${next.name}: room for ${next.capacity}, rent ${money(officeRent(state, state.officeLevel + 1))}/mo.</div>`
         : ''
     }
+    <div class="btn-row"><button class="btn ghost" data-action="decor">🎨 Decorate</button></div>
   </div>
   <h2>Team</h2>
   <div class="list">${state.staff.map((s) => staffRow(state, s)).join('')}</div>
@@ -439,9 +444,9 @@ export function renderStaff(state: GameState): string {
         .map(
           (c) => `
       <div class="list-item" style="align-items:flex-start">
-        <div class="emoji">🧑‍💻</div>
+        <div class="emoji">${c.rockstar ? '🎸' : '🧑‍💻'}</div>
         <div class="grow">
-          <div class="name">${esc(c.name)}</div>
+          <div class="name">${esc(c.name)}${c.rockstar ? ' <span class="tag good">Rockstar</span>' : ''}</div>
           <div class="sub">${money(c.salary)}/mo · speed ${c.speed.toFixed(1)}x</div>
           ${skillBars(c)}
         </div>
@@ -450,6 +455,28 @@ export function renderStaff(state: GameState): string {
         )
         .join('') || '<div class="empty">No applicants right now. New ones arrive every few months.</div>'
     }
+  </div>
+  ${headhuntCard(state)}`;
+}
+
+function headhuntCard(state: GameState): string {
+  const waiting = state.candidates.some((c) => c.rockstar);
+  const status = state.headhunt
+    ? `Searching… ${state.headhunt.weeks} week${state.headhunt.weeks === 1 ? '' : 's'} left.`
+    : waiting
+      ? 'Your rockstar is waiting above.'
+      : '';
+  return `
+  <div class="list mt">
+    <div class="list-item" style="align-items:flex-start">
+      <div class="emoji">🎸</div>
+      <div class="grow">
+        <div class="name">Search for a rockstar</div>
+        <div class="sub">A headhunter finds a rare developer with top skills and extra speed in ${HEADHUNT_WEEKS} weeks. Rockstars ask for ${Math.round((ROCKSTAR_SALARY_MULT - 1) * 100)}% more pay.</div>
+        ${status ? `<div class="sub" style="margin-top:4px"><b>${status}</b></div>` : ''}
+      </div>
+      ${state.headhunt || waiting ? '' : `<button class="btn small" data-action="headhunt" ${headhuntBlocker(state) ? 'disabled' : ''}>${money(headhuntFee(state))}</button>`}
+    </div>
   </div>`;
 }
 

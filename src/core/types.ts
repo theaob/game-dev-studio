@@ -13,6 +13,8 @@ export interface Staff {
   hiredWeek: number;
   /** Weeks left "in the zone" (boosted output). Absent or 0 = normal. */
   zone?: number;
+  /** Found by a headhunter: rare skills, faster, paid a premium. */
+  rockstar?: boolean;
 }
 
 export interface GameSpec {
@@ -164,12 +166,26 @@ export interface GameState {
   upgrades?: string[];
   /** The studio cat: whose lap it's on (boosting them), and how long until it wants another lap. */
   cat?: CatState;
-  /** This year's GameExpo booth booking. */
-  expo?: { year: number; booth: string };
+  /** This year's GameExpo booth booking, what it cost and, once the expo has run, what it did. */
+  expo?: { year: number; booth: string; price?: number; report?: ExpoReport };
   /** Industry news: this year's trend, rival releases and headlines. */
   industry?: IndustryState;
+  /** A headhunter's search for a rockstar developer, with the weeks it has left. */
+  headhunt?: { weeks: number };
   /** Week each ad reward was last claimed (Android app only). */
   adRewards?: Partial<Record<string, number>>;
+  /** The one-time bankruptcy bailout (watched a video to escape the first bankruptcy). */
+  bailoutUsed?: boolean;
+  /** The studio's look: paint ids (absent = the office's own colours) and decorations. */
+  decor?: DecorState;
+}
+
+export interface DecorState {
+  wall?: string;
+  floor?: string;
+  /** Decorations bought, and the ones on show. */
+  owned?: string[];
+  placed?: string[];
 }
 
 export interface Headline {
@@ -201,6 +217,20 @@ export interface CatState {
   cooldown?: number;
 }
 
+/** What a GameExpo booth did for the studio. */
+export interface ExpoReport {
+  year: number;
+  booth: string;
+  /** What the booth cost (missing on saves from before this was tracked). */
+  price?: number;
+  /** The game in development that was on show, if any. */
+  game?: string;
+  hypeBefore?: number;
+  hypeAfter?: number;
+  fansBefore: number;
+  fansAfter: number;
+}
+
 /** Insight lines shown after a release. */
 export interface ReleaseReport {
   game: ReleasedGame;
@@ -217,4 +247,5 @@ export type SimEvent =
   | { type: 'notice'; notice: Notice }
   | { type: 'gameOver'; reason: 'bankrupt' | 'retired' }
   | { type: 'catLap'; staffId: number; name: string }
-  | { type: 'catLeft'; staffId: number };
+  | { type: 'catLeft'; staffId: number }
+  | { type: 'expo'; report: ExpoReport };

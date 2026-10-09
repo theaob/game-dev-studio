@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { GENRES, GENRE_TITLES, PLATFORMS, TOPICS, TOPIC_TITLE_WORDS, platformUsers } from './data';
 import { playThrough } from './bot';
-import { benchmark, evaluate, normalizeFocus, phaseAlignment, repeatMultiplier } from './scoring';
+import { BALANCE_BEST, BALANCE_WORST, balanceMultiplier, benchmark, evaluate, normalizeFocus, phaseAlignment, repeatMultiplier } from './scoring';
 import { SEQUEL_TOO_SOON_MULT, sequelCandidates, sequelName, sequelSalesMult } from './sequels';
 import { GOTY_SEQUEL_HYPE, acclaimFor, acclaimOf, gotyFans, sequelHype } from './acclaim';
 import { gameOfTheYear } from './industry';
@@ -32,9 +32,17 @@ import {
   pushSales,
   runPromo,
   SALES_WEEKS,
+  hypeDecay,
+  trainingCost,
+  weeklyRp,
+  HEADHUNT_WEEKS,
+  ROCKSTAR_SALARY_MULT,
+  headhuntFee,
+  salaryFor,
+  startHeadhunt,
 } from './sim';
 import { TOTAL_WEEKS, WEEKS_PER_YEAR, formatDate, yearOf } from './time';
-import { claimReward, investorCash, researchGrant, rewardBlocker } from './rewards';
+import { bailoutCash, canBailout, claimBailout, claimReward, investorCash, researchGrant, rewardBlocker } from './rewards';
 import { cumulativeRevenue, paybackWeek, profit, returnMultiple, totalCost, verdict } from './results';
 import { RIVAL_CLASH_MULT, TREND_GENRE_BONUS, TREND_TOPIC_BONUS, trendMult } from './industry';
 import { EXPO_BOOKING_WEEKS, EXPO_WEEK, HYPE_DECAY, hypeEffect } from './marketing';
@@ -67,6 +75,22 @@ describe('scoring helpers', () => {
     const rpg = GENRES.find((g) => g.id === 'rpg')!;
     // RPG foundation: engine low, gameplay normal, story high
     expect(phaseAlignment(rpg.importance, 0, [10, 30, 60])).toBeGreaterThan(phaseAlignment(rpg.importance, 0, [60, 30, 10]));
+  });
+
+  it('forgives part of a poor design/tech balance when the points are strong', () => {
+    // RPG players like 65% design; this game is only 35%.
+    const atPar = balanceMultiplier(0.35, 0.65, 1);
+    const strong = balanceMultiplier(0.35, 0.65, 1.3);
+    const great = balanceMultiplier(0.35, 0.65, 2);
+    expect(atPar).toBeCloseTo(BALANCE_WORST);
+    expect(strong).toBeGreaterThan(atPar);
+    expect(great).toBeGreaterThan(strong);
+    expect(great).toBeCloseTo(BALANCE_BEST - (BALANCE_BEST - BALANCE_WORST) * 0.4);
+    // Matching the genre still beats strong points with the wrong split.
+    expect(balanceMultiplier(0.65, 0.65, 1)).toBe(BALANCE_BEST);
+    expect(balanceMultiplier(0.65, 0.65, 2)).toBeGreaterThan(great);
+    // Weak points get no relief.
+    expect(balanceMultiplier(0.35, 0.65, 0.7)).toBeCloseTo(atPar);
   });
 
   it('raises the bar after strong games', () => {
@@ -142,6 +166,40 @@ describe('simulation', () => {
     expect(doResearch(s, 'horror')).toBeNull();
     expect(s.topics).toContain('horror');
     expect(hire(s, s.candidates[0].id)).toMatch(/office is full/);
+  });
+
+  it('a headhunter finds a rockstar developer after a few weeks', () => {
+    const s = createGame('Test', 11);
+    const fee = headhuntFee(s);
+    const cash = s.cash;
+    const best = Math.max(...s.candidates.flatMap((c) => [c.design, c.tech]));
+    expect(startHeadhunt(s)).toBeNull();
+    expect(s.cash).toBe(cash - fee);
+    expect(startHeadhunt(s)).toMatch(/already searching/);
+    for (let i = 0; i < HEADHUNT_WEEKS - 1; i++) tick(s);
+    expect(s.candidates.some((c) => c.rockstar)).toBe(false);
+    tick(s);
+    expect(s.headhunt).toBeUndefined();
+    const star = s.candidates.find((c) => c.rockstar)!;
+    expect(star).toBeDefined();
+    expect(Math.min(star.design, star.tech)).toBeGreaterThan(best);
+    expect(star.speed).toBeGreaterThanOrEqual(1.2);
+    expect(star.salary).toBeGreaterThan(salaryFor(s, star.design, star.tech) * (ROCKSTAR_SALARY_MULT - 0.05));
+    // Only one rockstar at a time, and they wait while ordinary applicants come and go.
+    expect(startHeadhunt(s)).toMatch(/still waiting/);
+    for (let i = 0; i < 16; i++) tick(s);
+    expect(s.candidates.filter((c) => c.rockstar).map((c) => c.id)).toEqual([star.id]);
+    s.officeLevel = 1;
+    expect(hire(s, star.id)).toBeNull();
+    expect(s.staff.find((x) => x.id === star.id)?.rockstar).toBe(true);
+    expect(startHeadhunt(s)).toBeNull();
+  });
+
+  it("can't afford a headhunter without the fee", () => {
+    const s = createGame('Test', 12);
+    s.cash = headhuntFee(s) - 1;
+    expect(startHeadhunt(s)).toMatch(/charges/);
+    expect(s.headhunt).toBeUndefined();
   });
 
   it('goes bankrupt after three months in the red', () => {
@@ -477,6 +535,36 @@ describe('store', () => {
     s.cash = 0;
     expect(buyStoreItem(s, 'coffee')).toBe('Not enough cash.');
   });
+
+  it('newer studio upgrades speed up research and training, keep hype and boost polish', () => {
+    const s = createGame('Upgrades', 5);
+    s.cash = 1e6;
+    const rp = weeklyRp(s);
+    const course = trainingCost(s, s.staff[0], 'design');
+    expect(hypeDecay(s)).toBe(HYPE_DECAY);
+    for (const id of ['whiteboard', 'courses', 'forum', 'playtest'] as const) expect(buyStoreItem(s, id)).toBeNull();
+    expect(weeklyRp(s)).toBeCloseTo(rp * 1.2);
+    const cheaper = trainingCost(s, s.staff[0], 'design');
+    expect(cheaper.cash).toBeLessThan(course.cash);
+    expect(cheaper.rp).toBeLessThan(course.rp);
+    expect(1 - hypeDecay(s)).toBeCloseTo((1 - HYPE_DECAY) / 2);
+  });
+
+  it('a playtest lab makes polishing weeks add more', () => {
+    const polish = (lab: boolean) => {
+      const s = createGame('Polish', 6);
+      if (lab) s.upgrades = ['playtest'];
+      startGame(s, spec, [33, 33, 33]);
+      const p = s.activity!;
+      if (p.kind !== 'game') throw new Error('expected a game');
+      p.phase = 3;
+      setPolishMode(s, 'design');
+      const before = p.design;
+      tick(s);
+      return p.design - before;
+    };
+    expect(polish(true)).toBeGreaterThan(polish(false));
+  });
 });
 
 describe('studio cat', () => {
@@ -623,6 +711,38 @@ describe('marketing', () => {
     expect(s.fans).toBeGreaterThanOrEqual(fans + 1000);
   });
 
+  it('reports what GameExpo did, for the results screen', () => {
+    const s = studio(85);
+    while (s.week % WEEKS_PER_YEAR !== EXPO_WEEK - 1) tick(s);
+    startGame(s, spec, [33, 33, 33]);
+    expect(bookBooth(s, 'small')).toBeNull();
+    const price = s.expo!.price!;
+    expect(price).toBeGreaterThan(0);
+    const events = tick(s);
+    const ev = events.find((e) => e.type === 'expo');
+    if (ev?.type !== 'expo') throw new Error('expected an expo event');
+    const r = ev.report;
+    expect(s.expo!.report).toBe(r);
+    expect(r).toMatchObject({ year: s.expo!.year, booth: 'small', price, game: (s.activity as { name: string }).name });
+    expect(r.hypeAfter! - r.hypeBefore!).toBeCloseTo(15);
+    expect(r.fansAfter - r.fansBefore).toBe(300);
+  });
+
+  it('reports a smaller GameExpo when there is no game to show', () => {
+    const s = studio(86);
+    s.activity = null;
+    while (s.week % WEEKS_PER_YEAR !== EXPO_WEEK - 1) {
+      s.activity = null;
+      tick(s);
+    }
+    expect(bookBooth(s, 'medium')).toBeNull();
+    const ev = tick(s).find((e) => e.type === 'expo');
+    if (ev?.type !== 'expo') throw new Error('expected an expo event');
+    expect(ev.report.game).toBeUndefined();
+    expect(ev.report.hypeBefore).toBeUndefined();
+    expect(ev.report.fansAfter - ev.report.fansBefore).toBe(500);
+  });
+
   it('pushes sales after launch: ads and a discount sale, once each, while on the charts', () => {
     const s = studio(84);
     startGame(s, spec, [33, 33, 33]);
@@ -637,6 +757,25 @@ describe('marketing', () => {
     for (let w = 0; w < SALES_WEEKS; w++) tick(s);
     expect(g.unitsSold).toBe(g.targetUnits);
     expect(pushSales(s, g.id, 'ads')).toBe('It has left the charts.');
+  });
+
+  it('the Marketing Department unlocks a press tour, a TV commercial and a TV ad blitz', () => {
+    const s = studio(85);
+    startGame(s, spec, [33, 33, 33]);
+    expect(runPromo(s, 'press_tour')).toBe('Research Marketing Department to unlock.');
+    s.researched.push('marketing');
+    expect(runPromo(s, 'tv_spot')).toBe('Needs more of the game to show.');
+    expect(runPromo(s, 'press_tour')).toBeNull();
+    const p = s.activity!;
+    if (p.kind !== 'game') throw new Error('expected a game');
+    expect(p.hype).toBe(30);
+    const g = finish(s).game;
+    s.researched = s.researched.filter((r) => r !== 'marketing');
+    expect(pushSales(s, g.id, 'tv_ads')).toBe('Research Marketing Department to unlock.');
+    s.researched.push('marketing');
+    const target = g.targetUnits;
+    expect(pushSales(s, g.id, 'tv_ads')).toBeNull();
+    expect(g.targetUnits).toBeGreaterThan(target);
   });
 });
 
@@ -771,5 +910,34 @@ describe('ad rewards', () => {
     for (let i = 0; i < 5; i++) s.staff.push({ ...s.candidates[0], id: 900 + i, salary: 5000 });
     expect(investorCash(s)).toBeGreaterThan(small);
     expect(small).toBeGreaterThanOrEqual(6000);
+  });
+
+  it('bails out the first bankruptcy only', () => {
+    const s = createGame('Ads', 114);
+    s.cash = -100000;
+    for (let i = 0; i < 12 && !s.over; i++) tick(s);
+    expect(s.over).toBe('bankrupt');
+    expect(canBailout(s)).toBe(true);
+    const debt = -s.cash;
+    const cash = bailoutCash(s);
+    expect(cash).toBeGreaterThanOrEqual(debt + 3 * investorCash(s) - 1000);
+    expect(claimBailout(s)).toBeNull();
+    expect(s.over).toBeNull();
+    expect(s.debtStrikes).toBe(0);
+    expect(s.cash).toBeGreaterThan(0);
+    // The studio keeps running, and a second bankruptcy is final.
+    for (let i = 0; i < 4; i++) tick(s);
+    expect(s.over).toBeNull();
+    s.cash = -100000;
+    for (let i = 0; i < 12 && !s.over; i++) tick(s);
+    expect(s.over).toBe('bankrupt');
+    expect(canBailout(s)).toBe(false);
+    expect(claimBailout(s)).toMatch(/already had your bailout/);
+  });
+
+  it('offers no bailout while the studio is solvent', () => {
+    const s = createGame('Ads', 115);
+    expect(canBailout(s)).toBe(false);
+    expect(claimBailout(s)).toMatch(/not bankrupt/);
   });
 });
