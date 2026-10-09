@@ -33,7 +33,7 @@ import { onSale, paybackWeek, profit, returnMultiple, revenueRank, totalCost, ve
 import { moneyChart, spendBar, weeklyChart } from './charts';
 import { REWARDS, rewardAmount, rewardBlocker, type Reward } from '../core/rewards';
 import type { MonetizationView } from './monetization';
-import { BOOTHS, EXPO_BOOKING_WEEKS, PROMOS, SALES_PUSHES, boothById, boothPrice, promoPrice, salesPushPrice, weeksToExpo } from '../core/marketing';
+import { BOOTHS, EXPO_BOOKING_WEEKS, MAX_HYPE, PROMOS, SALES_PUSHES, boothById, boothPrice, hypeEffect, promoPrice, salesPushPrice, weeksToExpo } from '../core/marketing';
 import type { GameProject, GameSpec, GameState, ReleaseReport } from '../core/types';
 import { esc, money, num, scoreClass } from './format';
 import type { StoreItem } from '../core/data';
@@ -54,6 +54,7 @@ export type Sheet =
   | { kind: 'contracts' }
   | { kind: 'store' }
   | { kind: 'marketing' }
+  | { kind: 'expo' }
   | { kind: 'gameOver' };
 
 /** The web build: no ads, no purchases. */
@@ -98,6 +99,8 @@ export function renderSheet(state: GameState | null, sheet: Sheet, ads: Monetiza
       return store(state, ads);
     case 'marketing':
       return marketing(state);
+    case 'expo':
+      return expoResults(state);
   }
 }
 
@@ -659,7 +662,11 @@ function marketing(state: GameState): string {
   const year = yearOf(state.week);
   const booked = state.expo?.year === year ? boothById(state.expo.booth) : null;
   let expo: string;
-  if (booked) {
+  const result = state.expo?.year === year ? state.expo.report : undefined;
+  if (result) {
+    expo = `<p class="sub">Your ${boothById(result.booth).name.toLowerCase()} won ${num(result.fansAfter - result.fansBefore)} fans${result.game ? ` and +${Math.round((result.hypeAfter ?? 0) - (result.hypeBefore ?? 0))} hype for ${esc(result.game)}` : ''}.</p>
+    <div class="options"><button class="option" data-action="expo-results"><span class="emoji">🎪</span><span class="grow"><b>See what GameExpo did</b></span></button></div>`;
+  } else if (booked) {
     expo = `<p class="sub">Your ${booked.name.toLowerCase()} is booked${weeks ? ` · opens in ${weeks} week${weeks === 1 ? '' : 's'}` : ''}. ${p?.kind === 'game' ? `${esc(p.name)} will be on show.` : 'Start a game before then to show it off.'}</p>`;
   } else if (weeks !== null && weeks >= 1 && weeks <= EXPO_BOOKING_WEEKS) {
     expo = `<p class="sub">Opens in ${weeks} week${weeks === 1 ? '' : 's'}. A game in development gets hype and you win fans; with nothing to show, you win fewer fans.</p>
@@ -668,7 +675,7 @@ function marketing(state: GameState): string {
     const next = weeks === null || weeks < 1 ? year + 1 : year;
     expo = `<p class="sub">GameExpo ${next} is in June. Booking opens ${EXPO_BOOKING_WEEKS} weeks before.</p>`;
   }
-  parts.push(`<h4>🎪 GameExpo ${booked || (weeks !== null && weeks >= 1) ? year : year + 1}</h4>${expo}`);
+  parts.push(`<h4>🎪 GameExpo ${booked || result || (weeks !== null && weeks >= 1) ? year : year + 1}</h4>${expo}`);
 
   // Games on sale.
   const selling = state.released.filter((g) => g.weeksOnMarket < SALES_WEEKS);
@@ -683,6 +690,45 @@ function marketing(state: GameState): string {
   }
   parts.push('<div class="btn-row"><button class="btn ghost" data-action="close">Close</button></div>');
   return parts.join('');
+}
+
+/** What this year's GameExpo booth did: hype for the game on show, fans won, and what it cost. */
+function expoResults(state: GameState): string {
+  const r = state.expo?.report;
+  if (!r) return '';
+  const booth = boothById(r.booth);
+  const fans = r.fansAfter - r.fansBefore;
+  const hasHype = r.game !== undefined && r.hypeBefore !== undefined && r.hypeAfter !== undefined;
+  const hype = hasHype ? Math.round(r.hypeAfter! - r.hypeBefore!) : 0;
+  // The most hype can do at launch: with reviews of 7+ and no big ad campaign.
+  const boostBefore = hasHype ? Math.round((hypeEffect(r.hypeBefore!, 10).salesMult - 1) * 100) : 0;
+  const boostAfter = hasHype ? Math.round((hypeEffect(r.hypeAfter!, 10).salesMult - 1) * 100) : 0;
+  const capped = hasHype && hype < booth.hype && r.hypeAfter! >= MAX_HYPE;
+  const fansPct = r.fansBefore > 0 ? Math.round((fans / r.fansBefore) * 100) : null;
+  return `
+    <div class="big-emoji">🎪</div>
+    <h3 class="center">GameExpo ${r.year}</h3>
+    <p class="muted center">${booth.name}${r.game ? ` · showing <b>${esc(r.game)}</b>` : ' · nothing new to show'}</p>
+    <div class="counters">
+      ${hasHype ? `<div class="counter"><b>+${hype}</b><small>Hype</small></div>` : ''}
+      <div class="counter"><b>+${num(fans)}</b><small>Fans</small></div>
+      ${r.price !== undefined ? `<div class="counter"><b>${money(r.price)}</b><small>Cost</small></div>` : ''}
+    </div>
+    <div class="summary">
+      ${
+        hasHype
+          ? `<div class="line"><span>📣 Hype for ${esc(r.game!)}</span><b>${Math.round(r.hypeBefore!)} → ${Math.round(r.hypeAfter!)}</b></div>
+      <div class="line"><span>Sales boost at launch (reviews 7+)</span><b>+${boostBefore}% → +${boostAfter}%</b></div>`
+          : ''
+      }
+      <div class="line"><span>👥 Fans</span><b>${num(r.fansBefore)} → ${num(r.fansAfter)}${fansPct !== null ? ` (+${fansPct}%)` : ''}</b></div>
+    </div>
+    <p class="sub">${
+      hasHype
+        ? `${capped ? 'Hype was already near the top, so the booth could only add part of its +' + booth.hype + '. ' : ''}Hype fades a little every week until launch. Great reviews turn it into extra sales and fans; a flop that was hyped up gets a backlash.`
+        : `With no game in development, the booth won half the usual ${num(booth.fans)} fans. Start a game before next year's expo to build hype too.`
+    } More fans means more copies sold for every game you release.</p>
+    <div class="btn-row"><button class="btn big" data-action="close">Continue</button></div>`;
 }
 
 function gameOver(state: GameState): string {
