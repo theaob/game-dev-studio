@@ -13,6 +13,8 @@ export interface Staff {
   hiredWeek: number;
   /** Weeks left "in the zone" (boosted output). Absent or 0 = normal. */
   zone?: number;
+  /** Found by a headhunter: rare skills, faster, paid a premium. */
+  rockstar?: boolean;
 }
 
 export interface GameSpec {
@@ -164,6 +166,8 @@ export interface GameState {
   expo?: { year: number; booth: string };
   /** Industry news: this year's trend, rival releases and headlines. */
   industry?: IndustryState;
+  /** A headhunter's search for a rockstar developer, with the weeks it has left. */
+  headhunt?: { weeks: number };
   /** Week each ad reward was last claimed (Android app only). */
   adRewards?: Partial<Record<string, number>>;
 }

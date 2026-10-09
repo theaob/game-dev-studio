@@ -1,4 +1,4 @@
-import { availablePlatforms, createGame, doResearch, fire, hire, randomTitle, bookBooth, buyStoreItem, catLeaveLap, pushSales, runPromo, placeCatOnLap, releaseGame, setPhaseFocus, setPolishMode, startContract, startGame, tick, train, upgradeOffice, validateGame } from '../core/sim';
+import { availablePlatforms, createGame, doResearch, fire, hire, startHeadhunt, randomTitle, bookBooth, buyStoreItem, catLeaveLap, pushSales, runPromo, placeCatOnLap, releaseGame, setPhaseFocus, setPolishMode, startContract, startGame, tick, train, upgradeOffice, validateGame } from '../core/sim';
 import { storeItemById } from '../core/data';
 import type { BoothId, PromoId, SalesPushId } from '../core/marketing';
 import { normalizeFocus } from '../core/scoring';
@@ -862,6 +862,9 @@ export class App {
         return;
       case 'hire':
         if (report(hire(s, Number(arg)))) this.office.say(Number(arg), '👋 Hi!', 3);
+        return;
+      case 'headhunt':
+        report(startHeadhunt(s));
         return;
       case 'fire': {
         const who = s.staff.find((x) => x.id === Number(arg));

@@ -30,6 +30,11 @@ import {
   pushSales,
   runPromo,
   SALES_WEEKS,
+  HEADHUNT_WEEKS,
+  ROCKSTAR_SALARY_MULT,
+  headhuntFee,
+  salaryFor,
+  startHeadhunt,
 } from './sim';
 import { TOTAL_WEEKS, WEEKS_PER_YEAR, formatDate } from './time';
 import { claimReward, investorCash, researchGrant, rewardBlocker } from './rewards';
@@ -140,6 +145,40 @@ describe('simulation', () => {
     expect(doResearch(s, 'horror')).toBeNull();
     expect(s.topics).toContain('horror');
     expect(hire(s, s.candidates[0].id)).toMatch(/office is full/);
+  });
+
+  it('a headhunter finds a rockstar developer after a few weeks', () => {
+    const s = createGame('Test', 11);
+    const fee = headhuntFee(s);
+    const cash = s.cash;
+    const best = Math.max(...s.candidates.flatMap((c) => [c.design, c.tech]));
+    expect(startHeadhunt(s)).toBeNull();
+    expect(s.cash).toBe(cash - fee);
+    expect(startHeadhunt(s)).toMatch(/already searching/);
+    for (let i = 0; i < HEADHUNT_WEEKS - 1; i++) tick(s);
+    expect(s.candidates.some((c) => c.rockstar)).toBe(false);
+    tick(s);
+    expect(s.headhunt).toBeUndefined();
+    const star = s.candidates.find((c) => c.rockstar)!;
+    expect(star).toBeDefined();
+    expect(Math.min(star.design, star.tech)).toBeGreaterThan(best);
+    expect(star.speed).toBeGreaterThanOrEqual(1.2);
+    expect(star.salary).toBeGreaterThan(salaryFor(s, star.design, star.tech) * (ROCKSTAR_SALARY_MULT - 0.05));
+    // Only one rockstar at a time, and they wait while ordinary applicants come and go.
+    expect(startHeadhunt(s)).toMatch(/still waiting/);
+    for (let i = 0; i < 16; i++) tick(s);
+    expect(s.candidates.filter((c) => c.rockstar).map((c) => c.id)).toEqual([star.id]);
+    s.officeLevel = 1;
+    expect(hire(s, star.id)).toBeNull();
+    expect(s.staff.find((x) => x.id === star.id)?.rockstar).toBe(true);
+    expect(startHeadhunt(s)).toBeNull();
+  });
+
+  it("can't afford a headhunter without the fee", () => {
+    const s = createGame('Test', 12);
+    s.cash = headhuntFee(s) - 1;
+    expect(startHeadhunt(s)).toMatch(/charges/);
+    expect(s.headhunt).toBeUndefined();
   });
 
   it('goes bankrupt after three months in the red', () => {
