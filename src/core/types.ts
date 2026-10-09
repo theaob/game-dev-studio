@@ -166,6 +166,16 @@ export interface GameState {
   industry?: IndustryState;
   /** Week each ad reward was last claimed (Android app only). */
   adRewards?: Partial<Record<string, number>>;
+  /** The studio's look: paint ids (absent = the office's own colours) and decorations. */
+  decor?: DecorState;
+}
+
+export interface DecorState {
+  wall?: string;
+  floor?: string;
+  /** Decorations bought, and the ones on show. */
+  owned?: string[];
+  placed?: string[];
 }
 
 export interface Headline {

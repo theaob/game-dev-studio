@@ -14,6 +14,7 @@ import { focusLean, renderSheet, type Sheet } from './sheets';
 import { ChartTooltip } from './tooltip';
 import { Monetization } from './monetization';
 import { claimReward, investorCash, rewardBlocker, type RewardId } from '../core/rewards';
+import { buyDecor, decorById, repaint, toggleDecor, type DecorId } from '../core/decor';
 import { SPEEDS, renderDock, renderGames, renderNav, renderNews, renderResearch, renderStaff, renderTopbar, type Tab } from './views';
 
 type StatKey = 'cash' | 'fans' | 'rp';
@@ -666,8 +667,30 @@ export class App {
         this.open({ kind: 'contracts' });
         return;
       case 'store':
-        this.open({ kind: 'store' });
+        if (sheet?.kind === 'decor') this.replace({ kind: 'store' });
+        else this.open({ kind: 'store' });
         return;
+      case 'decor':
+        if (sheet?.kind === 'store') this.replace({ kind: 'decor' });
+        else this.open({ kind: 'decor' });
+        return;
+      case 'paint-wall':
+      case 'paint-floor':
+      case 'buy-decor':
+      case 'toggle-decor': {
+        const err =
+          name === 'buy-decor'
+            ? buyDecor(s, arg as DecorId)
+            : name === 'toggle-decor'
+              ? toggleDecor(s, arg as DecorId)
+              : repaint(s, name === 'paint-wall' ? 'wall' : 'floor', arg);
+        if (report(err)) {
+          if (name === 'buy-decor') this.office.cheer(['😍', 'Nice!', decorById(arg).icon]);
+          this.save();
+          if (this.sheet?.kind === 'decor') this.renderSheet();
+        }
+        return;
+      }
       case 'marketing':
         this.open({ kind: 'marketing' });
         return;

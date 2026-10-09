@@ -416,6 +416,7 @@ export function renderStaff(state: GameState): string {
            <div class="sub mt">${next.name}: room for ${next.capacity}, rent ${money(officeRent(state, state.officeLevel + 1))}/mo.</div>`
         : ''
     }
+    <div class="btn-row"><button class="btn ghost" data-action="decor">🎨 Decorate</button></div>
   </div>
   <h2>Team</h2>
   <div class="list">${state.staff.map((s) => staffRow(state, s)).join('')}</div>

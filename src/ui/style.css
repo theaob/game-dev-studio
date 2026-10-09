@@ -2626,3 +2626,34 @@ canvas.office {
 .btn.wide {
   width: 100%;
 }
+
+/* ---------- Decorate ---------- */
+
+.swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.swatch {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  border: 2px solid var(--ink);
+  background: var(--swatch);
+  box-shadow: var(--pop);
+}
+
+/* "Original": the office's own colours, shown as a split chip. */
+.swatch.original {
+  background: linear-gradient(135deg, #b89a7e 50%, #6a4e3c 50%);
+}
+
+.swatch.on {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.swatch:disabled:not(.on) {
+  opacity: 0.4;
+}

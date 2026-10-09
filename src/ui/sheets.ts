@@ -37,6 +37,8 @@ import { BOOTHS, EXPO_BOOKING_WEEKS, PROMOS, SALES_PUSHES, boothById, boothPrice
 import type { GameProject, GameSpec, GameState, ReleaseReport } from '../core/types';
 import { esc, money, num, scoreClass } from './format';
 import type { StoreItem } from '../core/data';
+import { DECOR, FLOOR_PAINTS, WALL_PAINTS, decorPrice, isPlaced, ownsDecor, paintPrice, trophyCount } from '../core/decor';
+import type { DecorItem, Paint } from '../core/decor';
 import { polishPicker } from './views';
 import { marketingCost, sizeCost } from '../core/economy';
 
@@ -53,6 +55,7 @@ export type Sheet =
   | { kind: 'confirm'; text: string; action: string; arg?: string; confirmLabel: string }
   | { kind: 'contracts' }
   | { kind: 'store' }
+  | { kind: 'decor' }
   | { kind: 'marketing' }
   | { kind: 'gameOver' };
 
@@ -96,6 +99,8 @@ export function renderSheet(state: GameState | null, sheet: Sheet, ads: Monetiza
       return contracts(state);
     case 'store':
       return store(state, ads);
+    case 'decor':
+      return decorSheet(state);
     case 'marketing':
       return marketing(state);
   }
@@ -620,7 +625,58 @@ function store(state: GameState, ads: MonetizationView): string {
     <div class="options">${boosts.map((x) => storeRow(state, x)).join('')}</div>
     <h4>Studio upgrades</h4>
     <div class="options">${upgrades.map((x) => storeRow(state, x)).join('')}</div>
+    <h4>Studio look</h4>
+    <div class="options">
+      <button class="option" data-action="decor"><span class="emoji">🎨</span><span class="grow"><b>Decorate</b><br/><span class="sub">Paint the walls and floor, and buy decorations for the office.</span></span></button>
+    </div>
     <div class="btn-row"><button class="btn ghost" data-action="close">Close</button></div>`;
+}
+
+/** One row of colour swatches for the walls or the floor, with "Original" first. */
+function swatches(state: GameState, surface: 'wall' | 'floor', paints: Paint[]): string {
+  const current = state.decor?.[surface] ?? '';
+  const price = paintPrice(state);
+  const swatch = (id: string, name: string, color: string | null) => {
+    const on = id === current;
+    const cost = id ? price : 0;
+    return `<button class="swatch${on ? ' on' : ''}${color ? '' : ' original'}" data-action="paint-${surface}" data-arg="${id}" ${on || cost > state.cash ? 'disabled' : ''} aria-label="${name}${on ? ' (current)' : ''}" title="${name}"${color ? ` style="--swatch:${color}"` : ''}></button>`;
+  };
+  return `<div class="swatches">${swatch('', 'Original', null)}${paints.map((p) => swatch(p.id, p.name, p.color)).join('')}</div>`;
+}
+
+function decorRow(state: GameState, item: DecorItem): string {
+  const owned = ownsDecor(state, item.id);
+  const placed = isPlaced(state, item.id);
+  const price = decorPrice(state, item.id);
+  const blocked = !owned && price > state.cash ? 'Not enough cash.' : null;
+  const status = placed ? '<span class="tag good">On show</span>' : owned ? '<span class="tag">In storage</span>' : '';
+  const extra = item.id === 'trophies' && owned ? ` You have ${trophyCount(state)} so far.` : '';
+  const button = owned
+    ? `<button class="btn small${placed ? ' ghost' : ''}" data-action="toggle-decor" data-arg="${item.id}">${placed ? 'Put away' : 'Place'}</button>`
+    : `<button class="btn small" data-action="buy-decor" data-arg="${item.id}" ${blocked ? 'disabled' : ''}>Buy · ${money(price)}</button>`;
+  return `
+    <div class="option store-item">
+      <span class="emoji">${item.icon}</span>
+      <span class="grow"><b>${item.name}</b> ${status}<br/><span class="sub">${item.desc}${extra}</span>${blocked ? `<br/><span class="sub warn">${blocked}</span>` : ''}</span>
+      ${button}
+    </div>`;
+}
+
+function decorSheet(state: GameState): string {
+  const wall = WALL_PAINTS.find((p) => p.id === state.decor?.wall)?.name ?? 'Original';
+  const floor = FLOOR_PAINTS.find((p) => p.id === state.decor?.floor)?.name ?? 'Original';
+  return `
+    <h3>Decorate</h3>
+    <p class="muted">Make the studio yours. It's just for looks, and it comes with you when you move.</p>
+    <h4>Walls · ${wall}</h4>
+    ${swatches(state, 'wall', WALL_PAINTS)}
+    <h4>Floor · ${floor}</h4>
+    ${swatches(state, 'floor', FLOOR_PAINTS)}
+    <p class="sub">A new colour costs ${money(paintPrice(state))}. Going back to the original is free.</p>
+    <h4>Decorations</h4>
+    <p class="sub">Buy once, then place or put away for free.</p>
+    <div class="options">${DECOR.map((d) => decorRow(state, d)).join('')}</div>
+    <div class="btn-row"><button class="btn ghost" data-action="store">Back to Store</button><button class="btn ghost" data-action="close">Close</button></div>`;
 }
 
 /** One buyable marketing option: icon, name, what it does, and a price button (or why not). */
