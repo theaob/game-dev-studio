@@ -48,8 +48,9 @@ describe('money curve', () => {
     expect(runs.every((r) => r.over === 'retired')).toBe(true);
     const final = median(runs.map((r) => r.cash));
     expect(final).toBeGreaterThan(10_000_000);
-    // Marketing lets an expert earn more, but it should stay in the hundreds of millions, not billions.
-    expect(final).toBeLessThan(400_000_000);
+    // Marketing, word-of-mouth hype and Game of the Year let an expert earn more,
+    // but it should stay in the hundreds of millions, not billions.
+    expect(final).toBeLessThan(600_000_000);
   });
 
   it('growing fast with careless games ends in bankruptcy', () => {
