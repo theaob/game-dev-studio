@@ -41,6 +41,7 @@ import { STARTING_CASH, founderSalary, friendly, marketingCost, officeCost, offi
 import { int, pick, random, range } from './rng';
 import { RIVAL_CLASH_MULT, newTrend, rivalClash, tickIndustry, trendMult } from './industry';
 import { hasSequel, sequelSalesMult, seriesNumber } from './sequels';
+import { acclaimFor, sequelHype } from './acclaim';
 import { average, clamp, evaluate, normalizeFocus, rollReviews, scoreFactor } from './scoring';
 import { START_YEAR, TOTAL_WEEKS, WEEKS_PER_MONTH, WEEKS_PER_YEAR, yearFraction, yearOf } from './time';
 import type {
@@ -348,6 +349,10 @@ export function startGame(state: GameState, spec: GameSpec, firstFocus: number[]
     state.licenses.push(spec.platform);
     notify(state, `Bought a ${platformById(spec.platform).name} dev kit license.`, 'info');
   }
+  // A sequel to an award winner: players are waiting for it from day one.
+  const original = spec.sequelOf !== undefined ? state.released.find((g) => g.id === spec.sequelOf) : undefined;
+  const hype = original ? sequelHype(original) : 0;
+  if (original && hype > 0) notify(state, `Fans of ${original.name} can't wait for the sequel: +${hype} hype.`, 'good');
   const project: GameProject = {
     ...spec,
     name: spec.name.trim(),
@@ -366,6 +371,7 @@ export function startGame(state: GameState, spec: GameSpec, firstFocus: number[]
     contrib: {},
     cost: cost.total,
     spend: { budget: cost.license + cost.size, marketing: cost.marketing, team: 0 },
+    ...(hype > 0 ? { hype } : {}),
   };
   state.activity = project;
   return null;
@@ -537,12 +543,15 @@ export function releaseGame(state: GameState): ReleaseReport | string {
     sequelOf: original?.id,
     series: original ? seriesNumber(original) + 1 : 1,
     hype: Math.round(hype),
+    acclaim: acclaimFor(score)?.id,
     spend: p.spend ? { ...p.spend } : undefined,
     weekly: { units: [], revenue: [] },
   };
 
   // Learning: knowledge about combos, area importance and balance.
   const insights: ReleaseReport['insights'] = [];
+  const award = acclaimFor(score);
+  if (award) insights.push({ text: `${award.icon} ${award.name}! Critics are raving, and a sequel would start with fans already excited.`, kind: 'good' });
   const genre = genreById(p.genre);
   const topic = topicById(p.topic);
   const comboKey = `${p.topic}|${p.genre}`;
@@ -621,6 +630,7 @@ export function releaseGame(state: GameState): ReleaseReport | string {
   for (const s of state.staff) s.zone = 0;
   state.activity = null;
   notify(state, `${game.name} released to an average score of ${score.toFixed(1)}.`, score >= 7 ? 'good' : score < 5 ? 'bad' : 'info');
+  if (award) notify(state, `${award.icon} ${game.name} is a ${award.name}!`, 'good');
   return { game, insights, rpEarned };
 }
 

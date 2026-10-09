@@ -3,6 +3,7 @@ import { GENRES, GENRE_TITLES, PLATFORMS, TOPICS, TOPIC_TITLE_WORDS, platformUse
 import { playThrough } from './bot';
 import { benchmark, evaluate, normalizeFocus, phaseAlignment, repeatMultiplier } from './scoring';
 import { SEQUEL_TOO_SOON_MULT, sequelCandidates, sequelName, sequelSalesMult } from './sequels';
+import { acclaimFor, acclaimOf, sequelHype } from './acclaim';
 import {
   createGame,
   doResearch,
@@ -281,6 +282,39 @@ describe('sequels', () => {
     expect(evaluate(s, s.activity as GameProject).repeatMult).toBe(1);
     (s.activity as GameProject).sequelOf = undefined;
     expect(evaluate(s, s.activity as GameProject).repeatMult).toBe(0.85);
+  });
+
+  it('recognizes great games and saves the award with the game', () => {
+    expect(acclaimFor(8.75)).toBeUndefined();
+    expect(acclaimFor(9)?.id).toBe('choice');
+    expect(acclaimFor(9.5)?.id).toBe('masterpiece');
+    // Saves from before awards fall back to the score.
+    expect(acclaimOf({ score: 9.25 })?.id).toBe('choice');
+    expect(acclaimOf({ score: 9.25, acclaim: 'masterpiece' })?.id).toBe('masterpiece');
+    const s = createGame('Seq', 3);
+    const r = releaseOne(s, spec);
+    expect(r.game.acclaim).toBe(acclaimFor(r.game.score)?.id);
+  });
+
+  it('starts a sequel to an award winner with hype, more for a better original', () => {
+    expect(sequelHype({ score: 8.75 })).toBe(0);
+    expect(sequelHype({ score: 9 })).toBe(20);
+    expect(sequelHype({ score: 9.5 })).toBe(40);
+    expect(sequelHype({ score: 10 })).toBe(60);
+    const s = createGame('Seq', 3);
+    const first = releaseOne(s, spec).game;
+    first.score = 9.5;
+    first.acclaim = 'masterpiece';
+    s.week = first.releaseWeek + 60;
+    expect(startGame(s, { ...spec, name: 'DQ2', sequelOf: first.id }, [10, 30, 60])).toBeNull();
+    expect((s.activity as GameProject).hype).toBe(40);
+    // A sequel to an unrecognized game, or a new game, starts from nothing.
+    const t = createGame('Seq', 3);
+    const plain = releaseOne(t, spec).game;
+    plain.score = 8;
+    plain.acclaim = undefined;
+    expect(startGame(t, { ...spec, name: 'DQ2', sequelOf: plain.id }, [10, 30, 60])).toBeNull();
+    expect((t.activity as GameProject).hype ?? 0).toBe(0);
   });
 });
 
