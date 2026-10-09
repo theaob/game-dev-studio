@@ -31,7 +31,7 @@ import { WEEKS_PER_YEAR, formatShortDate, yearFraction, yearOf } from '../core/t
 import { RIVAL_CLASH_MULT, RIVAL_CLASH_WEEKS, rivalClash, trendMult } from '../core/industry';
 import { onSale, paybackWeek, profit, returnMultiple, revenueRank, totalCost, verdict } from '../core/results';
 import { moneyChart, spendBar, weeklyChart } from './charts';
-import { REWARDS, rewardAmount, rewardBlocker, type Reward } from '../core/rewards';
+import { REWARDS, bailoutCash, canBailout, rewardAmount, rewardBlocker, type Reward } from '../core/rewards';
 import type { MonetizationView } from './monetization';
 import { BOOTHS, EXPO_BOOKING_WEEKS, PROMOS, SALES_PUSHES, boothById, boothPrice, promoPrice, salesPushPrice, weeksToExpo } from '../core/marketing';
 import type { GameProject, GameSpec, GameState, ReleaseReport } from '../core/types';
@@ -92,7 +92,7 @@ export function renderSheet(state: GameState | null, sheet: Sheet, ads: Monetiza
     case 'menu':
       return menu(sheet.saved, ads);
     case 'gameOver':
-      return gameOver(state);
+      return gameOver(state, ads);
     case 'contracts':
       return contracts(state);
     case 'store':
@@ -691,15 +691,31 @@ function marketing(state: GameState): string {
   return parts.join('');
 }
 
-function gameOver(state: GameState): string {
+/** The first bankruptcy in a save can be undone once with a video (Android app only). */
+function bailoutOffer(state: GameState, ads: MonetizationView): string {
+  if (!ads.native || !canBailout(state)) return '';
+  const waiting = ads.busy ? 'Just a moment…' : !ads.rewardedReady ? 'Loading a video…' : null;
+  return `
+    <div class="option store-item">
+      <span class="emoji">🏦</span>
+      <span class="grow"><b>Bailout</b> <span class="tag good">+${money(bailoutCash(state))}</span><br/><span class="sub">Watch a video and the bank pays off your debt and gives you three months of running costs. One bailout per studio.</span>${
+        waiting ? `<br/><span class="sub warn">${waiting}</span>` : ''
+      }</span>
+      <button class="btn small" data-action="bailout" ${waiting ? 'disabled' : ''}>▶ Watch</button>
+    </div>`;
+}
+
+function gameOver(state: GameState, ads: MonetizationView): string {
   const games = state.released;
   const avg = games.length ? games.reduce((a, g) => a + g.score, 0) / games.length : 0;
   const best = games.length ? games.reduce((a, g) => (g.score > a.score ? g : a)) : null;
   const bankrupt = state.over === 'bankrupt';
+  const bailout = bankrupt ? bailoutOffer(state, ads) : '';
   return `
     <div class="big-emoji">${bankrupt ? '💸' : '🏆'}</div>
     <h3 class="center">${bankrupt ? 'Bankrupt!' : 'A legendary career'}</h3>
-    <p class="muted center">${bankrupt ? 'The money ran out. Every great studio has a failure or two. Try again!' : `${esc(state.studioName)} has reached ${formatShortDate(state.week)}. Time to retire.`}</p>
+    <p class="muted center">${bankrupt ? (bailout ? 'The money ran out. But the bank is willing to give you one more chance.' : 'The money ran out. Every great studio has a failure or two. Try again!') : `${esc(state.studioName)} has reached ${formatShortDate(state.week)}. Time to retire.`}</p>
+    ${bailout ? `<div class="options">${bailout}</div>` : ''}
     <div class="summary">
       <div class="line"><span>Games released</span><b>${games.length}</b></div>
       <div class="line"><span>Average score</span><b>${avg.toFixed(1)}</b></div>
