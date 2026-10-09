@@ -447,6 +447,68 @@ export function hire(state: GameState, candidateId: number): string | null {
   return null;
 }
 
+/** How long a headhunter takes to find a rockstar developer. */
+export const HEADHUNT_WEEKS = 4;
+/** The headhunter's fee, in months of the rockstar's expected salary. */
+const HEADHUNT_FEE_MONTHS = 3;
+/** Rockstars ask for this much more than the market rate for their skills. */
+export const ROCKSTAR_SALARY_MULT = 1.5;
+
+/** The best skill level ordinary applicants can have right now. */
+function applicantSkillCap(state: GameState): number {
+  return Math.min(10, 3.5 + (yearFraction(state.week) - START_YEAR) * 0.18);
+}
+
+/** What a headhunter charges to search for a rockstar developer. */
+export function headhuntFee(state: GameState): number {
+  const skill = Math.min(10, applicantSkillCap(state) + 2);
+  return friendly(salaryFor(state, skill, skill) * ROCKSTAR_SALARY_MULT * HEADHUNT_FEE_MONTHS);
+}
+
+export function headhuntBlocker(state: GameState): string | null {
+  if (state.over) return 'The game is over.';
+  if (state.headhunt) return 'The headhunter is already searching.';
+  if (state.candidates.some((c) => c.rockstar)) return 'Your rockstar applicant is still waiting for an answer.';
+  if (state.cash < headhuntFee(state)) return `The headhunter charges $${headhuntFee(state).toLocaleString('en-US')}.`;
+  return null;
+}
+
+/** Pays a headhunter to find a rockstar developer, who applies after HEADHUNT_WEEKS. */
+export function startHeadhunt(state: GameState): string | null {
+  const err = headhuntBlocker(state);
+  if (err) return err;
+  state.cash -= headhuntFee(state);
+  state.headhunt = { weeks: HEADHUNT_WEEKS };
+  notify(state, 'A headhunter is searching for a rockstar developer.', 'info');
+  return null;
+}
+
+function tickHeadhunt(state: GameState) {
+  if (!state.headhunt) return;
+  if (--state.headhunt.weeks > 0) return;
+  delete state.headhunt;
+  const c = rockstarCandidate(state);
+  state.candidates.unshift(c);
+  notify(state, `The headhunter found a rockstar: ${c.name} wants to join! Check the Team tab.`, 'good');
+}
+
+function rockstarCandidate(state: GameState): Staff {
+  const cap = applicantSkillCap(state);
+  const skill = () => round1(Math.min(10, range(state, cap + 1, cap + 3)));
+  const design = skill();
+  const tech = skill();
+  return {
+    id: state.nextId++,
+    name: `${pick(state, FIRST_NAMES)} ${pick(state, LAST_NAMES)}`,
+    design,
+    tech,
+    speed: round1(range(state, 1.2, 1.45)),
+    salary: Math.round((salaryFor(state, design, tech) * ROCKSTAR_SALARY_MULT) / 50) * 50,
+    hiredWeek: state.week,
+    rockstar: true,
+  };
+}
+
 export function fire(state: GameState, staffId: number): string | null {
   const s = state.staff.find((x) => x.id === staffId);
   if (!s) return 'Staff member not found.';
@@ -689,6 +751,7 @@ export function tick(state: GameState): SimEvent[] {
   }
 
   tickCat(state, events);
+  tickHeadhunt(state);
   tickSales(state);
 
   tickExpo(state);
@@ -1019,10 +1082,11 @@ function refreshContracts(state: GameState) {
 }
 
 function refreshCandidates(state: GameState) {
-  const years = yearFraction(state.week) - START_YEAR;
-  const hi = Math.min(10, 3.5 + years * 0.18);
+  const hi = applicantSkillCap(state);
   const lo = Math.max(1.5, hi - 3.5);
-  state.candidates = [0, 1, 2].map(() => {
+  // A rockstar the headhunter found keeps waiting; ordinary applicants move on.
+  const rockstars = state.candidates.filter((c) => c.rockstar);
+  state.candidates = [...rockstars, ...[0, 1, 2].map(() => {
     const design = round1(range(state, lo, hi));
     const tech = round1(range(state, lo, hi));
     return {
@@ -1034,7 +1098,7 @@ function refreshCandidates(state: GameState) {
       salary: salaryFor(state, design, tech),
       hiredWeek: state.week,
     };
-  });
+  })];
 }
 
 /**
