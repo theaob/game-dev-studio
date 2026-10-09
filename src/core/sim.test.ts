@@ -30,6 +30,9 @@ import {
   pushSales,
   runPromo,
   SALES_WEEKS,
+  hypeDecay,
+  trainingCost,
+  weeklyRp,
 } from './sim';
 import { TOTAL_WEEKS, WEEKS_PER_YEAR, formatDate } from './time';
 import { claimReward, investorCash, researchGrant, rewardBlocker } from './rewards';
@@ -415,6 +418,36 @@ describe('store', () => {
     expect(p.bugs).toBe(6);
     s.cash = 0;
     expect(buyStoreItem(s, 'coffee')).toBe('Not enough cash.');
+  });
+
+  it('newer studio upgrades speed up research and training, keep hype and boost polish', () => {
+    const s = createGame('Upgrades', 5);
+    s.cash = 1e6;
+    const rp = weeklyRp(s);
+    const course = trainingCost(s, s.staff[0], 'design');
+    expect(hypeDecay(s)).toBe(HYPE_DECAY);
+    for (const id of ['whiteboard', 'courses', 'forum', 'playtest'] as const) expect(buyStoreItem(s, id)).toBeNull();
+    expect(weeklyRp(s)).toBeCloseTo(rp * 1.2);
+    const cheaper = trainingCost(s, s.staff[0], 'design');
+    expect(cheaper.cash).toBeLessThan(course.cash);
+    expect(cheaper.rp).toBeLessThan(course.rp);
+    expect(1 - hypeDecay(s)).toBeCloseTo((1 - HYPE_DECAY) / 2);
+  });
+
+  it('a playtest lab makes polishing weeks add more', () => {
+    const polish = (lab: boolean) => {
+      const s = createGame('Polish', 6);
+      if (lab) s.upgrades = ['playtest'];
+      startGame(s, spec, [33, 33, 33]);
+      const p = s.activity!;
+      if (p.kind !== 'game') throw new Error('expected a game');
+      p.phase = 3;
+      setPolishMode(s, 'design');
+      const before = p.design;
+      tick(s);
+      return p.design - before;
+    };
+    expect(polish(true)).toBeGreaterThan(polish(false));
   });
 });
 
