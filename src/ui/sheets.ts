@@ -42,6 +42,8 @@ import type { DecorItem, Paint } from '../core/decor';
 import { acclaimTag, polishPicker } from './views';
 import { acclaimOf, sequelHype } from '../core/acclaim';
 import { marketingCost, sizeCost } from '../core/economy';
+import { ACHIEVEMENTS } from '../core/achievements';
+import type { Unlock } from '../save';
 
 export type Sheet =
   | { kind: 'welcome'; name: string }
@@ -59,6 +61,7 @@ export type Sheet =
   | { kind: 'decor' }
   | { kind: 'marketing' }
   | { kind: 'expo' }
+  | { kind: 'achievements' }
   | { kind: 'gameOver' };
 
 /** The web build: no ads, no purchases. */
@@ -66,12 +69,14 @@ const NO_ADS: MonetizationView = { native: false, rewardedReady: false, adFree: 
 
 export const OUTLETS = ['Game Weekly', 'Pixel Press', 'PlayZone', 'Joystick Journal'];
 
-export function renderSheet(state: GameState | null, sheet: Sheet, ads: MonetizationView = NO_ADS): string {
+export function renderSheet(state: GameState | null, sheet: Sheet, ads: MonetizationView = NO_ADS, unlocked: Record<string, Unlock> = {}): string {
   switch (sheet.kind) {
     case 'welcome':
       return welcome(sheet.name);
     case 'help':
       return help();
+    case 'achievements':
+      return achievements(unlocked);
     case 'confirm':
       return `
         <h3>Are you sure?</h3>
@@ -94,7 +99,7 @@ export function renderSheet(state: GameState | null, sheet: Sheet, ads: Monetiza
     case 'gameDetail':
       return gameDetail(state, sheet.id);
     case 'menu':
-      return menu(sheet.saved, ads);
+      return menu(sheet.saved, ads, unlocked);
     case 'gameOver':
       return gameOver(state, ads);
     case 'contracts':
@@ -545,7 +550,7 @@ function gameDetail(state: GameState, id: number): string {
     <div class="btn-row"><button class="btn ghost" data-action="close">Close</button></div>`;
 }
 
-function menu(saved: boolean | undefined, ads: MonetizationView): string {
+function menu(saved: boolean | undefined, ads: MonetizationView, unlocked: Record<string, Unlock>): string {
   // Ads and purchases only exist in the Android app.
   const shop = ads.native
     ? `
@@ -561,10 +566,35 @@ function menu(saved: boolean | undefined, ads: MonetizationView): string {
     <h3>Menu</h3>
     <div class="options mt">
       <button class="option" data-action="help"><span class="emoji">📖</span><span class="grow"><b>How to play</b></span></button>
+      <button class="option" data-action="achievements"><span class="emoji">🏆</span><span class="grow"><b>Achievements</b><br/><span class="sub">${unlockedCount(unlocked)} of ${ACHIEVEMENTS.length} unlocked</span></span></button>
       <button class="option" data-action="save"><span class="emoji">💾</span><span class="grow"><b>Save game</b>${saved ? ' <span class="tag good">Saved!</span>' : '<br/><span class="sub">The game also saves automatically every month.</span>'}</span></button>
       ${shop}
       <button class="option" data-action="ask-reset"><span class="emoji">🔄</span><span class="grow"><b>Start over</b><br/><span class="sub">Delete this save and found a new studio.</span></span></button>
     </div>
+    <div class="btn-row"><button class="btn ghost" data-action="close">Close</button></div>`;
+}
+
+function unlockedCount(unlocked: Record<string, Unlock>): number {
+  return ACHIEVEMENTS.filter((a) => unlocked[a.id]).length;
+}
+
+function achievements(unlocked: Record<string, Unlock>): string {
+  const done = unlockedCount(unlocked);
+  const rows = ACHIEVEMENTS.map((a) => {
+    const u = unlocked[a.id];
+    const when = u ? `<br/><span class="sub">Unlocked ${yearOf(u.week)} · ${esc(u.studio)}</span>` : '';
+    return `
+      <div class="option achievement${u ? '' : ' locked'}">
+        <span class="emoji">${u ? a.icon : '🔒'}</span>
+        <span class="grow"><b>${esc(a.name)}</b><br/><span class="sub">${esc(a.desc)}</span>${when}</span>
+        ${u ? '<span class="tag good">✓</span>' : ''}
+      </div>`;
+  }).join('');
+  return `
+    <h3>Achievements</h3>
+    <p class="muted">${done} of ${ACHIEVEMENTS.length} unlocked. They stay on this device when you start over.</p>
+    <div class="bar mt"><i style="width:${Math.round((done / ACHIEVEMENTS.length) * 100)}%"></i></div>
+    <div class="options mt">${rows}</div>
     <div class="btn-row"><button class="btn ghost" data-action="close">Close</button></div>`;
 }
 

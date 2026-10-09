@@ -6,7 +6,8 @@ import type { BoothId, PromoId, SalesPushId } from '../core/marketing';
 import { normalizeFocus } from '../core/scoring';
 import { sequelName } from '../core/sequels';
 import type { GameSpec, GameState, GenreId, MarketingId, NoticeKind, PolishMode, SimEvent, SizeId } from '../core/types';
-import { clearSave, loadGame, saveGame } from '../save';
+import { clearSave, loadAchievements, loadGame, saveAchievements, saveGame, type Unlock } from '../save';
+import { newAchievements } from '../core/achievements';
 import { OfficeScene } from './office';
 import { OfficeLoading, hasWebGL } from './office-loading';
 import { CAT_ID } from './office-common';
@@ -54,6 +55,8 @@ export class App {
   /** Ads and the "Remove ads" purchase (Android app only). */
   private ads = new Monetization();
   private lastDraw = 0;
+  /** Achievements unlocked on this device, across every studio. */
+  private unlocked: Record<string, Unlock> = loadAchievements();
 
   constructor(root: HTMLElement) {
     // A full-screen world with the interface floating on top, like a mobile game:
@@ -423,6 +426,7 @@ export class App {
         this.set('main', `<header class="panel-head"><h1>${title}</h1>${extra ? `<span class="panel-chip">${extra}</span>` : ''}</header>${view(s)}`);
       }
       this.set('nav', renderNav(this.tab, s, this.unreadNews()));
+      this.checkAchievements(s);
     } else {
       this.set('top', '');
       this.els.dock.hidden = true;
@@ -440,7 +444,7 @@ export class App {
       this.html.sheet = '';
       return;
     }
-    const inner = renderSheet(this.state, this.sheet, this.ads.view());
+    const inner = renderSheet(this.state, this.sheet, this.ads.view(), this.unlocked);
     const existing = host.querySelector<HTMLElement>('.sheet');
     if (existing && host.dataset.kind === this.sheet.kind) {
       if (this.html.sheet !== inner) {
@@ -503,7 +507,22 @@ export class App {
     return { kind: 'confirm', text, action: 'exit-app', confirmLabel: 'Exit game' };
   }
 
-  private toast(text: string, kind: NoticeKind = 'info') {
+  /** Unlocks the achievements the studio has just earned, with a toast for each. */
+  private checkAchievements(s: GameState) {
+    // Wait until the reviews have been read, so a score achievement doesn't give the score away.
+    if (this.sheet?.kind === 'review') return;
+    const earned = newAchievements(s, new Set(Object.keys(this.unlocked)));
+    if (!earned.length) return;
+    for (const a of earned) this.unlocked[a.id] = { week: s.week, studio: s.studioName };
+    saveAchievements(this.unlocked);
+    // An old save can earn a handful at once: one toast for all of them.
+    if (earned.length > 2) this.toast(`🏆 ${earned.length} achievements unlocked! See them in the menu.`, 'achievement');
+    else for (const a of earned) this.toast(`🏆 Achievement: ${a.icon} ${a.name}`, 'achievement');
+    this.vibrate(20);
+    if (this.sheet?.kind === 'menu' || this.sheet?.kind === 'achievements') this.renderSheet();
+  }
+
+  private toast(text: string, kind: NoticeKind | 'achievement' = 'info') {
     const el = document.createElement('div');
     el.className = `toast ${kind}`;
     el.textContent = text;
@@ -656,6 +675,9 @@ export class App {
         return;
       case 'privacy-options':
         void this.ads.showPrivacyOptions();
+        return;
+      case 'achievements':
+        this.replace({ kind: 'achievements' });
         return;
       case 'save':
         if (s && saveGame(s) && sheet?.kind === 'menu') {
