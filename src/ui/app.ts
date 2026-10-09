@@ -1,5 +1,7 @@
-import { availablePlatforms, createGame, doResearch, fire, hire, randomTitle, bookBooth, buyStoreItem, catLeaveLap, pushSales, runPromo, placeCatOnLap, releaseGame, setPhaseFocus, setPolishMode, startContract, startGame, tick, train, upgradeOffice, validateGame } from '../core/sim';
+import { availablePlatforms, createGame, doResearch, fire, hire, startHeadhunt, randomTitle, bookBooth, buyStoreItem, catLeaveLap, pushSales, runPromo, placeCatOnLap, releaseGame, setPhaseFocus, setPolishMode, startContract, startGame, tick, train, upgradeOffice, validateGame } from '../core/sim';
 import { storeItemById } from '../core/data';
+import { App as NativeApp } from '@capacitor/app';
+import { Capacitor } from '@capacitor/core';
 import type { BoothId, PromoId, SalesPushId } from '../core/marketing';
 import { normalizeFocus } from '../core/scoring';
 import { sequelName } from '../core/sequels';
@@ -13,7 +15,7 @@ import { money, num } from './format';
 import { focusLean, renderSheet, type Sheet } from './sheets';
 import { ChartTooltip } from './tooltip';
 import { Monetization } from './monetization';
-import { claimReward, investorCash, rewardBlocker, type RewardId } from '../core/rewards';
+import { claimBailout, claimReward, investorCash, rewardBlocker, type RewardId } from '../core/rewards';
 import { SPEEDS, renderDock, renderGames, renderNav, renderNews, renderResearch, renderStaff, renderTopbar, type Tab } from './views';
 
 type StatKey = 'cash' | 'fans' | 'rp';
@@ -71,6 +73,8 @@ export class App {
       if (document.hidden) this.save();
     });
     window.addEventListener('pagehide', () => this.save());
+    // Android's back button steps back through the interface instead of closing the app.
+    if (Capacitor.isNativePlatform()) void NativeApp.addListener('backButton', () => this.back());
 
     this.state = loadGame();
     this.markNewsRead();
@@ -82,7 +86,7 @@ export class App {
 
     this.ads.onChange = () => {
       this.render();
-      if (this.sheet?.kind === 'store' || this.sheet?.kind === 'menu') this.renderSheet();
+      if (this.sheet?.kind === 'store' || this.sheet?.kind === 'menu' || this.sheet?.kind === 'gameOver') this.renderSheet();
     };
     void this.ads.init();
   }
@@ -470,6 +474,30 @@ export class App {
     this.render();
   }
 
+  /** The back button: steps back inside a sheet, closes it, leaves a tab, or asks to quit. */
+  private back() {
+    this.tooltip.hide();
+    const sheet = this.sheet;
+    if (sheet?.kind === 'newGame' && sheet.step === 2) return this.action('ng-back', '');
+    if (sheet?.kind === 'focus' && sheet.spec) return this.action('focus-back', '');
+    if (sheet?.kind === 'welcome') {
+      // Nothing behind the first screen: offer to quit, then come back to it.
+      this.queue.unshift(sheet);
+      return this.replace(this.exitConfirm());
+    }
+    if (sheet) {
+      if (!BLOCKING.includes(sheet.kind)) this.close();
+      return;
+    }
+    if (this.tab !== 'studio') return this.action('tab', 'studio');
+    this.open(this.exitConfirm());
+  }
+
+  private exitConfirm(): Sheet {
+    const text = this.state ? 'Your studio is saved and will be here when you come back.' : 'Leave the game?';
+    return { kind: 'confirm', text, action: 'exit-app', confirmLabel: 'Exit game' };
+  }
+
   private toast(text: string, kind: NoticeKind = 'info') {
     const el = document.createElement('div');
     el.className = `toast ${kind}`;
@@ -642,6 +670,10 @@ export class App {
         this.open({ kind: 'welcome', name: '' });
         this.render();
         return;
+      case 'exit-app':
+        this.save();
+        void NativeApp.exitApp();
+        return;
       case 'start-studio': {
         const name = sheet?.kind === 'welcome' ? sheet.name : '';
         this.state = createGame(name);
@@ -700,6 +732,20 @@ export class App {
         });
         return;
       }
+      case 'bailout':
+        void this.ads.showRewarded().then((watched) => {
+          if (!watched) {
+            this.toast('Watch the whole video to get the bailout.', 'info');
+          } else if (report(claimBailout(s))) {
+            this.save();
+            this.close();
+            this.toast("🏦 The bank bailed you out. There won't be another one!", 'good');
+            this.office.cheer(['🏦', '💰', 'Saved!']);
+            this.vibrate(25);
+          }
+          if (this.sheet?.kind === 'gameOver') this.renderSheet();
+        });
+        return;
       case 'buy': {
         const item = storeItemById(arg);
         const bugsBefore = s.activity?.kind === 'game' ? s.activity.bugs : 0;
@@ -862,6 +908,9 @@ export class App {
         return;
       case 'hire':
         if (report(hire(s, Number(arg)))) this.office.say(Number(arg), '👋 Hi!', 3);
+        return;
+      case 'headhunt':
+        report(startHeadhunt(s));
         return;
       case 'fire': {
         const who = s.staff.find((x) => x.id === Number(arg));
