@@ -33,6 +33,7 @@ import {
   hypeEffect,
   promoById,
   promoPrice,
+  salesPushById,
   salesPushPrice,
   weeklyHype,
   weeksToExpo,
@@ -47,6 +48,7 @@ import { average, benchmark, clamp, evaluate, normalizeFocus, rollReviews, score
 import { START_YEAR, TOTAL_WEEKS, WEEKS_PER_MONTH, WEEKS_PER_YEAR, yearFraction, yearOf } from './time';
 import type {
   ContractOffer,
+  ExpoReport,
   GameProject,
   GameSpec,
   GenreId,
@@ -179,6 +181,11 @@ export function storeOutputMultiplier(state: GameState): number {
 /** Chance per week that someone not already in the zone gets in it. */
 export function zoneChance(state: GameState): number {
   return ZONE_CHANCE * (boostWeeks(state, 'pizza') > 0 ? 3 : 1) * (hasUpgrade(state, 'headphones') ? 1.5 : 1);
+}
+
+/** How much hype is left after a week: a fan forum halves how much fades away. */
+export function hypeDecay(state: GameState): number {
+  return hasUpgrade(state, 'forum') ? 1 - (1 - HYPE_DECAY) / 2 : HYPE_DECAY;
 }
 
 /** Price today: boosts scale with team size, and everything with the years like salaries. */
@@ -521,7 +528,11 @@ export function fire(state: GameState, staffId: number): string | null {
 }
 
 export function trainingCost(state: GameState, s: Staff, skill: 'design' | 'tech') {
-  return { cash: Math.max(2000, s.salary || salaryFor(state, s.design, s.tech)), rp: Math.round(5 + s[skill] * 4) };
+  const cash = Math.max(2000, s.salary || salaryFor(state, s.design, s.tech));
+  const rp = 5 + s[skill] * 4;
+  // The course library makes every course cheaper.
+  const m = hasUpgrade(state, 'courses') ? 0.75 : 1;
+  return { cash: Math.round(cash * m), rp: Math.round(rp * m) };
 }
 
 /** Sends a staff member on a course: +0.5 to a skill. Uses research points and money. */
@@ -640,8 +651,9 @@ export function releaseGame(state: GameState): ReleaseReport | string {
     state.knowledge.balance[p.genre] = true;
   }
   const diff = ev.designShare - ev.designTarget;
-  if (diff > 0.08) insights.push({ text: `${genre.name} players wanted more technical polish (tech points).`, kind: 'bad' });
-  else if (diff < -0.08) insights.push({ text: `${genre.name} players wanted more creative depth (design points).`, kind: 'bad' });
+  const madeUp = ev.pointsRatio >= 1.2 ? ', but the sheer quality made up for a lot of it' : '';
+  if (diff > 0.08) insights.push({ text: `${genre.name} players wanted more technical polish (tech points)${madeUp}.`, kind: 'bad' });
+  else if (diff < -0.08) insights.push({ text: `${genre.name} players wanted more creative depth (design points)${madeUp}.`, kind: 'bad' });
   else insights.push({ text: 'The design/tech balance felt just right.', kind: 'good' });
 
   if (ev.align >= 0.7) insights.push({ text: 'Your focus during development was spot on.', kind: 'good' });
@@ -721,7 +733,7 @@ export const RP_PER_SCORE_POINT = 1.2;
  * steady progress (contracts teach half as much).
  */
 export function weeklyRp(state: GameState): number {
-  return 1 + 0.5 * state.staff.length;
+  return (1 + 0.5 * state.staff.length) * (hasUpgrade(state, 'whiteboard') ? 1.2 : 1);
 }
 
 export function tick(state: GameState): SimEvent[] {
@@ -755,7 +767,7 @@ export function tick(state: GameState): SimEvent[] {
   tickHeadhunt(state);
   tickSales(state);
 
-  tickExpo(state);
+  tickExpo(state, events);
   tickIndustry(state);
   if (state.week % WEEKS_PER_MONTH === 0) monthly(state);
   if (state.week % WEEKS_PER_YEAR === 0) yearly(state);
@@ -774,7 +786,7 @@ function tickProject(state: GameState, p: GameProject, events: SimEvent[]) {
   // The team's salaries and rent while they work on it count towards what the game cost.
   if (p.spend) p.spend.team += Math.round(monthlyCosts(state) / WEEKS_PER_MONTH);
   // Hype fades while polishing; during development it depends on how the game is shaping up (below).
-  if (p.hype && p.phase >= 3) p.hype = Math.round(p.hype * HYPE_DECAY * 10) / 10;
+  if (p.hype && p.phase >= 3) p.hype = Math.round(p.hype * hypeDecay(state) * 10) / 10;
   // Saves from before points were whole numbers.
   p.bugs = Math.round(p.bugs);
   p.design = Math.round(p.design);
@@ -839,7 +851,7 @@ function tickProject(state: GameState, p: GameProject, events: SimEvent[]) {
 
   // Word of mouth: a game with good points so far builds hype, one falling behind loses it.
   const weeksDone = p.phase * p.phaseWeeks + p.weekInPhase + 1;
-  p.hype = weeklyHype(p.hype ?? 0, (p.design + p.tech) / weeksDone / benchmark(state));
+  p.hype = weeklyHype(p.hype ?? 0, (p.design + p.tech) / weeksDone / benchmark(state), hypeDecay(state));
 
   p.weekInPhase++;
   if (p.weekInPhase >= p.phaseWeeks) {
@@ -867,7 +879,7 @@ export const POLISH_DECAY = 0.8;
 function polishPoints(state: GameState, p: GameProject, kind: 'design' | 'tech', events: SimEvent[]) {
   const n = p.pointPolishWeeks ?? 0;
   p.pointPolishWeeks = n + 1;
-  const mult = POLISH_RATE * Math.pow(POLISH_DECAY, n) * range(state, 0.85, 1.15);
+  const mult = POLISH_RATE * Math.pow(POLISH_DECAY, n) * (hasUpgrade(state, 'playtest') ? 1.25 : 1) * range(state, 0.85, 1.15);
   let raw = 0;
   for (const s of state.staff) {
     const skill = kind === 'design' ? s.design * designMultiplier(state) : s.tech * techMultiplier(state);
@@ -911,6 +923,7 @@ export function promoBlocker(state: GameState, id: PromoId): string | null {
   if (!p || p.kind !== 'game') return 'Only while making a game.';
   const promo = promoById(id);
   if (p.promos?.includes(id)) return 'Already done for this game.';
+  if (promo.research && !hasResearch(state, promo.research)) return 'Research Marketing Department to unlock.';
   if (promo.fromYear && yearOf(state.week) < promo.fromYear) return `Available from ${promo.fromYear}.`;
   if (p.phase < promo.fromPhase) return 'Needs more of the game to show.';
   if (promoPrice(state, id) > state.cash) return 'Not enough cash.';
@@ -944,7 +957,7 @@ export function bookBooth(state: GameState, id: BoothId): string | null {
   if (blocked) return blocked;
   const price = boothPrice(state, id);
   state.cash -= price;
-  state.expo = { year: yearOf(state.week), booth: id };
+  state.expo = { year: yearOf(state.week), booth: id, price };
   // The booth shows off the game in development, if there is one.
   const p = state.activity;
   if (p?.kind === 'game' && p.spend) p.spend.marketing += price;
@@ -952,24 +965,32 @@ export function bookBooth(state: GameState, id: BoothId): string | null {
 }
 
 /** Announces GameExpo when booking opens, and runs it on expo week. */
-function tickExpo(state: GameState) {
+function tickExpo(state: GameState, events: SimEvent[]) {
   const w = state.week % WEEKS_PER_YEAR;
   if (w === EXPO_WEEK - EXPO_BOOKING_WEEKS) {
     notify(state, `GameExpo ${yearOf(state.week)} opens in ${EXPO_BOOKING_WEEKS} weeks. Book a booth to show off your game.`, 'info');
   }
-  if (w !== EXPO_WEEK || state.expo?.year !== yearOf(state.week)) return;
-  const booth = boothById(state.expo.booth);
+  const expo = state.expo;
+  if (w !== EXPO_WEEK || expo?.year !== yearOf(state.week)) return;
+  const booth = boothById(expo.booth);
   const p = state.activity;
+  const report: ExpoReport = { year: expo.year, booth: booth.id, price: expo.price, fansBefore: state.fans, fansAfter: state.fans };
   if (p?.kind === 'game') {
     // A game in development is the star of the show.
-    p.hype = Math.min(MAX_HYPE, (p.hype ?? 0) + booth.hype);
+    report.game = p.name;
+    report.hypeBefore = p.hype ?? 0;
+    p.hype = Math.min(MAX_HYPE, report.hypeBefore + booth.hype);
+    report.hypeAfter = p.hype;
     state.fans += booth.fans;
-    notify(state, `GameExpo: crowds lined up to play ${p.name}! +${booth.hype} hype, +${booth.fans.toLocaleString('en-US')} fans.`, 'good');
+    notify(state, `GameExpo: crowds lined up to play ${p.name}! +${Math.round(p.hype - report.hypeBefore)} hype, +${booth.fans.toLocaleString('en-US')} fans.`, 'good');
   } else {
     const fans = Math.round(booth.fans / 2);
     state.fans += fans;
     notify(state, `GameExpo: with nothing new to show, the booth won ${fans.toLocaleString('en-US')} fans.`, 'info');
   }
+  report.fansAfter = state.fans;
+  expo.report = report;
+  events.push({ type: 'expo', report });
 }
 
 /** Why a post-launch push can't run on this game, or null if it can. */
@@ -978,11 +999,13 @@ export function salesPushBlocker(state: GameState, gameId: number, id: SalesPush
   if (!g) return 'Game not found.';
   if (g.weeksOnMarket >= SALES_WEEKS) return 'It has left the charts.';
   if (g.pushes?.includes(id)) return 'Already done for this game.';
+  const push = salesPushById(id);
+  if (push.research && !hasResearch(state, push.research)) return 'Research Marketing Department to unlock.';
   if (salesPushPrice(state, id) > state.cash) return 'Not enough cash.';
   return null;
 }
 
-/** Ad push (+25% of the copies left to sell) or discount sale (40% off, 70% more copies, more fans). */
+/** Ad push (+15%) or TV ad blitz (+35% of the copies left to sell) or discount sale (40% off, 70% more copies, more fans). */
 export function pushSales(state: GameState, gameId: number, id: SalesPushId): string | null {
   const blocked = salesPushBlocker(state, gameId, id);
   if (blocked) return blocked;
@@ -992,6 +1015,7 @@ export function pushSales(state: GameState, gameId: number, id: SalesPushId): st
   if (g.spend) g.spend.marketing += price;
   const remaining = Math.max(0, g.targetUnits - g.unitsSold);
   if (id === 'ads') g.targetUnits += Math.round(remaining * 0.15);
+  else if (id === 'tv_ads') g.targetUnits += Math.round(remaining * 0.35);
   else {
     g.targetUnits += Math.round(remaining * 0.7);
     g.unitPrice *= 0.6;

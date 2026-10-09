@@ -19,15 +19,16 @@ export const BUZZ_PER_WEEK = 1;
  * Hype after a week of development. `ratio` is the game's points per week so
  * far against what the market expects. A game ahead of expectations gets word
  * of mouth: its hype grows each week towards a level that rises with how far
- * ahead it is. Hype above that level (or for a game that isn't ahead) fades.
+ * ahead it is. Hype above that level (or for a game that isn't ahead) fades by
+ * `decay` a week.
  */
-export function weeklyHype(hype: number, ratio: number): number {
-  const buzz = Math.max(0, Math.min(BUZZ_MAX_HYPE, 300 * (ratio - 1)));
-  const next = hype < buzz ? Math.min(buzz, hype + BUZZ_PER_WEEK) : Math.max(buzz, hype * HYPE_DECAY);
+export function weeklyHype(hype: number, ratio: number, decay = HYPE_DECAY): number {
+  const buzz = Math.max(0, Math.min(BUZZ_MAX_HYPE, 200 * (ratio - 1)));
+  const next = hype < buzz ? Math.min(buzz, hype + BUZZ_PER_WEEK) : Math.max(buzz, hype * decay);
   return Math.round(next * 10) / 10;
 }
 
-export type PromoId = 'preview' | 'trailer' | 'influencers';
+export type PromoId = 'preview' | 'trailer' | 'influencers' | 'press_tour' | 'tv_spot';
 
 export interface Promo {
   id: PromoId;
@@ -40,12 +41,16 @@ export interface Promo {
   /** Earliest development phase (0-2) it makes sense in: a trailer needs something to show. */
   fromPhase: number;
   fromYear?: number;
+  /** Research that unlocks it (the Marketing Department). */
+  research?: string;
 }
 
 export const PROMOS: Promo[] = [
   { id: 'preview', name: 'Magazine preview', icon: '📰', desc: 'Give a magazine an early look.', price: 3000, hype: 12, fromPhase: 0 },
   { id: 'trailer', name: 'Trailer', icon: '🎬', desc: 'Cut a trailer from what you have so far.', price: 12000, hype: 25, fromPhase: 1 },
   { id: 'influencers', name: 'Influencer campaign', icon: '📱', desc: 'Send early builds to streamers and video creators.', price: 40000, hype: 40, fromPhase: 1, fromYear: 2006 },
+  { id: 'press_tour', name: 'Press tour', icon: '🎤', desc: 'Fly the team around to demo the game to the press.', price: 25000, hype: 30, fromPhase: 0, research: 'marketing' },
+  { id: 'tv_spot', name: 'TV commercial', icon: '📺', desc: 'A prime-time ad that puts the game in every living room.', price: 80000, hype: 55, fromPhase: 1, research: 'marketing' },
 ];
 
 export function promoById(id: string): Promo {
@@ -126,7 +131,7 @@ export function expoYear(state: Pick<GameState, 'week'>): number {
 // ---------------------------------------------------------------------------
 // After launch: pushes for a game that's still selling.
 
-export type SalesPushId = 'ads' | 'sale';
+export type SalesPushId = 'ads' | 'sale' | 'tv_ads';
 
 export interface SalesPush {
   id: SalesPushId;
@@ -135,11 +140,13 @@ export interface SalesPush {
   desc: string;
   /** Price in 1985 money (0 = free). */
   price: number;
+  research?: string;
 }
 
 export const SALES_PUSHES: SalesPush[] = [
   { id: 'ads', name: 'Ad push', icon: '📣', desc: '+15% on the copies it has left to sell.', price: 10000 },
   { id: 'sale', name: 'Discount sale', icon: '🏷️', desc: '40% off for the rest of its run: 70% more copies and more new fans.', price: 0 },
+  { id: 'tv_ads', name: 'TV ad blitz', icon: '📺', desc: '+35% on the copies it has left to sell.', price: 60000, research: 'marketing' },
 ];
 
 export function salesPushById(id: string): SalesPush {

@@ -69,7 +69,7 @@ export function evaluate(state: GameState, project: GameProject): Evaluation {
   const alignMult = 0.75 + 0.4 * align;
 
   const designShare = total > 0 ? project.design / total : 0.5;
-  const balanceMult = clamp(1.06 - Math.abs(designShare - genre.designTarget) * 1.6, 0.65, 1.06);
+  const balanceMult = balanceMultiplier(designShare, genre.designTarget, pointsRatio);
 
   const bugRatio = total > 0 ? project.bugs / total : 0;
   const bugMult = clamp(1 - bugRatio * 2.2, 0.55, 1);
@@ -102,6 +102,24 @@ export function evaluate(state: GameState, project: GameProject): Evaluation {
     quality,
     score,
   };
+}
+
+/** Best and worst raw design/tech balance multipliers. */
+export const BALANCE_BEST = 1.06;
+export const BALANCE_WORST = 0.65;
+/** How much of the balance penalty a game that beats expectations by 50% or more is forgiven. */
+export const BALANCE_RELIEF_MAX = 0.6;
+
+/**
+ * Reviewers mark a game down when its design/tech split misses what the genre's
+ * players like, but a game that clearly beats expectations on points is forgiven
+ * part of that: from no relief at 1x the expected points to BALANCE_RELIEF_MAX at
+ * 1.5x. A well-matched split still earns the full bonus.
+ */
+export function balanceMultiplier(designShare: number, designTarget: number, pointsRatio: number): number {
+  const penalty = BALANCE_BEST - clamp(BALANCE_BEST - Math.abs(designShare - designTarget) * 1.6, BALANCE_WORST, BALANCE_BEST);
+  const relief = BALANCE_RELIEF_MAX * clamp((pointsRatio - 1) / 0.5, 0, 1);
+  return BALANCE_BEST - penalty * (1 - relief);
 }
 
 /** Four reviewers, each with their own opinion around the true score. */
