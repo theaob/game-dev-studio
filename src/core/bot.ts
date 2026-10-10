@@ -2,8 +2,9 @@
  * Simple automated players used by tests to check that a full playthrough
  * works and that the economy is balanced (smart play wins, careless play struggles).
  */
-import { GENRES, OFFICES, RESEARCH, TOPICS, genreById, platformGenreFit, platformUsers, topicFit } from './data';
+import { OFFICES, RESEARCH, TOPICS, genreById, platformGenreFit, platformUsers, topicFit } from './data';
 import {
+  availableGenres,
   availableMarketing,
   availablePlatforms,
   availableSizes,
@@ -119,7 +120,7 @@ function smartSpec(state: GameState, minFit = 3, modestAds = false): GameSpec | 
   const allowed: Record<string, string[]> = { small: ['none'], medium: ['none', 'ads'], large: ['none', 'ads', 'campaign'] };
   const adsFor = (size: string) => (modestAds ? marketing.filter((m) => allowed[size].includes(m.id)) : marketing);
   for (const platform of availablePlatforms(state)) {
-    for (const genre of GENRES) {
+    for (const genre of availableGenres(state)) {
       for (const topic of state.topics) {
         if (recent.some((g) => g.topic === topic && g.genre === genre.id)) continue;
         const fit = topicFit(topic, genre.id);
@@ -144,7 +145,8 @@ function smartSpec(state: GameState, minFit = 3, modestAds = false): GameSpec | 
 function naiveSpec(state: GameState): GameSpec | null {
   const n = state.released.length;
   const topic = state.topics[n % state.topics.length];
-  const genre = GENRES[(n * 3) % GENRES.length].id;
+  const genres = availableGenres(state);
+  const genre = genres[(n * 3) % genres.length].id;
   const spec: GameSpec = { name: `Game ${n + 1}`, topic, genre, platform: 'pc', size: 'small', marketing: 'none' };
   return gameCost(state, spec).total <= state.cash ? spec : null;
 }
@@ -154,7 +156,8 @@ function eagerSpec(state: GameState): GameSpec | null {
   const n = state.released.length;
   const year = yearFraction(state.week);
   const topic = state.topics[(n * 7) % state.topics.length];
-  const genre = GENRES[(n * 3) % GENRES.length].id;
+  const genres = availableGenres(state);
+  const genre = genres[(n * 3) % genres.length].id;
   const platform = [...availablePlatforms(state)].sort((a, b) => platformUsers(b, year) - platformUsers(a, year))[0];
   const sizes = availableSizes(state).filter((s) => state.staff.length >= s.minStaff).reverse();
   const marketing = [...availableMarketing(state)].reverse();

@@ -375,7 +375,7 @@ export function renderResearch(state: GameState): string {
   const groups: Record<string, string[]> = {};
   for (const r of RESEARCH) {
     const done = state.researched.includes(r.id);
-    (groups[r.category] ??= []).push(researchRow(state, r.id, '🧪', r.name, r.desc, done));
+    (groups[r.category] ??= []).push(researchRow(state, r.id, r.icon ?? '🧪', r.name, r.desc, done));
   }
   const topics = TOPICS.filter((t) => t.cost > 0).map((t) =>
     researchRow(state, t.id, t.icon, t.name, 'New game topic', state.topics.includes(t.id)),

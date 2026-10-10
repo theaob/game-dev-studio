@@ -46,6 +46,6 @@ describe('achievements', () => {
       for (const a of newAchievements(s, got)) got.add(a.id);
     }
     for (const a of newAchievements(s, got)) got.add(a.id);
-    for (const id of ['first_game', 'choice', 'goty', 'millionaire', 'campus', 'researcher', 'legacy']) expect(got).toContain(id);
+    for (const id of ['first_game', 'choice', 'goty', 'millionaire', 'campus', 'researcher', 'perfect_combo', 'legacy']) expect(got).toContain(id);
   });
 });

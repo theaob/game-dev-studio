@@ -4,7 +4,7 @@
  * it. Unlocks belong to the device, not the save (see src/save.ts):
  * starting over keeps them, so they are a record of everything you've done.
  */
-import { OFFICES, RESEARCH, STORE } from './data';
+import { OFFICES, PERFECT_FIT, RESEARCH, STORE } from './data';
 import { DECOR } from './decor';
 import { acclaimOf } from './acclaim';
 import { onSale, verdict } from './results';
@@ -31,6 +31,7 @@ export const ACHIEVEMENTS: Achievement[] = [
   { id: 'goty', name: 'Game of the Year', icon: '🏆', desc: 'Win Game of the Year.', done: (s) => s.released.some((g) => g.goty !== undefined) },
   { id: 'sequel', name: 'Part Two', icon: '2️⃣', desc: 'Release a sequel.', done: (s) => s.released.some((g) => (g.series ?? 1) >= 2) },
   { id: 'trilogy', name: 'Trilogy', icon: '3️⃣', desc: 'Release the third game in a series.', done: (s) => s.released.some((g) => (g.series ?? 1) >= 3) },
+  { id: 'perfect_combo', name: 'Perfect Match', icon: '💞', desc: 'Discover a perfect topic and genre combination.', done: (s) => Object.values(s.knowledge.combos).includes(PERFECT_FIT) },
   { id: 'blockbuster', name: 'Blockbuster', icon: '🎬', desc: 'Finish selling a game that made 5 times what it cost.', done: (s) => s.released.some((g) => !onSale(g) && verdict(g).id === 'blockbuster') },
 
   // Money and fans

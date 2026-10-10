@@ -4,7 +4,8 @@ import { sequelQualityMult } from './sequels';
 import { yearFraction, START_YEAR } from './time';
 import type { GameProject, GameState } from './types';
 
-export const FIT_MULT = [0.6, 0.85, 1.0, 1.15];
+/** Quality multiplier per topic/genre fit: bad, okay, good, great, perfect. */
+export const FIT_MULT = [0.6, 0.85, 1.0, 1.15, 1.2];
 
 export function normalizeFocus(raw: number[]): number[] {
   const total = raw.reduce((a, b) => a + Math.max(0, b), 0);

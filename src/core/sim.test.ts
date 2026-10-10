@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { GENRES, GENRE_TITLES, PLATFORMS, TOPICS, TOPIC_TITLE_WORDS, platformUsers } from './data';
+import { GENRES, GENRE_TITLES, PERFECT_FIT, PLATFORMS, TOPICS, TOPIC_TITLE_WORDS, platformUsers } from './data';
+import { expertiseLevel, expertiseMult, EXPERTISE_MIN_SCORE } from './expertise';
 import { playThrough } from './bot';
 import { BALANCE_BEST, BALANCE_WORST, balanceMultiplier, benchmark, evaluate, normalizeFocus, phaseAlignment, repeatMultiplier } from './scoring';
 import { SEQUEL_TOO_SOON_MULT, sequelCandidates, sequelName, sequelSalesMult } from './sequels';
@@ -16,6 +17,8 @@ import {
   startGame,
   tick,
   validateGame,
+  availableGenres,
+  staffWeeklyPoints,
   randomTitle,
   setPolishMode,
   boostWeeks,
@@ -46,7 +49,7 @@ import { bailoutCash, canBailout, claimBailout, claimReward, investorCash, resea
 import { cumulativeRevenue, paybackWeek, profit, returnMultiple, totalCost, verdict } from './results';
 import { RIVAL_CLASH_MULT, TREND_GENRE_BONUS, TREND_TOPIC_BONUS, trendMult } from './industry';
 import { BUZZ_MAX_HYPE, EXPO_BOOKING_WEEKS, EXPO_WEEK, HYPE_DECAY, hypeEffect, weeklyHype } from './marketing';
-import type { GameProject, GameSpec } from './types';
+import type { GameProject, GameSpec, ReleasedGame } from './types';
 
 const spec: GameSpec = { name: 'Dragon Quest', topic: 'fantasy', genre: 'rpg', platform: 'pc', size: 'small', marketing: 'none' };
 
@@ -54,6 +57,14 @@ describe('data', () => {
   it('has a fit for every genre on every topic', () => {
     for (const t of TOPICS) expect(t.fit).toHaveLength(GENRES.length);
     for (const g of GENRES) expect(g.importance).toHaveLength(9);
+  });
+
+  it('has a few perfect combos for every genre, each of them hidden behind a great one', () => {
+    for (const [gi, g] of GENRES.entries()) {
+      const perfect = TOPICS.filter((t) => t.fit[gi] === PERFECT_FIT);
+      expect(perfect.length, g.id).toBeGreaterThanOrEqual(1);
+      expect(perfect.length, g.id).toBeLessThanOrEqual(2);
+    }
   });
 
   it('interpolates platform users and hides retired platforms', () => {
@@ -128,7 +139,9 @@ describe('simulation', () => {
     expect(report.game.score).toBeGreaterThanOrEqual(1);
     expect(report.game.score).toBeLessThanOrEqual(10);
     expect(report.insights.length).toBeGreaterThan(0);
-    expect(s.knowledge.combos['fantasy|rpg']).toBe(3);
+    expect(s.knowledge.combos['fantasy|rpg']).toBe(PERFECT_FIT);
+    expect(report.insights.some((i) => i.text.includes('perfect combination'))).toBe(true);
+    expect(s.notices.some((n) => n.text.includes('Perfect combo discovered'))).toBe(true);
     expect(s.activity).toBeNull();
 
     const cash = s.cash;
@@ -166,6 +179,40 @@ describe('simulation', () => {
     expect(doResearch(s, 'horror')).toBeNull();
     expect(s.topics).toContain('horror');
     expect(hire(s, s.candidates[0].id)).toMatch(/office is full/);
+  });
+
+  it('new genres have to be researched first', () => {
+    const s = createGame('Test', 3);
+    const shooter: GameSpec = { ...spec, topic: 'scifi', genre: 'shooter' };
+    expect(availableGenres(s).map((g) => g.id)).not.toContain('shooter');
+    expect(validateGame(s, shooter)).toBe('Genre not researched.');
+    s.rp = 1000;
+    expect(doResearch(s, 'genre_shooter')).toMatch(/Requires/);
+    expect(doResearch(s, 'engine2')).toBeNull();
+    expect(doResearch(s, 'genre_shooter')).toBeNull();
+    expect(s.notices.at(-1)?.text).toBe('New genre unlocked: Shooter.');
+    expect(availableGenres(s).map((g) => g.id)).toContain('shooter');
+    expect(validateGame(s, shooter)).toBeNull();
+  });
+
+  it('hits in a genre build know-how that speeds up the next game in it', () => {
+    expect([0, 1, 2, 3, 6, 10, 30].map(expertiseLevel)).toEqual([1, 2, 2, 3, 4, 5, 5]);
+    const hit = { genre: 'rpg' as const, topic: 'fantasy', score: EXPERTISE_MIN_SCORE };
+    const flop = { ...hit, score: EXPERTISE_MIN_SCORE - 1 };
+    expect(expertiseMult([], 'rpg', 'fantasy')).toBe(1);
+    // Flops teach nothing.
+    expect(expertiseMult([flop, flop, flop], 'rpg', 'fantasy')).toBe(1);
+    const three = [hit, hit, hit];
+    expect(expertiseMult(three, 'rpg', 'fantasy')).toBeCloseTo(1.08);
+    expect(expertiseMult(three, 'rpg', 'scifi')).toBeCloseTo(1.06);
+    expect(expertiseMult(three, 'action', 'fantasy')).toBeCloseTo(1.02);
+
+    const s = createGame('Test', 5);
+    expect(startGame(s, spec, [10, 30, 60])).toBeNull();
+    const fresh = staffWeeklyPoints(s, s.staff[0], 0, [10, 30, 60]);
+    s.released.push(...(three.map((g, i) => ({ ...spec, ...g, id: 900 + i })) as unknown as ReleasedGame[]));
+    const skilled = staffWeeklyPoints(s, s.staff[0], 0, [10, 30, 60]);
+    expect(skilled[2].design / fresh[2].design).toBeCloseTo(1.08);
   });
 
   it('a headhunter finds a rockstar developer after a few weeks', () => {

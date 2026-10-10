@@ -36,12 +36,12 @@ export const RIVALS: Rival[] = [
   { name: 'Bitwise Bros', from: 1985, until: 1999, quality: 6.5, genres: ['action', 'puzzle'] },
   { name: 'Lunar Soft', from: 1985, quality: 7, genres: ['adventure', 'rpg'] },
   { name: 'Ironclad Interactive', from: 1987, quality: 7.3, genres: ['strategy', 'simulation'] },
-  { name: 'Pixelforge', from: 1990, quality: 7.6, genres: ['action', 'rpg'] },
+  { name: 'Pixelforge', from: 1990, quality: 7.6, genres: ['action', 'rpg', 'platformer'] },
   { name: 'Quokka Games', from: 1993, until: 2012, quality: 6.4, genres: ['casual', 'puzzle'] },
   { name: 'Northwind Studios', from: 1997, quality: 8, genres: ['rpg', 'adventure'] },
   { name: 'Hexagon Labs', from: 2001, quality: 7.4, genres: ['strategy', 'simulation', 'puzzle'] },
-  { name: 'Cobalt Entertainment', from: 2004, quality: 7.8, genres: ['action', 'adventure'] },
-  { name: 'Tiny Lantern', from: 2009, quality: 7.2, genres: ['puzzle', 'casual', 'adventure'] },
+  { name: 'Cobalt Entertainment', from: 2004, quality: 7.8, genres: ['action', 'adventure', 'shooter'] },
+  { name: 'Tiny Lantern', from: 2009, quality: 7.2, genres: ['puzzle', 'casual', 'adventure', 'rhythm'] },
   { name: 'Spark & Moss', from: 2013, quality: 7.5, genres: ['casual', 'simulation'] },
 ];
 
