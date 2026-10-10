@@ -112,6 +112,7 @@ export class App {
       }
     }
     this.updateStats(dt);
+    this.els.top.querySelector<HTMLElement>('.week-dots .now')?.style.setProperty('--p', `${Math.min(1, this.acc / WEEK_MS)}`);
     // The office animates at ~30fps while visible.
     if (s && this.tab === 'studio' && !document.hidden && t - this.lastDraw > 32) {
       this.lastDraw = t;

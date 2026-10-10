@@ -19,7 +19,7 @@ import {
   researchCost,
   trainingCost,
 } from '../core/sim';
-import { WEEKS_PER_YEAR, formatDate, formatShortDate, yearOf } from '../core/time';
+import { WEEKS_PER_MONTH, WEEKS_PER_YEAR, formatDate, formatShortDate, yearOf } from '../core/time';
 import { EXPO_BOOKING_WEEKS, weeksToExpo } from '../core/marketing';
 import type { GameProject, GameState, PolishMode, ReleasedGame, Staff } from '../core/types';
 import { esc, money, num, scoreClass } from './format';
@@ -36,7 +36,7 @@ export function renderTopbar(state: GameState, speed: number, lastSpeed: number)
   <div class="hud-row">
     <button class="hud-pill studio-pill" data-action="menu" aria-label="Menu">
       <span class="studio-logo">🎮</span>
-      <span class="studio-text"><b>${esc(state.studioName)}</b><small>${formatDate(state.week)}</small></span>
+      <span class="studio-text"><b>${esc(state.studioName)}</b><small>${formatDate(state.week)}${weekDots(state.week)}</small></span>
     </button>
     <div class="grow"></div>
     <button class="hud-btn ${paused ? 'paused' : ''}" data-action="toggle-pause" aria-label="${paused ? 'Play' : 'Pause'}">${paused ? '▶' : '❚❚'}</button>
@@ -47,6 +47,16 @@ export function renderTopbar(state: GameState, speed: number, lastSpeed: number)
     <div class="res" data-stat="fans"><i>❤️</i><b>${num(state.fans)}</b></div>
     <div class="res" data-stat="rp"><i>🔬</i><b>${Math.floor(state.rp)} RP</b></div>
   </div>`;
+}
+
+/**
+ * One dot per week of the month: past weeks are filled and the current one fills up as the
+ * week goes by (the app sets its `--p`), so the player can see time moving.
+ */
+function weekDots(week: number): string {
+  const w = week % WEEKS_PER_MONTH;
+  const dots = Array.from({ length: WEEKS_PER_MONTH }, (_, i) => `<i class="${i < w ? 'done' : i === w ? 'now' : ''}"></i>`);
+  return `<span class="week-dots" aria-hidden="true">${dots.join('')}</span>`;
 }
 
 export function renderNav(tab: Tab, state: GameState, unreadNews: number): string {
