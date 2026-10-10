@@ -4,7 +4,7 @@ import { expertiseLevel, expertiseMult, EXPERTISE_MIN_SCORE } from './expertise'
 import { playThrough } from './bot';
 import { BALANCE_BEST, BALANCE_WORST, balanceMultiplier, benchmark, evaluate, normalizeFocus, phaseAlignment, repeatMultiplier } from './scoring';
 import { SEQUEL_TOO_SOON_MULT, sequelCandidates, sequelName, sequelSalesMult } from './sequels';
-import { GOTY_SEQUEL_HYPE, acclaimFor, acclaimOf, gotyFans, sequelHype } from './acclaim';
+import { GOTY_SEQUEL_HYPE, LONG_AWAITED_MAX_HYPE, acclaimFor, acclaimOf, gotyFans, sequelHype } from './acclaim';
 import { gameOfTheYear } from './industry';
 import {
   createGame,
@@ -374,7 +374,7 @@ describe('sequels', () => {
     expect(sequelSalesMult(g(7))).toBeCloseTo(1.24);
     expect(sequelSalesMult(g(5))).toBe(1);
     expect(sequelSalesMult(g(3))).toBeLessThan(1);
-    expect(sequelSalesMult(g(9, 4))).toBeLessThan(sequelSalesMult(g(9, 2)));
+    expect(sequelSalesMult(g(8.5, 4))).toBeLessThan(sequelSalesMult(g(8.5, 2)));
   });
 
   it('skips the repeat penalty unless the sequel is rushed', () => {
@@ -403,10 +403,10 @@ describe('sequels', () => {
   });
 
   it('starts a sequel to an award winner with hype, more for a better original', () => {
-    expect(sequelHype({ score: 8.75 })).toBe(0);
-    expect(sequelHype({ score: 9 })).toBe(20);
-    expect(sequelHype({ score: 9.5 })).toBe(40);
-    expect(sequelHype({ score: 10 })).toBe(60);
+    expect(sequelHype({ score: 8.75, releaseWeek: 0 }, 0)).toBe(0);
+    expect(sequelHype({ score: 9, releaseWeek: 0 }, 0)).toBe(20);
+    expect(sequelHype({ score: 9.5, releaseWeek: 0 }, 0)).toBe(40);
+    expect(sequelHype({ score: 10, releaseWeek: 0 }, 0)).toBe(60);
     const s = createGame('Seq', 3);
     const first = releaseOne(s, spec).game;
     first.score = 9.5;
@@ -421,6 +421,36 @@ describe('sequels', () => {
     plain.acclaim = undefined;
     expect(startGame(t, { ...spec, name: 'DQ2', sequelOf: plain.id }, [10, 30, 60])).toBeNull();
     expect((t.activity as GameProject).hype ?? 0).toBe(0);
+  });
+
+  it('makes a long-awaited sequel to an award winner more hyped, and its fans never get bored', () => {
+    const y = WEEKS_PER_YEAR;
+    const choice = { score: 9, acclaim: 'choice', releaseWeek: 0 };
+    // Within two years: no extra. Then +8 a year, up to the cap.
+    expect(sequelHype(choice, 1.5 * y)).toBe(20);
+    expect(sequelHype(choice, 3 * y)).toBe(36);
+    expect(sequelHype(choice, 5 * y)).toBe(52);
+    expect(sequelHype(choice, 20 * y)).toBe(20 + LONG_AWAITED_MAX_HYPE);
+    expect(sequelHype({ score: 8, releaseWeek: 0 }, 20 * y)).toBe(0);
+    // Long series tire players, but not the fans of an award winner.
+    const g = (score: number, series: number) => ({ score, series, acclaim: acclaimFor(score)?.id }) as Parameters<typeof sequelSalesMult>[0];
+    expect(sequelSalesMult(g(9, 5))).toBe(sequelSalesMult(g(9, 1)));
+    expect(sequelSalesMult(g(8.5, 5))).toBeLessThan(sequelSalesMult(g(8.5, 1)));
+    // The fans' hype doesn't fade during development.
+    const s = createGame('Seq', 3);
+    const first = releaseOne(s, spec).game;
+    first.score = 9.5;
+    first.acclaim = 'masterpiece';
+    s.week = first.releaseWeek + 4 * y;
+    expect(startGame(s, { ...spec, name: 'DQ2', sequelOf: first.id }, [10, 30, 60])).toBeNull();
+    const p = s.activity as GameProject;
+    const start = p.hype!;
+    expect(start).toBe(40 + 24);
+    for (let i = 0; i < 40 && s.activity; i++) {
+      if (p.awaitingFocus) setPhaseFocus(s, [10, 30, 60]);
+      tick(s);
+      expect(p.hype).toBeGreaterThanOrEqual(start);
+    }
   });
 
   it('names Game of the Year: the best release of the year, the studio\'s or a rival\'s', () => {
@@ -443,7 +473,7 @@ describe('sequels', () => {
     expect(game.goty).toBe(year);
     expect(s.fans).toBe(fans + gotyFans(fans));
     expect(game.targetUnits).toBe(target + Math.round(target * 0.25));
-    expect(sequelHype({ ...game, acclaim: undefined, score: 8 })).toBe(GOTY_SEQUEL_HYPE);
+    expect(sequelHype({ ...game, acclaim: undefined, score: 8 }, game.releaseWeek)).toBe(GOTY_SEQUEL_HYPE);
     // Nothing released that year: no award.
     gameOfTheYear(s, year + 5);
     expect(s.released.filter((g) => g.goty !== undefined)).toHaveLength(1);

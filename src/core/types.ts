@@ -49,6 +49,8 @@ export interface GameProject extends GameSpec {
   /** Hype built by marketing during development (0..100), and the promos already run. */
   hype?: number;
   promos?: string[];
+  /** Hype from the fans of a beloved original: the game's hype never fades below it. */
+  fanHype?: number;
   /** Money spent on the game so far, by kind. */
   spend?: Spend;
   design: number;

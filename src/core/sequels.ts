@@ -3,6 +3,7 @@
  * the original's fans, and isn't penalised for repeating the combination —
  * unless it's rushed out too soon or the series has run too long.
  */
+import { beloved } from './acclaim';
 import type { GameState, ReleasedGame } from './types';
 
 /** Releasing a sequel within a year of the previous entry feels rushed. */
@@ -32,13 +33,14 @@ export function sequelName(original: ReleasedGame): string {
 
 /**
  * Sales multiplier for a sequel to `original`. Fans of a good game come back
- * (up to +45%); a flop's sequel sells less. Long series start to tire players.
+ * (up to +45%); a flop's sequel sells less. Long series start to tire players,
+ * unless the last entry was an award winner: those fans want more.
  */
 export function sequelSalesMult(original: ReleasedGame): number {
   const s = original.score;
   const fans = s >= 5 ? 1 + Math.min(0.45, Math.max(0, (s - 5) * 0.12)) : 0.8 + (s - 1) * 0.05;
   const part = seriesNumber(original) + 1;
-  const fatigue = part >= 4 ? Math.max(0.75, 1 - 0.05 * (part - 3)) : 1;
+  const fatigue = part >= 4 && !beloved(original) ? Math.max(0.75, 1 - 0.05 * (part - 3)) : 1;
   return fans * fatigue;
 }
 
