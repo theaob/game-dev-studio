@@ -4,7 +4,7 @@
  * it. Unlocks belong to the device, not the save (see src/save.ts):
  * starting over keeps them, so they are a record of everything you've done.
  */
-import { OFFICES, RESEARCH, STORE } from './data';
+import { OFFICES, PERFECT_FIT, RESEARCH, STORE } from './data';
 import { DECOR } from './decor';
 import { acclaimOf } from './acclaim';
 import { onSale, verdict } from './results';
@@ -27,12 +27,13 @@ export const ACHIEVEMENTS: Achievement[] = [
   { id: 'first_game', name: 'Hello, World', icon: '🎮', points: 10, desc: 'Release your first game.', done: (s) => s.released.length >= 1 },
   { id: 'ten_games', name: 'Prolific', icon: '📦', points: 25, desc: 'Release 10 games.', done: (s) => s.released.length >= 10 },
   { id: 'great_review', name: 'Rave Reviews', icon: '⭐', points: 15, desc: 'Release a game that reviews 8 or better.', done: (s) => s.released.some((g) => g.score >= 8) },
-  { id: 'perfect_ten', name: 'Perfect Ten', icon: '💯', points: 100, desc: 'Release a game with a perfect 10.', done: (s) => s.released.some((g) => g.score >= 10) },
+  { id: 'perfect_ten', name: 'Perfect Ten', icon: '💯', points: 90, desc: 'Release a game with a perfect 10.', done: (s) => s.released.some((g) => g.score >= 10) },
   { id: 'choice', name: "Critics' Choice", icon: '🏅', points: 40, desc: "Win a Critics' Choice award (9.0 or better).", done: (s) => s.released.some((g) => acclaimOf(g)) },
   { id: 'masterpiece', name: 'Masterpiece', icon: '👑', points: 60, desc: 'Make a Masterpiece (9.5 or better).', done: (s) => s.released.some((g) => acclaimOf(g)?.id === 'masterpiece') },
   { id: 'goty', name: 'Game of the Year', icon: '🏆', points: 50, desc: 'Win Game of the Year.', done: (s) => s.released.some((g) => g.goty !== undefined) },
   { id: 'sequel', name: 'Part Two', icon: '2️⃣', points: 15, desc: 'Release a sequel.', done: (s) => s.released.some((g) => (g.series ?? 1) >= 2) },
   { id: 'trilogy', name: 'Trilogy', icon: '3️⃣', points: 25, desc: 'Release the third game in a series.', done: (s) => s.released.some((g) => (g.series ?? 1) >= 3) },
+  { id: 'perfect_combo', name: 'Perfect Match', icon: '💞', points: 20, desc: 'Discover a perfect topic and genre combination.', done: (s) => Object.values(s.knowledge.combos).includes(PERFECT_FIT) },
   { id: 'blockbuster', name: 'Blockbuster', icon: '🎬', points: 50, desc: 'Finish selling a game that made 5 times what it cost.', done: (s) => s.released.some((g) => !onSale(g) && verdict(g).id === 'blockbuster') },
 
   // Money and fans
@@ -54,7 +55,7 @@ export const ACHIEVEMENTS: Achievement[] = [
 
   // Survival
   { id: 'bailout', name: 'Second Chance', icon: '🏦', points: 20, desc: 'Survive bankruptcy with the bailout.', done: (s) => !!s.bailoutUsed && !s.over },
-  { id: 'legacy', name: 'Legacy', icon: '🎂', points: 100, desc: 'Keep the studio going until 2025.', done: (s) => s.over === 'retired' },
+  { id: 'legacy', name: 'Legacy', icon: '🎂', points: 90, desc: 'Keep the studio going until 2025.', done: (s) => s.over === 'retired' },
 ];
 
 export function achievementById(id: string): Achievement | undefined {

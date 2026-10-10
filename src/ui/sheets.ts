@@ -1,6 +1,6 @@
 import {
   FIT_LABELS,
-  GENRES,
+  PERFECT_FIT,
   PHASES,
   STORE,
   genreById,
@@ -11,7 +11,9 @@ import {
   topicById,
 } from '../core/data';
 import { normalizeFocus, repeatMultiplier } from '../core/scoring';
+import { GENRE_LEVEL_BONUS, TOPIC_LEVEL_BONUS, EXPERTISE_MIN_SCORE, genreHits, hitsToNextLevel, topicHits, expertiseLevel } from '../core/expertise';
 import {
+  availableGenres,
   availableMarketing,
   availablePlatforms,
   availableSizes,
@@ -162,7 +164,20 @@ const RECEPTION = [
   { face: '😐', title: 'Mixed reception', text: (t: string, g: string) => `Some players will enjoy a ${t} ${g} game, but many won't be convinced.`, cls: 'mid' },
   { face: '🙂', title: 'Players will like it', text: (t: string, g: string) => `${t} ${g} is a solid combination that fans enjoy.`, cls: 'good' },
   { face: '🤩', title: 'Players will love it', text: (t: string, g: string) => `${t} ${g} games are a proven hit!`, cls: 'great' },
+  { face: '💞', title: 'A perfect match', text: (t: string, g: string) => `${t} and ${g} were made for each other. Players can't get enough.`, cls: 'perfect' },
 ];
+
+/** The team's know-how in the genre and topic, for the reception card. */
+function knowHowNote(state: GameState, genre: string, topic: string): string {
+  const g = genreById(genre).name;
+  const gHits = genreHits(state.released, genre);
+  const gLevel = expertiseLevel(gHits);
+  const tLevel = expertiseLevel(topicHits(state.released, topic));
+  const pct = Math.round((GENRE_LEVEL_BONUS * (gLevel - 1) + TOPIC_LEVEL_BONUS * (tLevel - 1)) * 100);
+  const next = hitsToNextLevel(gHits);
+  const tip = next === null ? '' : ` ${next === 1 ? 'One more' : next} ${g} hit${next > 1 ? 's' : ''} (${EXPERTISE_MIN_SCORE}+ reviews) to reach Lv ${gLevel + 1}.`;
+  return `🧠 Team know-how: ${g} <b>Lv ${gLevel}</b>, ${esc(topicById(topic).name)} <b>Lv ${tLevel}</b>${pct ? `: <b>+${pct}%</b> design and tech` : ''}.${tip}`;
+}
 
 /**
  * How players are expected to receive a topic + genre combination. Only revealed
@@ -172,7 +187,7 @@ function receptionPreview(state: GameState, d: Pick<GameSpec, 'topic' | 'genre' 
   const topic = topicById(d.topic).name;
   const genre = genreById(d.genre);
   const fit = state.knowledge.combos[`${d.topic}|${d.genre}`];
-  const news = newsNotes(state, d.genre, d.topic);
+  const news = [...newsNotes(state, d.genre, d.topic), knowHowNote(state, d.genre, d.topic)];
   if (fit === undefined) {
     return `
     <div class="reception unknown mt">
@@ -205,7 +220,7 @@ function receptionPreview(state: GameState, d: Pick<GameSpec, 'topic' | 'genre' 
       <div class="face">${r.face}</div>
       <div class="grow">
         <b>${r.title}</b>
-        <div class="meter" aria-label="Combination rating ${FIT_LABELS[fit]}">${[0, 1, 2, 3].map((i) => `<i class="${i <= fit ? 'on' : ''}"></i>`).join('')}<span>${FIT_LABELS[fit]}</span></div>
+        <div class="meter" aria-label="Combination rating ${FIT_LABELS[fit]}">${FIT_LABELS.map((_, i) => `<i class="${i <= fit ? 'on' : ''}"></i>`).join('')}<span>${FIT_LABELS[fit]}</span></div>
         <div class="sub">${esc(r.text(topic, genre.name))}</div>
         ${notes.length ? `<ul class="reception-notes">${notes.map((n) => `<li>${n}</li>`).join('')}</ul>` : ''}
       </div>
@@ -282,7 +297,13 @@ function newGameStep1(state: GameState, d: GameSpec, error?: string): string {
         : `
     <h4>Genre</h4>
     <div class="chips">
-      ${GENRES.map((g) => `<button class="chip ${d.genre === g.id ? 'on' : ''}" data-action="pick-genre" data-arg="${g.id}">${g.icon} ${g.name}${state.industry?.trend?.genre === g.id ? ' 🔥' : ''}</button>`).join('')}
+      ${availableGenres(state)
+        .map((g) => {
+          const level = expertiseLevel(genreHits(state.released, g.id));
+          const lv = level > 1 ? ` <small class="lv">Lv ${level}</small>` : '';
+          return `<button class="chip ${d.genre === g.id ? 'on' : ''}" data-action="pick-genre" data-arg="${g.id}">${g.icon} ${g.name}${lv}${state.industry?.trend?.genre === g.id ? ' 🔥' : ''}</button>`;
+        })
+        .join('')}
     </div>
     <h4>Topic</h4>
     <div class="chips">
@@ -290,13 +311,13 @@ function newGameStep1(state: GameState, d: GameSpec, error?: string): string {
         .map((id) => {
           const t = topicById(id);
           const known = d.genre ? state.knowledge.combos[`${id}|${d.genre}`] : undefined;
-          const dot = known !== undefined ? `<i class="fit fit-${known}" title="${FIT_LABELS[known]}"></i>` : '';
+          const dot = known === PERFECT_FIT ? ' 💞' : known !== undefined ? `<i class="fit fit-${known}" title="${FIT_LABELS[known]}"></i>` : '';
           return `<button class="chip ${d.topic === id ? 'on' : ''}" data-action="pick-topic" data-arg="${id}">${t.icon} ${t.name}${state.industry?.trend?.topic === id ? ' 🔥' : ''}${dot}</button>`;
         })
         .join('')}
     </div>`
     }
-    ${d.topic && d.genre ? receptionPreview(state, d) : '<p class="sub mt">Coloured dots show combinations you have already discovered.</p>'}
+    ${d.topic && d.genre ? receptionPreview(state, d) : '<p class="sub mt">Coloured dots show combinations you have already discovered, and 💞 a perfect one.</p>'}
     ${
       d.genre
         ? `

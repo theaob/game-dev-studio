@@ -5,7 +5,7 @@ Everything needed for the Play Console listing is in this folder:
 - `listing.md`: the name, descriptions, category and release notes to paste in.
 - `privacy-policy.md`: the privacy policy. Its URL is https://github.com/theaob/game-dev-studio/blob/main/store/privacy-policy.md
 - `graphics/`: the icon, feature graphic and phone screenshots.
-- `play-games/`: the 25 achievements (names, descriptions, points) and their icons, for Google Play Games.
+- `play-games/`: the 26 achievements (names, descriptions, points) and their icons, for Google Play Games.
 
 The app bundle (AAB) comes from CI: open the latest run of *CI & itch.io deploy* on `main` and download the `android-aab` artifact. It's signed with the upload key from the `ANDROID_*` secrets.
 

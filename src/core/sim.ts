@@ -13,6 +13,7 @@ import {
   GENRE_TITLES,
   TOPIC_TITLE_WORDS,
   TOPICS,
+  PERFECT_FIT,
   genreById,
   isPlatformAvailable,
   marketingById,
@@ -44,6 +45,7 @@ import { int, pick, random, range } from './rng';
 import { RIVAL_CLASH_MULT, newTrend, rivalClash, tickIndustry, trendMult } from './industry';
 import { hasSequel, sequelSalesMult, seriesNumber } from './sequels';
 import { acclaimFor, sequelHype } from './acclaim';
+import { expertiseMult, genreLevel, topicLevel } from './expertise';
 import { average, benchmark, clamp, evaluate, normalizeFocus, rollReviews, scoreFactor } from './scoring';
 import { START_YEAR, TOTAL_WEEKS, WEEKS_PER_MONTH, WEEKS_PER_YEAR, yearFraction, yearOf } from './time';
 import type {
@@ -118,6 +120,11 @@ export function currentYear(state: GameState): number {
 export function availablePlatforms(state: GameState) {
   const year = yearFraction(state.week);
   return PLATFORMS.filter((p) => isPlatformAvailable(p, year));
+}
+
+/** Genres the studio can make: the starting ones and those it has researched. */
+export function availableGenres(state: GameState) {
+  return GENRES.filter((g) => !g.research || hasResearch(state, g.research));
 }
 
 export function monthlyCosts(state: GameState): number {
@@ -332,7 +339,7 @@ export function validateGame(state: GameState, spec: GameSpec): string | null {
   if (state.activity) return 'Your team is busy.';
   if (!spec.name.trim()) return 'Give your game a name.';
   if (!state.topics.includes(spec.topic)) return 'Topic not researched.';
-  if (!GENRES.some((g) => g.id === spec.genre)) return 'Pick a genre.';
+  if (!availableGenres(state).some((g) => g.id === spec.genre)) return GENRES.some((g) => g.id === spec.genre) ? 'Genre not researched.' : 'Pick a genre.';
   const platform = PLATFORMS.find((p) => p.id === spec.platform);
   if (!platform || !isPlatformAvailable(platform, yearFraction(state.week))) return 'Platform not available.';
   if (!availableSizes(state).some((s) => s.id === spec.size)) return 'Game size not researched.';
@@ -435,7 +442,8 @@ export function doResearch(state: GameState, id: string): string | null {
   const item = RESEARCH.find((r) => r.id === id);
   if (item) {
     state.researched.push(id);
-    notify(state, `Research complete: ${item.name}.`, 'good');
+    const genre = GENRES.find((g) => g.research === id);
+    notify(state, genre ? `New genre unlocked: ${genre.name}.` : `Research complete: ${item.name}.`, 'good');
   } else {
     state.topics.push(id);
     notify(state, `New topic unlocked: ${topicById(id).name}.`, 'good');
@@ -629,14 +637,21 @@ export function releaseGame(state: GameState): ReleaseReport | string {
   const genre = genreById(p.genre);
   const topic = topicById(p.topic);
   const comboKey = `${p.topic}|${p.genre}`;
+  const newPerfect = ev.fit === PERFECT_FIT && state.knowledge.combos[comboKey] !== PERFECT_FIT;
   state.knowledge.combos[comboKey] = ev.fit;
   const fitText = [
     `${topic.name} and ${genre.name} don't really go together.`,
     `${topic.name} + ${genre.name} is an okay combination.`,
     `${topic.name} + ${genre.name} is a good combination.`,
     `${topic.name} + ${genre.name} is a great combination!`,
+    `${topic.name} + ${genre.name} is a perfect combination! Players couldn't imagine it any other way.`,
   ][ev.fit];
   insights.push({ text: fitText, kind: ev.fit >= 2 ? 'good' : 'bad' });
+  // Know-how: a hit counts towards the genre's and topic's next level.
+  const before = { genre: genreLevel(state.released, p.genre), topic: topicLevel(state.released, p.topic) };
+  const after = { genre: genreLevel([...state.released, game], p.genre), topic: topicLevel([...state.released, game], p.topic) };
+  if (after.genre > before.genre) insights.push({ text: `Your team's ${genre.name} know-how rose to level ${after.genre}.`, kind: 'good' });
+  if (after.topic > before.topic) insights.push({ text: `Your team's ${topic.name} know-how rose to level ${after.topic}.`, kind: 'good' });
 
   const known = (state.knowledge.areas[p.genre] ??= AREAS.map(() => false));
   const hidden = known.map((k, i) => (k ? -1 : i)).filter((i) => i >= 0);
@@ -706,6 +721,7 @@ export function releaseGame(state: GameState): ReleaseReport | string {
   state.activity = null;
   notify(state, `${game.name} released to an average score of ${score.toFixed(1)}.`, score >= 7 ? 'good' : score < 5 ? 'bad' : 'info');
   if (award) notify(state, `${award.icon} ${game.name} is a ${award.name}!`, 'good');
+  if (newPerfect) notify(state, `💞 Perfect combo discovered: ${topic.name} + ${genre.name}!`, 'good');
   return { game, insights, rpEarned };
 }
 
@@ -717,9 +733,11 @@ export function releaseGame(state: GameState): ReleaseReport | string {
 export function staffWeeklyPoints(state: GameState, s: Staff, phase: number, rawFocus: number[]) {
   const f = normalizeFocus(rawFocus);
   const areas = PHASES[phase].areas;
+  const act = state.activity;
+  const know = act?.kind === 'game' ? expertiseMult(state.released, act.genre, act.topic) : 1;
   const perArea = areas.map((a, i) => ({
-    design: f[i] * a.designShare * s.design * s.speed * designMultiplier(state),
-    tech: f[i] * (1 - a.designShare) * s.tech * s.speed * techMultiplier(state),
+    design: f[i] * a.designShare * s.design * s.speed * designMultiplier(state) * know,
+    tech: f[i] * (1 - a.designShare) * s.tech * s.speed * techMultiplier(state) * know,
   }));
   return perArea;
 }

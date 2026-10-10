@@ -1159,6 +1159,14 @@ nav.tabs .dot {
   background: var(--good);
 }
 
+.chip .lv {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 0 4px;
+  border-radius: 6px;
+  background: var(--bg2);
+}
+
 .fit-2 {
   background: #7fb33f;
 }
@@ -1258,6 +1266,15 @@ nav.tabs .dot {
 .reception .face {
   font-size: 34px;
   line-height: 1;
+}
+
+.reception.perfect {
+  border-left-color: #d6457a;
+  background: #fbe3ec;
+}
+
+.reception.perfect .meter i.on {
+  background: #d6457a;
 }
 
 .reception.great {
@@ -1770,6 +1787,40 @@ textarea {
   font-size: 11.5px;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
+}
+
+/* Weeks of the month next to the date: the current one fills up as the week passes */
+.week-dots {
+  display: inline-flex;
+  gap: 3px;
+  margin-left: 6px;
+  vertical-align: 1px;
+}
+
+.week-dots i {
+  position: relative;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1.5px var(--muted);
+  overflow: hidden;
+}
+
+.week-dots i.done {
+  background: var(--muted);
+}
+
+.week-dots i.now {
+  box-shadow: inset 0 0 0 1.5px var(--ink);
+}
+
+.week-dots i.now::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: var(--ink);
+  transform: scale(var(--p, 0));
 }
 
 .hud-btn {
@@ -2689,4 +2740,114 @@ canvas.office {
 .toast.achievement {
   background: #ffe3a3;
   font-weight: 700;
+}
+
+/* ---------- Dock: chips in one row, a compact game card ---------- */
+
+.dock-chips {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+}
+
+.dock-chips .ticker {
+  align-self: auto;
+  min-width: 0;
+  max-width: 100%;
+  padding: 5px 11px;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dock-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+.dock-head .dock-title,
+.dock-head .dock-sub {
+  display: block;
+}
+
+/* A sheet-style grip on the game card: tap it (or the name) to fold the card */
+.dock-card {
+  position: relative;
+}
+
+.dock-grip {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 72px;
+  height: 14px;
+  transform: translateX(-50%);
+  padding: 0;
+  border: 0;
+  background: none;
+}
+
+.dock-grip::before {
+  content: '';
+  display: block;
+  width: 36px;
+  height: 4px;
+  margin: 5px auto 0;
+  border-radius: 2px;
+  background: var(--line);
+}
+
+.dock-card.compact {
+  padding-top: 10px;
+  padding-bottom: 12px;
+}
+
+.dock-card.compact .row,
+.dock-card.compact .dock-head {
+  gap: 10px;
+}
+
+.dock-card.compact .dock-icon {
+  font-size: 24px;
+}
+
+.dock-card.compact .dock-title {
+  font-size: 15.5px;
+}
+
+
+.dock-card.compact .progress-row {
+  margin-top: 8px;
+}
+
+.dock .counters.mini {
+  flex: none;
+  display: flex;
+  gap: 4px;
+  margin: 0;
+}
+
+.dock .counters.mini .counter {
+  min-width: 34px;
+  padding: 3px 4px 2px;
+  border-radius: 10px;
+}
+
+.dock .counters.mini .counter b {
+  font-size: 15px;
+  line-height: 1.1;
+}
+
+.dock .counters.mini .counter small {
+  display: block;
+  font-size: 8.5px;
+  line-height: 1.1;
 }

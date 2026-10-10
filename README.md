@@ -9,6 +9,9 @@ The UI is laid out like a mobile game, not a web page. The office fills the scre
 ## Gameplay
 
 - **Make games**: pick a title, a **topic** and a **genre**. Some combinations are great and some are terrible. You learn which after each release, and from then on the new-game screen shows a **reception preview**: how players will take that combination, how your last game with it scored, and whether players are tired of seeing it.
+  - A few combinations, one or two per genre, are **perfect** (💞): they review even better than great ones, but look like any other until you release one.
+  - Start with 7 genres and research 3 more: **Platformer**, **Shooter** (needs Engine 2.0) and **Rhythm**.
+  - **Know-how**: every hit (7.5+ reviews) levels up its genre and topic, from Lv 1 to Lv 5. Each genre level adds 3% design and tech points to your next game in that genre, and each topic level 1%. The new-game screen shows the levels.
 - **Make sequels** to any released game: they keep its topic and genre, sell to its fans (up to +45% for a hit, less for a flop), and skip the "seen this recently" penalty. Rushing one out within a year reviews worse, and long series start to tire players.
 - **Awards**: a game that reviews 9.0 or better is a 🏅 Critics' Choice, 9.5 or better a 👑 Masterpiece. The badge shows on the game and in the games list, and its sequel starts development with hype already built (+20 at 9.0, +40 at 9.5, +60 for a perfect 10).
 - **🏆 Game of the Year**: each new year, the best-reviewed release of the last one, yours or a rival's, wins (ties go to you; the News tab reports the winner). Winning brings fans (3% of yours, at least 1,000), 25% more copies of what it has left to sell if it's still on sale, and +15 hype for its sequel.
@@ -49,7 +52,7 @@ The UI is laid out like a mobile game, not a web page. The office fills the scre
     - good studios get rich (but not absurdly);
     - careless studios that expand go bankrupt;
     - careless solo developers stay small.
-- **🏆 Achievements**: 25 milestones across the whole game, from your first release, rave reviews, awards and Game of the Year to your first million, hiring a rockstar, moving to the campus, decorating the studio, the big stage at GameExpo, surviving bankruptcy with the bailout and reaching 2025. A toast pops up when one unlocks, and Menu → Achievements lists them all, locked and unlocked. Achievements belong to the device, not the save: starting over keeps them, and each one remembers the year and the studio that earned it.
+- **🏆 Achievements**: 26 milestones across the whole game, from your first release, rave reviews, a perfect combination, awards and Game of the Year to your first million, hiring a rockstar, moving to the campus, decorating the studio, the big stage at GameExpo, surviving bankruptcy with the bailout and reaching 2025. A toast pops up when one unlocks, and Menu → Achievements lists them all, locked and unlocked. Achievements belong to the device, not the save: starting over keeps them, and each one remembers the year and the studio that earned it.
 
 The game autosaves to local storage every in-game month.
 
@@ -94,6 +97,7 @@ If anything is missing, the deploy job fails straight away with a message saying
 ```
 src/core/      Pure, deterministic simulation (no DOM). Seeded RNG lives in the save.
   data.ts      Topics, genres, platforms, research, offices: all the tuning numbers
+  expertise.ts Genre and topic know-how levels
   sim.ts       Game state, weekly tick, player actions
   economy.ts   Prices, inflation, market reach: the money model
   scoring.ts   Review score model

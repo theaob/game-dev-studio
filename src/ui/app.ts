@@ -19,7 +19,7 @@ import { Monetization } from './monetization';
 import { PlayGames } from './play-games';
 import { claimBailout, claimReward, investorCash, rewardBlocker, type RewardId } from '../core/rewards';
 import { buyDecor, decorById, repaint, toggleDecor, type DecorId } from '../core/decor';
-import { SPEEDS, renderDock, renderGames, renderNav, renderNews, renderResearch, renderStaff, renderTopbar, type Tab } from './views';
+import { SPEEDS, dockLayoutKey, renderDock, renderGames, renderNav, renderNews, renderResearch, renderStaff, renderTopbar, type Tab } from './views';
 
 type StatKey = 'cash' | 'fans' | 'rp';
 
@@ -31,6 +31,8 @@ const BLOCKING: Sheet['kind'][] = ['welcome', 'focus', 'review', 'gameOver'];
 
 /** How long to wait for the 3D office before settling on the 2D one. */
 const OFFICE3D_TIMEOUT_MS = 10_000;
+/** How much of the office (px) the full game card must leave in view between the HUD and the dock. */
+const MIN_OFFICE_VIEW = 160;
 
 export class App {
   private state: GameState | null;
@@ -56,6 +58,10 @@ export class App {
   /** Ads and the "Remove ads" purchase (Android app only). */
   private ads = new Monetization();
   private lastDraw = 0;
+  /** The player's own choice for the game card: true = compact, null = whatever fits. */
+  private dockCompact: boolean | null = null;
+  /** Whether the full card fitted, for the dock layout it was measured on. */
+  private dockFit: { key: string; compact: boolean } | null = null;
   /** Achievements unlocked on this device, across every studio. */
   private unlocked: Record<string, Unlock> = loadAchievements();
   /** Google Play Games: mirrors achievements to the player's profile (Android app only). */
@@ -120,6 +126,7 @@ export class App {
       }
     }
     this.updateStats(dt);
+    this.els.top.querySelector<HTMLElement>('.week-dots .now')?.style.setProperty('--p', `${Math.min(1, this.acc / WEEK_MS)}`);
     // The office animates at ~30fps while visible.
     if (s && this.tab === 'studio' && !document.hidden && t - this.lastDraw > 32) {
       this.lastDraw = t;
@@ -410,6 +417,23 @@ export class App {
     this.tooltip.refresh();
   }
 
+  /**
+   * The game card shows in full when it leaves some of the office in view between the HUD and the
+   * dock, and compact otherwise (say a GameExpo chip and a polishing game on a small phone). The fit
+   * is measured once per layout, not every week, so the card doesn't flip back and forth.
+   */
+  private renderDockFitted(s: GameState) {
+    const offer = this.cashOffer(s);
+    const key = `${dockLayoutKey(s, offer)}|${window.innerWidth}x${window.innerHeight}`;
+    const measured = this.dockFit?.key === key;
+    this.set('dock', renderDock(s, offer, this.dockCompact ?? (measured && this.dockFit!.compact)));
+    if (this.dockCompact !== null || measured || s.activity?.kind !== 'game') return;
+    const room = this.els.dock.getBoundingClientRect().top - this.els.top.getBoundingClientRect().bottom;
+    const compact = room < MIN_OFFICE_VIEW;
+    this.dockFit = { key, compact };
+    if (compact) this.set('dock', renderDock(s, offer, true));
+  }
+
   private render() {
     const s = this.state;
     if (s) {
@@ -420,7 +444,7 @@ export class App {
       this.els.dock.hidden = !studio;
       this.els.scroll.hidden = studio;
       if (studio) {
-        this.set('dock', renderDock(s, this.cashOffer(s)));
+        this.renderDockFitted(s);
       } else {
         const titles: Record<Exclude<Tab, 'studio'>, [string, string]> = {
           games: ['Games', `${s.released.length} released`],
@@ -765,6 +789,10 @@ export class App {
       }
       case 'marketing':
         this.open({ kind: 'marketing' });
+        return;
+      case 'dock-toggle':
+        this.dockCompact = this.els.dock.querySelector('.dock-card.compact') === null;
+        this.render();
         return;
       case 'expo-results':
         this.open({ kind: 'expo' });
