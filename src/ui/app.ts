@@ -571,8 +571,8 @@ export class App {
     if (counters.length !== 3) return;
     const items: [number, string, string][] = [
       // All points are whole numbers: shown as e.g. "+12", "+2 🐛" or "−3 🐛".
-      [design, `+${design}`, 'var(--design)'],
-      [tech, `+${tech}`, 'var(--tech)'],
+      [design, design < 0 ? `−${-design}` : `+${design}`, 'var(--design)'],
+      [tech, tech < 0 ? `−${-tech}` : `+${tech}`, 'var(--tech)'],
       [bugs, bugs < 0 ? `−${-bugs} 🐛` : `+${bugs} 🐛`, bugs < 0 ? 'var(--good)' : 'var(--bugs)'],
     ];
     items.forEach(([v, label, color], i) => {
