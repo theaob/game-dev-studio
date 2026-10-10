@@ -39,7 +39,7 @@ The UI is laid out like a mobile game, not a web page. The office fills the scre
   - Its charts show money made against cost (and the week it paid for itself), copies sold each week, and where the money went.
   - The Games tab charts the profit or loss of every release (tap a column to open the game), and games on sale show a small sales line.
 - **Grow**: take contracts to pay the bills, earn research points (RP), unlock topics, game sizes, engines and QA, hire and train staff, and move to bigger offices.
-  - Every week of development earns RP (more with a bigger team), and every release earns more, scaled by its review score and size. Contracts earn some too.
+  - Every week of development earns RP (more with a bigger team), and every release earns more, scaled by its review score and size. Contracts earn some too, and an idle studio slowly picks up a little (a fifth of the development rate).
   - A solo founder earns roughly 50–60 RP a year, enough for medium-sized games within about a year and the first engine and design upgrades by the third or fourth.
 - **Money**:
   - Monthly rent and salaries apply (including a modest wage for you, the founder), and three months in the red means bankruptcy.

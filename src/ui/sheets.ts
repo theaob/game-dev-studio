@@ -153,7 +153,7 @@ function help(): string {
       <p><b>Free with a video.</b> In the Android app, the Store has rewards for watching an optional video: an investor's cash, a free Espresso Bar or a research grant. Each one can be claimed again after a few weeks.</p>
       <p><b>Raise the bar.</b> Players expect each game to beat your last one, and the industry keeps moving. Grow your team, train them and research better tech.</p>
       <p><b>Stay solvent.</b> Rent and salaries are paid monthly. Three months in the red and you're bankrupt. Contract work pays the bills.</p>
-      <p><b>Grow.</b> Earn research points (RP) to unlock topics, bigger games and better engines. You earn RP every week you're making a game (more with a bigger team) and with every release (more for better reviews). Move offices to hire more people.</p>
+      <p><b>Grow.</b> Earn research points (RP) to unlock topics, bigger games and better engines. You earn RP every week you're making a game (more with a bigger team), a little even while the studio has nothing on, and with every release (more for better reviews). Move offices to hire more people.</p>
       <p>The game runs from 1985 to 2025. Tap ❚❚ to pause anytime. Your progress is saved automatically.</p>
     </div>
     <div class="btn-row"><button class="btn" data-action="close">Got it</button></div>`;
