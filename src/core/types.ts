@@ -28,7 +28,8 @@ export interface GameSpec {
   sequelOf?: number;
 }
 
-export type PolishMode = 'bugs' | 'design' | 'tech';
+/** Fix bugs, add design or tech points, or rework the game to shift points towards the genre's ideal split. */
+export type PolishMode = 'bugs' | 'design' | 'tech' | 'rework';
 
 export interface GameProject extends GameSpec {
   kind: 'game';

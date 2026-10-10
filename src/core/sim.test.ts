@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { GENRES, GENRE_TITLES, PERFECT_FIT, PLATFORMS, TOPICS, TOPIC_TITLE_WORDS, platformUsers } from './data';
+import { GENRES, GENRE_TITLES, genreById, PERFECT_FIT, PLATFORMS, TOPICS, TOPIC_TITLE_WORDS, platformUsers } from './data';
 import { expertiseLevel, expertiseMult, EXPERTISE_MIN_SCORE } from './expertise';
 import { playThrough } from './bot';
 import { BALANCE_BEST, BALANCE_WORST, balanceMultiplier, benchmark, evaluate, normalizeFocus, phaseAlignment, repeatMultiplier } from './scoring';
@@ -21,6 +21,8 @@ import {
   staffWeeklyPoints,
   randomTitle,
   setPolishMode,
+  reworkNeed,
+  REWORK_DONE,
   boostWeeks,
   buyStoreItem,
   storePrice,
@@ -568,6 +570,46 @@ describe('whole-number points and polishing', () => {
       const late = gains.slice(9).reduce((a, b) => a + b, 0);
       expect(late).toBeLessThan(early * 0.5);
     }
+  });
+
+  it('rework moves points towards the genre balance, losing some, and stops once balanced', () => {
+    const { s, p } = finishDev(31);
+    const target = genreById(p.genre).designTarget;
+    // Lopsided towards tech: an RPG wants mostly design.
+    p.tech += p.design;
+    const startTotal = p.design + p.tech;
+    const gap = () => Math.abs(p.design / (p.design + p.tech) - target);
+    const startGap = gap();
+    expect(reworkNeed(p)?.from).toBe('tech');
+    expect(setPolishMode(s, 'rework')).toBeNull();
+    let weeks = 0;
+    while (p.polishMode === 'rework' && weeks < 40) {
+      const before = gap();
+      const bugs = p.bugs;
+      tick(s);
+      weeks++;
+      expect([p.design, p.tech].every(Number.isInteger)).toBe(true);
+      expect(gap()).toBeLessThanOrEqual(before);
+      expect(p.bugs).toBeGreaterThanOrEqual(bugs);
+    }
+    expect(weeks).toBeGreaterThan(1);
+    expect(p.polishMode).toBe('bugs');
+    expect(gap()).toBeLessThan(Math.min(startGap, REWORK_DONE + 0.01));
+    // Moved points are partly lost, so the game doesn't get bigger.
+    expect(p.design + p.tech).toBeLessThan(startTotal);
+    expect(p.design + p.tech).toBeGreaterThan(startTotal * 0.7);
+    // Already balanced: nothing to rework.
+    expect(reworkNeed(p)).toBeNull();
+    expect(setPolishMode(s, 'rework')).not.toBeNull();
+  });
+
+  it('rework improves the review balance multiplier', () => {
+    const { s, p } = finishDev(37);
+    p.design += p.tech * 2;
+    const before = evaluate(s, p).balanceMult;
+    expect(setPolishMode(s, 'rework')).toBeNull();
+    for (let w = 0; w < 30 && p.polishMode === 'rework'; w++) tick(s);
+    expect(evaluate(s, p).balanceMult).toBeGreaterThan(before);
   });
 
   it('only allows choosing a polish focus once development is done', () => {

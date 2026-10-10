@@ -2513,7 +2513,7 @@ nav.tabs {
 /* Polish focus: a three-way segmented choice */
 .polish-modes {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 6px;
   margin-top: 10px;
 }
@@ -2543,6 +2543,10 @@ nav.tabs {
 .polish-mode.on {
   background: #ffe3a3;
   box-shadow: var(--pop);
+}
+
+.polish-mode:disabled {
+  opacity: 0.45;
 }
 
 .polish-mode:active {
