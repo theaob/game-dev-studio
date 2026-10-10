@@ -1789,6 +1789,40 @@ textarea {
   font-variant-numeric: tabular-nums;
 }
 
+/* Weeks of the month next to the date: the current one fills up as the week passes */
+.week-dots {
+  display: inline-flex;
+  gap: 3px;
+  margin-left: 6px;
+  vertical-align: 1px;
+}
+
+.week-dots i {
+  position: relative;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1.5px var(--muted);
+  overflow: hidden;
+}
+
+.week-dots i.done {
+  background: var(--muted);
+}
+
+.week-dots i.now {
+  box-shadow: inset 0 0 0 1.5px var(--ink);
+}
+
+.week-dots i.now::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: var(--ink);
+  transform: scale(var(--p, 0));
+}
+
 .hud-btn {
   flex: none;
   height: 42px;
