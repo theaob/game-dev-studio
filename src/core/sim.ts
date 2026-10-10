@@ -45,6 +45,7 @@ import { int, pick, random, range } from './rng';
 import { RIVAL_CLASH_MULT, newTrend, rivalClash, tickIndustry, trendMult } from './industry';
 import { hasSequel, sequelSalesMult, seriesNumber } from './sequels';
 import { acclaimFor, longAwaitedHype, sequelHype } from './acclaim';
+import { ESPORTS_FANS, PUBLISHING_SALES, hasVenture, phaseWeeks, ventureHypeMult } from './ventures';
 import { expertiseMult, genreLevel, topicLevel } from './expertise';
 import { average, benchmark, clamp, evaluate, normalizeFocus, rollReviews, scoreFactor } from './scoring';
 import { START_YEAR, TOTAL_WEEKS, WEEKS_PER_MONTH, WEEKS_PER_YEAR, yearFraction, yearOf } from './time';
@@ -376,7 +377,7 @@ export function startGame(state: GameState, spec: GameSpec, firstFocus: number[]
     name: spec.name.trim(),
     kind: 'game',
     startedWeek: state.week,
-    phaseWeeks: sizeById(spec.size).phaseWeeks,
+    phaseWeeks: phaseWeeks(state, spec.size),
     phase: 0,
     weekInPhase: 0,
     focus: [firstFocus.slice(), [50, 50, 50], [50, 50, 50]],
@@ -511,7 +512,7 @@ function tickHeadhunt(state: GameState) {
   notify(state, `The headhunter found a rockstar: ${c.name} wants to join! Check the Team tab.`, 'good');
 }
 
-function rockstarCandidate(state: GameState): Staff {
+export function rockstarCandidate(state: GameState): Staff {
   const cap = applicantSkillCap(state);
   const skill = () => round1(Math.min(10, range(state, cap + 1, cap + 3)));
   const design = skill();
@@ -599,7 +600,7 @@ export function releaseGame(state: GameState): ReleaseReport | string {
   const trend = trendMult(state, p.genre, p.topic);
   const clash = rivalClash(state, p.genre, p.topic);
   const clashMult = clash ? RIVAL_CLASH_MULT : 1;
-  const targetUnits = Math.round((audience * range(state, 0.85, 1.15) + fanBuyers) * sequelMult * buzz.salesMult * trend * clashMult);
+  const targetUnits = Math.round((audience * range(state, 0.85, 1.15) + fanBuyers) * sequelMult * buzz.salesMult * trend * clashMult * (hasVenture(state, 'publishing') ? PUBLISHING_SALES : 1));
   const unitPrice = size.price * platform.priceMult * (1 + 0.025 * years);
 
   const game: ReleasedGame = {
@@ -967,7 +968,7 @@ export function runPromo(state: GameState, id: PromoId): string | null {
   const price = promoPrice(state, id);
   state.cash -= price;
   if (p.spend) p.spend.marketing += price;
-  p.hype = Math.min(MAX_HYPE, (p.hype ?? 0) + promoById(id).hype);
+  p.hype = Math.min(MAX_HYPE, (p.hype ?? 0) + promoById(id).hype * ventureHypeMult(state));
   p.promos = [...(p.promos ?? []), id];
   return null;
 }
@@ -1008,7 +1009,7 @@ function tickExpo(state: GameState, events: SimEvent[]) {
     // A game in development is the star of the show.
     report.game = p.name;
     report.hypeBefore = p.hype ?? 0;
-    p.hype = Math.min(MAX_HYPE, report.hypeBefore + booth.hype);
+    p.hype = Math.min(MAX_HYPE, report.hypeBefore + booth.hype * ventureHypeMult(state));
     report.hypeAfter = p.hype;
     state.fans += booth.fans;
     notify(state, `GameExpo: crowds lined up to play ${p.name}! +${Math.round(p.hype - report.hypeBefore)} hype, +${booth.fans.toLocaleString('en-US')} fans.`, 'good');
@@ -1069,7 +1070,7 @@ function tickSales(state: GameState) {
     state.cash += revenue;
     state.totalRevenue += revenue;
     let fans = units * 0.1 * clamp((g.score - 4) / 6, -0.3, 1);
-    if (fans > 0) fans *= hypeEffect(g.hype ?? 0, g.score, marketingById(g.marketing).salesMult).fansMult * (g.pushes?.includes('sale') ? 1.5 : 1);
+    if (fans > 0) fans *= hypeEffect(g.hype ?? 0, g.score, marketingById(g.marketing).salesMult).fansMult * (g.pushes?.includes('sale') ? 1.5 : 1) * (hasVenture(state, 'esports') ? ESPORTS_FANS : 1);
     fans = Math.round(fans);
     g.fansGained += fans;
     state.fans = Math.max(0, state.fans + fans);

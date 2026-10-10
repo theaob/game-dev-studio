@@ -33,6 +33,8 @@ The UI is laid out like a mobile game, not a web page. The office fills the scre
   - A yearly round-up of your studio's releases, and your own studio log.
 - **Reviews** from 4 outlets decide sales and fans. The bar keeps rising: the market expects each game to beat your best work.
 - **Store**: spend cash on power-ups. Boosts last a few game-development weeks: the Espresso Bar adds 20% more points, Pizza Night triples the chance of getting in the zone, and a Bug Bash fixes 40% of bugs at once. Permanent studio upgrades are Ergonomic Chairs (+5% points), Noise-cancelling Headphones (zone 50% more often) and Test Automation (15% fewer bugs). Boost prices scale with team size, and all prices rise over the years like salaries.
+- **Big investments** (Store, once you're on the Campus): multi-million projects that help forever. A Motion Capture Stage (from 1995) makes promos and GameExpo build 25% more hype, an Engine Division makes large games a week faster per phase, an Esports League (from 2005) brings 15% more fans per copy sold, and Worldwide Publishing sells 10% more copies of every release.
+- **Buy rival studios** (Store, once you're on the Campus): pay tens of millions to buy out a rival. It stops releasing games (no more rival hits stealing your sales or Game of the Year), its fans join yours, you get 50 RP, and its star developer asks to join your team.
 - **Decorate the studio** (🎨 Decorate, in the Store or the Team tab): repaint the walls and floor (a small fee, going back to the original is free), and buy decorations: a rug, potted plants, bean bags, a bookshelf, a trophy shelf (one trophy per game that scored 8 or more), an aquarium, an arcade cabinet and a neon sign with your studio's name. Each one has its own spot in the room, and once bought it can be placed or put away for free. It's just for looks, it's saved with the game, and it moves with you to bigger offices. (The 2D fallback office shows the paint but not the decorations.)
 - **Game results**: every game records what it cost (budget and license, marketing, and the team's salaries and rent while they made it) and what it sold each week.
   - Tap a game for its report card: a verdict (🏆 Blockbuster, ⭐ Hit, 👍 Success, 😐 Broke even, 💸 Flop, from how many times its cost it made), revenue, profit, copies and score.
@@ -47,7 +49,7 @@ The UI is laid out like a mobile game, not a web page. The office fills the scre
   - Prices rise about 5% a year: salaries get a yearly pay review, and rent, budgets, marketing and the Store follow suit.
   - Bigger platforms sell more games, but crowded markets mean sales grow slower than player numbers.
   - Contracts cover your running costs with a little to spare: a safety net, not a way to get rich.
-  - Late in the game a Global TV & web campaign (from 1998) gives big studios something big to spend on.
+  - Late in the game a Global TV & web campaign (from 1998), big investments and rival buyouts give big studios something big to spend on. The bots don't buy them, so the curves below are unchanged; `economy.test.ts` also checks that a studio buying everything ends up with far less spare cash (average player) or richer but not a billionaire (expert).
   - The money curve is tuned with `scripts/balance.test.ts` (prints year-by-year cash for many bot careers), and `src/core/economy.test.ts` keeps it on target:
     - good studios get rich (but not absurdly);
     - careless studios that expand go bankrupt;
