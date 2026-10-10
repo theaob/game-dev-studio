@@ -16,6 +16,7 @@ import { money, num } from './format';
 import { focusLean, renderSheet, type Sheet } from './sheets';
 import { ChartTooltip } from './tooltip';
 import { Monetization } from './monetization';
+import { PlayGames } from './play-games';
 import { claimBailout, claimReward, investorCash, rewardBlocker, type RewardId } from '../core/rewards';
 import { buyDecor, decorById, repaint, toggleDecor, type DecorId } from '../core/decor';
 import { SPEEDS, dockLayoutKey, renderDock, renderGames, renderNav, renderNews, renderResearch, renderStaff, renderTopbar, type Tab } from './views';
@@ -63,6 +64,8 @@ export class App {
   private dockFit: { key: string; compact: boolean } | null = null;
   /** Achievements unlocked on this device, across every studio. */
   private unlocked: Record<string, Unlock> = loadAchievements();
+  /** Google Play Games: mirrors achievements to the player's profile (Android app only). */
+  private playGames = new PlayGames(() => Object.keys(this.unlocked));
 
   constructor(root: HTMLElement) {
     // A full-screen world with the interface floating on top, like a mobile game:
@@ -99,6 +102,11 @@ export class App {
       if (this.sheet?.kind === 'store' || this.sheet?.kind === 'menu' || this.sheet?.kind === 'gameOver') this.renderSheet();
     };
     void this.ads.init();
+
+    this.playGames.onChange = () => {
+      if (this.sheet?.kind === 'achievements') this.renderSheet();
+    };
+    void this.playGames.init();
   }
 
   // -------------------------------------------------------------------------
@@ -468,7 +476,7 @@ export class App {
       this.html.sheet = '';
       return;
     }
-    const inner = renderSheet(this.state, this.sheet, this.ads.view(), this.unlocked);
+    const inner = renderSheet(this.state, this.sheet, this.ads.view(), this.unlocked, this.playGames.view());
     const existing = host.querySelector<HTMLElement>('.sheet');
     if (existing && host.dataset.kind === this.sheet.kind) {
       if (this.html.sheet !== inner) {
@@ -539,6 +547,7 @@ export class App {
     if (!earned.length) return;
     for (const a of earned) this.unlocked[a.id] = { week: s.week, studio: s.studioName };
     saveAchievements(this.unlocked);
+    this.playGames.unlock(earned.map((a) => a.id));
     // An old save can earn a handful at once: one toast for all of them.
     if (earned.length > 2) this.toast(`🏆 ${earned.length} achievements unlocked! See them in the menu.`, 'achievement');
     else for (const a of earned) this.toast(`🏆 Achievement: ${a.icon} ${a.name}`, 'achievement');
@@ -702,6 +711,11 @@ export class App {
         return;
       case 'achievements':
         this.replace({ kind: 'achievements' });
+        return;
+      case 'play-achievements':
+        void this.playGames.showAchievements().then((ok) => {
+          if (!ok) this.toast("Couldn't open Google Play Games. Check that you're signed in and online.", 'bad');
+        });
         return;
       case 'save':
         if (s && saveGame(s) && sheet?.kind === 'menu') {

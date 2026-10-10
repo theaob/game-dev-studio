@@ -45,7 +45,10 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      # Once Google Play Games is set up, a test checks every achievement has a Play Games ID.
       - name: Unit tests & bot playthroughs
+        env:
+          PLAY_GAMES_RESOURCES: ${{ vars.PLAY_GAMES_RESOURCES }}
         run: npm test
 
       # AdMob ad unit IDs are repository variables (not secrets: they ship inside the app).
@@ -54,6 +57,8 @@ jobs:
         env:
           VITE_ADMOB_REWARDED_ID: ${{ vars.ADMOB_REWARDED_ID }}
           VITE_ADMOB_INTERSTITIAL_ID: ${{ vars.ADMOB_INTERSTITIAL_ID }}
+          # Google Play Games achievement IDs (Android only; without them Play Games stays off).
+          VITE_PLAY_GAMES_RESOURCES: ${{ vars.PLAY_GAMES_RESOURCES }}
         run: npx vite build
 
       - name: Check the build is a valid HTML5 upload
@@ -186,6 +191,7 @@ jobs:
         env:
           SIGNED: ${{ steps.signing.outputs.signed }}
           ADMOB_APP_ID: ${{ vars.ADMOB_APP_ID }}
+          PLAY_GAMES_RESOURCES: ${{ vars.PLAY_GAMES_RESOURCES }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}

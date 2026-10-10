@@ -46,6 +46,7 @@ import { acclaimOf, sequelHype } from '../core/acclaim';
 import { marketingCost, sizeCost } from '../core/economy';
 import { ACHIEVEMENTS } from '../core/achievements';
 import type { Unlock } from '../save';
+import type { PlayGamesView } from './play-games';
 
 export type Sheet =
   | { kind: 'welcome'; name: string }
@@ -71,14 +72,20 @@ const NO_ADS: MonetizationView = { native: false, rewardedReady: false, adFree: 
 
 export const OUTLETS = ['Game Weekly', 'Pixel Press', 'PlayZone', 'Joystick Journal'];
 
-export function renderSheet(state: GameState | null, sheet: Sheet, ads: MonetizationView = NO_ADS, unlocked: Record<string, Unlock> = {}): string {
+export function renderSheet(
+  state: GameState | null,
+  sheet: Sheet,
+  ads: MonetizationView = NO_ADS,
+  unlocked: Record<string, Unlock> = {},
+  play: PlayGamesView = { available: false, signedIn: false },
+): string {
   switch (sheet.kind) {
     case 'welcome':
       return welcome(sheet.name);
     case 'help':
       return help();
     case 'achievements':
-      return achievements(unlocked);
+      return achievements(unlocked, play);
     case 'confirm':
       return `
         <h3>Are you sure?</h3>
@@ -599,7 +606,7 @@ function unlockedCount(unlocked: Record<string, Unlock>): number {
   return ACHIEVEMENTS.filter((a) => unlocked[a.id]).length;
 }
 
-function achievements(unlocked: Record<string, Unlock>): string {
+function achievements(unlocked: Record<string, Unlock>, play: PlayGamesView): string {
   const done = unlockedCount(unlocked);
   const rows = ACHIEVEMENTS.map((a) => {
     const u = unlocked[a.id];
@@ -614,6 +621,11 @@ function achievements(unlocked: Record<string, Unlock>): string {
   return `
     <h3>Achievements</h3>
     <p class="muted">${done} of ${ACHIEVEMENTS.length} unlocked. They stay on this device when you start over.</p>
+    ${
+      play.available
+        ? `<div class="options mt"><button class="option" data-action="play-achievements"><span class="emoji">🎮</span><span class="grow"><b>Google Play Games</b><br/><span class="sub">${play.signedIn ? 'Your achievements are also on your Play Games profile.' : 'Sign in to collect your achievements on your Play Games profile too.'}</span></span></button></div>`
+        : ''
+    }
     <div class="bar mt"><i style="width:${Math.round((done / ACHIEVEMENTS.length) * 100)}%"></i></div>
     <div class="options mt">${rows}</div>
     <div class="btn-row"><button class="btn ghost" data-action="close">Close</button></div>`;
