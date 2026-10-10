@@ -757,6 +757,9 @@ export function weeklyRp(state: GameState): number {
   return (1 + 0.5 * state.staff.length) * (hasUpgrade(state, 'whiteboard') ? 1.2 : 1);
 }
 
+/** Share of {@link weeklyRp} a studio with nothing on still picks up by tinkering and reading up. */
+export const IDLE_RP_SHARE = 0.2;
+
 export function tick(state: GameState): SimEvent[] {
   const events: SimEvent[] = [];
   if (state.over) return events;
@@ -782,6 +785,9 @@ export function tick(state: GameState): SimEvent[] {
       notify(state, `Contract "${act.offer.title}" done: +$${act.offer.pay.toLocaleString('en-US')}, +${act.offer.rp} RP.`, 'good');
       events.push({ type: 'contractDone', offer: act.offer });
     }
+  } else if (!act) {
+    // With no game in development the team tinkers and reads up, slowly earning research points.
+    state.rp = Math.floor(state.rp) + wholeNumber(state, weeklyRp(state) * IDLE_RP_SHARE);
   }
 
   tickCat(state, events);

@@ -38,6 +38,7 @@ import {
   hypeDecay,
   trainingCost,
   weeklyRp,
+  IDLE_RP_SHARE,
   HEADHUNT_WEEKS,
   ROCKSTAR_SALARY_MULT,
   headhuntFee,
@@ -168,6 +169,19 @@ describe('simulation', () => {
     for (let i = 0; i < offer.weeks; i++) tick(s);
     expect(s.activity).toBeNull();
     expect(s.cash).toBeGreaterThanOrEqual(40000 + offer.pay - 1000 * 2);
+  });
+
+  it('slowly earns research points with no game in development', () => {
+    const s = createGame('Idle', 7);
+    const start = s.rp;
+    for (let i = 0; i < WEEKS_PER_YEAR; i++) tick(s);
+    expect(s.activity).toBeNull();
+    const earned = s.rp - start;
+    const expected = weeklyRp(s) * IDLE_RP_SHARE * WEEKS_PER_YEAR;
+    expect(earned).toBeGreaterThan(expected * 0.6);
+    expect(earned).toBeLessThan(expected * 1.4);
+    // Much slower than making a game, which earns the full weekly amount.
+    expect(earned).toBeLessThan(weeklyRp(s) * WEEKS_PER_YEAR * 0.5);
   });
 
   it('enforces research prerequisites and office capacity', () => {
