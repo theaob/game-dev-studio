@@ -297,8 +297,44 @@ export const OFFICES: OfficeDef[] = [
 // Names
 // ---------------------------------------------------------------------------
 
-export const FIRST_NAMES = ['Alex', 'Sam', 'Jordan', 'Riley', 'Morgan', 'Casey', 'Taylor', 'Jamie', 'Robin', 'Avery', 'Quinn', 'Kai', 'Noa', 'Yuki', 'Mina', 'Leo', 'Ines', 'Omar', 'Priya', 'Mateo', 'Hana', 'Elif', 'Lars', 'Zoe', 'Ravi', 'Ada', 'Theo', 'Sana', 'Ivo', 'Lena'];
-export const LAST_NAMES = ['Park', 'Novak', 'Silva', 'Okafor', 'Tanaka', 'Weber', 'Costa', 'Lindqvist', 'Moreau', 'Kowalski', 'Ahmed', 'Rossi', 'Kim', 'Haddad', 'Nguyen', 'Fischer', 'Yilmaz', 'Santos', 'Ivanova', 'Byrne'];
+export const FIRST_NAMES = [
+  'Alex', 'Sam', 'Jordan', 'Riley', 'Morgan', 'Casey', 'Taylor', 'Jamie', 'Robin', 'Avery',
+  'Quinn', 'Kai', 'Noa', 'Yuki', 'Mina', 'Leo', 'Ines', 'Omar', 'Priya', 'Mateo', 'Hana', 'Elif',
+  'Lars', 'Zoe', 'Ravi', 'Ada', 'Theo', 'Sana', 'Ivo', 'Lena', 'Onur', 'Emre', 'Burak', 'Can',
+  'Deniz', 'Ece', 'Zeynep', 'Selin', 'Mert', 'Kerem', 'Ayşe', 'Cem', 'Ozan', 'Barış', 'Defne',
+  'Ezgi', 'Tolga', 'Arda', 'Ceren', 'Umut', 'Gizem', 'Berk', 'Duygu', 'Kaan', 'Melis', 'Serkan',
+  'Pınar', 'Tuna', 'İrem', 'Volkan', 'Yasemin', 'Eren', 'Nil', 'Doruk', 'Aslı', 'Liam', 'Emma',
+  'Noah', 'Olivia', 'Ethan', 'Mia', 'Lucas', 'Chloe', 'Oliver', 'Grace', 'Jack', 'Ella', 'Henry',
+  'Ruby', 'Owen', 'Nora', 'Finn', 'Iris', 'Max', 'Lily', 'Sofia', 'Diego', 'Lucía', 'Pablo',
+  'Camila', 'Javier', 'Valentina', 'Rafael', 'Ana', 'Bruno', 'Luana', 'Thiago', 'Beatriz', 'Marco',
+  'Giulia', 'Luca', 'Chiara', 'Matteo', 'Hugo', 'Camille', 'Louis', 'Manon', 'Elsa', 'Felix',
+  'Hanna', 'Jonas', 'Clara', 'Nils', 'Freja', 'Emil', 'Astrid', 'Sven', 'Ingrid', 'Mikael', 'Saga',
+  'Aino', 'Eero', 'Pavel', 'Katya', 'Dmitri', 'Olga', 'Marek', 'Zofia', 'Jakub', 'Anja', 'Tomas',
+  'Petra', 'Milan', 'Nadia', 'Bogdan', 'Irina', 'Amara', 'Kwame', 'Zara', 'Chidi', 'Ayo', 'Nia',
+  'Tariq', 'Layla', 'Youssef', 'Amira', 'Karim', 'Salma', 'Reza', 'Shirin', 'Dara', 'Hiro', 'Aiko',
+  'Kenji', 'Sora', 'Ren', 'Mei', 'Wei', 'Lin', 'Jun', 'Min', 'Seo', 'Jin', 'Ji-woo', 'Hyun', 'Bao',
+  'Linh', 'Arjun', 'Ananya', 'Vikram', 'Meera', 'Rohan', 'Aditi', 'Nikhil', 'Tara', 'Maya', 'Ari',
+  'Eli', 'Noam', 'Tamar', 'Lior', 'Ilan', 'Malia', 'Keanu', 'Tane', 'Aroha',
+];
+export const LAST_NAMES = [
+  'Park', 'Novak', 'Silva', 'Okafor', 'Tanaka', 'Weber', 'Costa', 'Lindqvist', 'Moreau',
+  'Kowalski', 'Ahmed', 'Rossi', 'Kim', 'Haddad', 'Nguyen', 'Fischer', 'Yilmaz', 'Santos',
+  'Ivanova', 'Byrne', 'Kaya', 'Demir', 'Şahin', 'Çelik', 'Yıldız', 'Aydın', 'Öztürk', 'Arslan',
+  'Doğan', 'Kılıç', 'Aslan', 'Çetin', 'Koç', 'Kurt', 'Özdemir', 'Polat', 'Korkmaz',
+  'Güneş', 'Aksoy', 'Tekin', 'Ateş', 'Bulut', 'Akın', 'Karaca', 'Özkan', 'Uçar', 'Tuncer', 'Smith',
+  'Walker', 'Hughes', 'Murphy', 'Kelly', 'Reid', 'Bennett', 'Foster', 'Hayes', 'Brooks', 'Turner',
+  'Collins', 'Doyle', 'Gallagher', 'Fraser', 'García', 'López', 'Fernández', 'Romero', 'Herrera',
+  'Vargas', 'Mendes', 'Oliveira', 'Pereira', 'Ferreira', 'Ricci', 'Bianchi', 'Conti', 'Greco',
+  'Marino', 'Dubois', 'Laurent', 'Lefèvre', 'Girard', 'Bauer', 'Schmidt', 'Hoffmann', 'Becker',
+  'Wagner', 'Jansen', 'Bakker', 'Visser', 'Peeters', 'Nielsen', 'Larsen', 'Berg', 'Holm',
+  'Virtanen', 'Korhonen', 'Halvorsen', 'Eriksson', 'Petrov', 'Sokolov', 'Volkov', 'Horvat',
+  'Dvořák', 'Nowak', 'Wiśniewski', 'Popescu', 'Nagy', 'Kovács', 'Georgiou', 'Papadakis', 'Mensah',
+  'Adeyemi', 'Diallo', 'Mwangi', 'Abebe', 'Nkosi', 'Mansour', 'Farouk', 'Saleh', 'Karimi',
+  'Hosseini', 'Rahimi', 'Sato', 'Suzuki', 'Watanabe', 'Ito', 'Nakamura', 'Kobayashi', 'Yamamoto',
+  'Lee', 'Choi', 'Jung', 'Kang', 'Chen', 'Wang', 'Zhang', 'Liu', 'Huang', 'Tran', 'Pham', 'Le',
+  'Sharma', 'Patel', 'Gupta', 'Iyer', 'Reddy', 'Kapoor', 'Singh', 'Rao', 'Das', 'Mehta', 'Cohen',
+  'Levi', 'Mizrahi', 'Friedman', 'Rojas', 'Castillo', 'Morales', 'Navarro', 'Ortega', 'Ramos',
+];
 
 /**
  * Name ideas per genre: `{a}` and `{b}` are filled from the two word lists, so an
