@@ -24,7 +24,7 @@ import { SPEEDS, dockLayoutKey, renderDock, renderGames, renderNav, renderNews, 
 type StatKey = 'cash' | 'fans' | 'rp';
 
 /** Real-time milliseconds per in-game week at 1x speed. */
-const WEEK_MS = 1500;
+const WEEK_MS = 2500;
 
 /** Sheets that must be answered and can't be dismissed by tapping outside. */
 const BLOCKING: Sheet['kind'][] = ['welcome', 'focus', 'review', 'gameOver'];
