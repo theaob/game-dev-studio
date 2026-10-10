@@ -4,6 +4,7 @@
  * release, yours or a rival's, is Game of the Year. Awards are saved with the
  * game, and a sequel to an awarded game starts development already hyped.
  */
+import { WEEKS_PER_YEAR } from './time';
 import type { ReleasedGame } from './types';
 
 export type AcclaimId = 'choice' | 'masterpiece';
@@ -36,10 +37,30 @@ export function acclaimOf(g: Pick<ReleasedGame, 'acclaim' | 'score'>): Acclaim |
 /** Hype a sequel starts with when the original was recognized: 20 at a 9.0, 40 at 9.5, 60 at a perfect 10. */
 export const SEQUEL_HYPE_BASE = 20;
 export const SEQUEL_HYPE_PER_POINT = 40;
+/** Fans of a great game get more excited the longer they wait: extra hype per year after the first, up to a cap. */
+export const LONG_AWAITED_HYPE_PER_YEAR = 8;
+export const LONG_AWAITED_MAX_HYPE = 32;
 
-export function sequelHype(original: Pick<ReleasedGame, 'acclaim' | 'score' | 'goty'>): number {
+/** A Critics' Choice, Masterpiece or Game of the Year: its fans never tire of the series. */
+export function beloved(g: Pick<ReleasedGame, 'acclaim' | 'score' | 'goty'>): boolean {
+  return !!acclaimOf(g) || g.goty !== undefined;
+}
+
+/** Extra hype for a beloved game's sequel announced `week`, for the years fans have waited since the original. */
+export function longAwaitedHype(original: Pick<ReleasedGame, 'acclaim' | 'score' | 'goty' | 'releaseWeek'>, week: number): number {
+  if (!beloved(original)) return 0;
+  const years = Math.floor((week - original.releaseWeek) / WEEKS_PER_YEAR);
+  return Math.min(LONG_AWAITED_MAX_HYPE, Math.max(0, years - 1) * LONG_AWAITED_HYPE_PER_YEAR);
+}
+
+/**
+ * Hype a sequel starts with, started in `week`. The fans of a beloved original
+ * keep at least this much excitement all through development: it doesn't fade.
+ */
+export function sequelHype(original: Pick<ReleasedGame, 'acclaim' | 'score' | 'goty' | 'releaseWeek'>, week: number): number {
   const acclaimed = acclaimOf(original) ? SEQUEL_HYPE_BASE + Math.max(0, original.score - 9) * SEQUEL_HYPE_PER_POINT : 0;
-  return Math.round(acclaimed + (original.goty !== undefined ? GOTY_SEQUEL_HYPE : 0));
+  const total = acclaimed + (original.goty !== undefined ? GOTY_SEQUEL_HYPE : 0) + longAwaitedHype(original, week);
+  return Math.min(100, Math.round(total));
 }
 
 // ---------------------------------------------------------------------------

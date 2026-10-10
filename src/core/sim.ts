@@ -44,7 +44,7 @@ import { STARTING_CASH, founderSalary, friendly, marketingCost, officeCost, offi
 import { int, pick, random, range } from './rng';
 import { RIVAL_CLASH_MULT, newTrend, rivalClash, tickIndustry, trendMult } from './industry';
 import { hasSequel, sequelSalesMult, seriesNumber } from './sequels';
-import { acclaimFor, sequelHype } from './acclaim';
+import { acclaimFor, longAwaitedHype, sequelHype } from './acclaim';
 import { expertiseMult, genreLevel, topicLevel } from './expertise';
 import { average, benchmark, clamp, evaluate, normalizeFocus, rollReviews, scoreFactor } from './scoring';
 import { START_YEAR, TOTAL_WEEKS, WEEKS_PER_MONTH, WEEKS_PER_YEAR, yearFraction, yearOf } from './time';
@@ -366,8 +366,11 @@ export function startGame(state: GameState, spec: GameSpec, firstFocus: number[]
   }
   // A sequel to an award winner: players are waiting for it from day one.
   const original = spec.sequelOf !== undefined ? state.released.find((g) => g.id === spec.sequelOf) : undefined;
-  const hype = original ? sequelHype(original) : 0;
-  if (original && hype > 0) notify(state, `Fans of ${original.name} can't wait for the sequel: +${hype} hype.`, 'good');
+  const hype = original ? sequelHype(original, state.week) : 0;
+  if (original && hype > 0) {
+    const waited = longAwaitedHype(original, state.week) > 0 ? ` They've waited ${Math.floor((state.week - original.releaseWeek) / WEEKS_PER_YEAR)} years.` : '';
+    notify(state, `Fans of ${original.name} can't wait for the sequel: +${hype} hype.${waited}`, 'good');
+  }
   const project: GameProject = {
     ...spec,
     name: spec.name.trim(),
@@ -386,7 +389,7 @@ export function startGame(state: GameState, spec: GameSpec, firstFocus: number[]
     contrib: {},
     cost: cost.total,
     spend: { budget: cost.license + cost.size, marketing: cost.marketing, team: 0 },
-    ...(hype > 0 ? { hype } : {}),
+    ...(hype > 0 ? { hype, fanHype: hype } : {}),
   };
   state.activity = project;
   return null;
@@ -804,7 +807,7 @@ function tickProject(state: GameState, p: GameProject, events: SimEvent[]) {
   // The team's salaries and rent while they work on it count towards what the game cost.
   if (p.spend) p.spend.team += Math.round(monthlyCosts(state) / WEEKS_PER_MONTH);
   // Hype fades while polishing; during development it depends on how the game is shaping up (below).
-  if (p.hype && p.phase >= 3) p.hype = Math.round(p.hype * hypeDecay(state) * 10) / 10;
+  if (p.hype && p.phase >= 3) p.hype = Math.max(p.fanHype ?? 0, Math.round(p.hype * hypeDecay(state) * 10) / 10);
   // Saves from before points were whole numbers.
   p.bugs = Math.round(p.bugs);
   p.design = Math.round(p.design);
@@ -870,6 +873,8 @@ function tickProject(state: GameState, p: GameProject, events: SimEvent[]) {
   // Word of mouth: a game with good points so far builds hype, one falling behind loses it.
   const weeksDone = p.phase * p.phaseWeeks + p.weekInPhase + 1;
   p.hype = weeklyHype(p.hype ?? 0, (p.design + p.tech) / weeksDone / benchmark(state), hypeDecay(state));
+  // Fans of a beloved original stay excited however long it takes.
+  if (p.fanHype) p.hype = Math.max(p.hype, p.fanHype);
 
   p.weekInPhase++;
   if (p.weekInPhase >= p.phaseWeeks) {

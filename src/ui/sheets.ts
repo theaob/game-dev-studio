@@ -42,7 +42,7 @@ import type { StoreItem } from '../core/data';
 import { DECOR, FLOOR_PAINTS, WALL_PAINTS, decorPrice, isPlaced, ownsDecor, paintPrice, trophyCount } from '../core/decor';
 import type { DecorItem, Paint } from '../core/decor';
 import { acclaimTag, polishPicker } from './views';
-import { acclaimOf, sequelHype } from '../core/acclaim';
+import { acclaimOf, beloved, longAwaitedHype, sequelHype } from '../core/acclaim';
 import { marketingCost, sizeCost } from '../core/economy';
 import { ACHIEVEMENTS } from '../core/achievements';
 import type { Unlock } from '../save';
@@ -148,7 +148,7 @@ function help(): string {
       <p><b>Read the news.</b> Each year has a trending genre and topic (marked 🔥 when you start a game) that sell better. Rival studios release games too: right after a rival's hit, the same topic and genre sells less for a while. The News tab also shows which platforms are growing or on their way out.</p>
       <p><b>The cat.</b> Sometimes the studio cat curls up on a developer's lap, and they work 30% faster while it stays. You can carry the cat over and drop it on someone too, but it needs some alone time between laps.</p>
       <p><b>Store.</b> Spend cash on power-ups: boosts like an espresso bar or pizza night last a few weeks of development, and studio upgrades help forever. Find it next to Contracts, or tap ⚡ Boost while making a game.</p>
-      <p><b>Awards.</b> A game that reviews 9.0 or better is a 🏅 Critics' Choice, and 9.5 or better a 👑 Masterpiece. Its sequel starts development with hype already built: the better the original, the more. Each new year, the best-reviewed game of the last one, yours or a rival's, is named 🏆 Game of the Year: winning brings fans, more sales if it's still selling, and extra hype for its sequel.</p>
+      <p><b>Awards.</b> A game that reviews 9.0 or better is a 🏅 Critics' Choice, and 9.5 or better a 👑 Masterpiece. Its sequel starts development with hype already built: the better the original and the longer fans have waited, the more. Those fans never get bored: the hype doesn't fade, and they don't tire of a long series. Each new year, the best-reviewed game of the last one, yours or a rival's, is named 🏆 Game of the Year: winning brings fans, more sales if it's still selling, and extra hype for its sequel.</p>
       <p><b>Track your results.</b> Tap any game to see what it cost, what it made each week, when it paid for itself and whether it was a hit or a flop. The Games tab charts the profit of every release.</p>
       <p><b>Free with a video.</b> In the Android app, the Store has rewards for watching an optional video: an investor's cash, a free Espresso Bar or a research grant. Each one can be claimed again after a few weeks.</p>
       <p><b>Raise the bar.</b> Players expect each game to beat your last one, and the industry keeps moving. Grow your team, train them and research better tech.</p>
@@ -270,9 +270,11 @@ function sequelPicker(state: GameState, d: GameSpec): string {
     ];
     const award = acclaimOf(original);
     const why = [award ? `a ${award.name}` : '', original.goty !== undefined ? `Game of the Year ${original.goty}` : ''].filter(Boolean).join(' and ');
-    if (why) notes.unshift(`<li>${award?.icon ?? '🏆'} ${esc(original.name)} is ${why}: the sequel starts with <b>+${sequelHype(original)} hype</b>.</li>`);
+    if (why) notes.unshift(`<li>${award?.icon ?? '🏆'} ${esc(original.name)} is ${why}: the sequel starts with <b>+${sequelHype(original, state.week)} hype</b>, and its fans stay excited all through development.</li>`);
+    const waited = longAwaitedHype(original, state.week);
+    if (waited > 0) notes.splice(1, 0, `<li>⏰ Fans have waited ${Math.floor((state.week - original.releaseWeek) / WEEKS_PER_YEAR)} years for this, so <b>+${waited}</b> of that hype comes from the long wait.</li>`);
     if (state.week - original.releaseWeek < SEQUEL_TOO_SOON_WEEKS) notes.push(`<li>⏳ ${esc(original.name)} came out less than a year ago. A rushed sequel reviews worse.</li>`);
-    if (part >= 4) notes.push(`<li>🥱 Part ${part} of a long series: players are starting to tire of it.</li>`);
+    if (part >= 4) notes.push(beloved(original) ? `<li>❤️ Part ${part}, but fans of an award winner never tire of the series.</li>` : `<li>🥱 Part ${part} of a long series: players are starting to tire of it.</li>`);
     info = `
       <div class="sequel-card mt">
         <div class="row"><b class="grow">Part ${part} of the ${esc(original.name.replace(/\s+\d+$/, ''))} series</b><span class="tag">${topicById(original.topic).icon} ${topicById(original.topic).name} ${genreById(original.genre).name}</span></div>
