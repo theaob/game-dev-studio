@@ -5,6 +5,7 @@ Everything needed for the Play Console listing is in this folder:
 - `listing.md`: the name, descriptions, category and release notes to paste in.
 - `privacy-policy.md`: the privacy policy. Its URL is https://github.com/theaob/game-dev-studio/blob/main/store/privacy-policy.md
 - `graphics/`: the icon, feature graphic and phone screenshots.
+- `play-games/`: the 25 achievements (names, descriptions, points) and their icons, for Google Play Games.
 
 The app bundle (AAB) comes from CI: open the latest run of *CI & itch.io deploy* on `main` and download the `android-aab` artifact. It's signed with the upload key from the `ANDROID_*` secrets.
 
@@ -72,6 +73,23 @@ Play Console → **Create app**:
 3. **Privacy & messaging** in AdMob: create a **GDPR** consent message for the app (and a US state message if you like). The game shows it automatically to players who need it and adds a *Privacy options* menu entry for them.
 4. **app-ads.txt**: it's at https://theaob.github.io/app-ads.txt (repo `theaob/theaob.github.io`), authorising publisher `pub-3615836489279250`. In the Play Console's **Store settings → Store listing contact details**, set the website to `https://theaob.github.io/` (the game's page is https://theaob.github.io/games/game-dev-studio/). AdMob checks the file within about a day of the app being linked to its Play listing; see AdMob → Apps → app-ads.txt.
 5. **Play Console → Monetize → Products → In-app products**: create a one-time product with ID **`remove_ads`** (it must match exactly), a name like "Remove ads" and a price, then activate it. This needs a payments profile (merchant account) in the Play Console. The product only shows a price in the app once a build with billing has been uploaded to a testing track.
+
+### 2c. Google Play Games achievements
+The Android app signs players in to **Google Play Games** and unlocks the matching Play Games achievement whenever they earn one in the game (and catches up on ones they earned before signing in). Until it's set up, the app works exactly as before, with achievements only in the game.
+
+1. **Create the project.** Play Console → the app → Grow users → **Play Games Services → Setup and management → Configuration**. Choose *No, my game doesn't use Google APIs* and create a new Play Games Services project named `Game Dev Studio`.
+2. **OAuth consent screen.** Under Credentials, follow the link to Google Cloud and configure the consent screen: *External*, app name `Game Dev Studio`, your support email. No scopes are needed.
+3. **Android credentials.** Back in Configuration → **Add credential** → *Android*, with package name `io.github.theaob.gamedevstudio`, and create an OAuth client for each key that signs builds you'll play:
+   - **Play App Signing key** (installs from the Play Store): copy its SHA-1 from Test and release → Setup → **App signing**.
+   - **Shared debug key** (CI builds from pull requests and itch.io, when no release key is set): SHA-1 `3E:F8:3C:67:56:18:B2:1B:73:D9:C1:19:BB:E2:15:8E:D8:D1:4A:35`.
+   - **Your upload key**, if you install CI release builds directly: its SHA-1 is on the same App signing page.
+4. **Achievements.** Setup and management → **Achievements** → Add achievement, once per row of [`play-games/achievements.csv`](play-games/achievements.csv): name, description, the icon from [`play-games/icons/`](play-games/icons/), points as listed (they add up to exactly 1,000, the maximum), and *Revealed*. Keep the names exactly as listed: the game matches achievements by name.
+5. **Testers.** Setup and management → **Testers**: add your Google account (and your testers'). Until Play Games is published, only testers can sign in.
+6. **Get the IDs.** Achievements → **Get resources** → *Android (XML)*, and copy the whole XML. In GitHub → Settings → Secrets and variables → Actions → **Variables**, add `PLAY_GAMES_RESOURCES` with that XML as the value. CI reads the project ID and every achievement ID from it, and its tests fail if any achievement is missing an ID.
+7. **Build and try it.** Run CI on `main` (or wait for the next push), install the new build, open Menu → Achievements → *Google Play Games* and sign in.
+8. **Publish.** Play Games Services → **Review and publish**, so everyone (not just testers) can sign in. Do this alongside the production release.
+
+**Data safety and privacy.** The Play Games SDK sends the player's Play Games profile and achievement progress to Google. Add what Google lists for Play Games Services to the Data safety form; the privacy policy already covers it.
 
 ### 3. Store listing
 Grow users → Store presence → **Main store listing**: paste the text from `listing.md` and upload `graphics/icon-512.png`, `graphics/feature-graphic.png` and `graphics/phone/*` in order. Also set **Store settings**: category *Simulation* and a contact email.

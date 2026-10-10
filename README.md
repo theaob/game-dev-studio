@@ -150,6 +150,8 @@ Keep `release.keystore` and its passwords backed up somewhere safe. If you lose 
 - AdMob IDs come from the repository variables `ADMOB_APP_ID`, `ADMOB_REWARDED_ID` and `ADMOB_INTERSTITIAL_ID`. Without them the app shows Google's test ads.
 - The web and itch.io builds never load the ad or billing plugins. To try the ad UI in a browser, open the dev server with `?fake-ads`.
 
+**Google Play Games (Android only).** The app signs players in to Google Play Games (`src/ui/play-games.ts`, native side `android/app/src/main/java/io/github/theaob/gamedevstudio/PlayGamesPlugin.java`) and unlocks the matching Play Games achievement whenever one unlocks in the game, catching up on earlier ones after sign-in. Menu → Achievements has a button for the Play Games achievements screen. The project and achievement IDs come from the repository variable `PLAY_GAMES_RESOURCES` (the resources XML the Play Console exports); without it Play Games stays off. Setup steps are in [`store/README.md`](store/README.md#2c-google-play-games-achievements).
+
 **Google Play:** the store listing text, privacy policy, graphics and a step-by-step Play Console checklist are in [`store/`](store/README.md).
 
 **Local builds:** `npm run android` builds the web game, syncs it into `android/` and opens Android Studio. You need Android Studio with JDK 21 and Android SDK 36.
