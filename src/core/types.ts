@@ -1,4 +1,4 @@
-export type GenreId = 'action' | 'adventure' | 'rpg' | 'simulation' | 'strategy' | 'puzzle' | 'casual';
+export type GenreId = 'action' | 'adventure' | 'rpg' | 'simulation' | 'strategy' | 'puzzle' | 'casual' | 'platformer' | 'shooter' | 'rhythm';
 export type SizeId = 'small' | 'medium' | 'large';
 export type MarketingId = 'none' | 'ads' | 'campaign' | 'global';
 
@@ -120,7 +120,7 @@ export interface Spend {
 }
 
 export interface Knowledge {
-  /** "topic|genre" -> fit level 0..3 */
+  /** "topic|genre" -> fit level 0..4 (4 = a perfect combo) */
   combos: Record<string, number>;
   /** genre -> which of the 9 area importances are revealed */
   areas: Record<string, boolean[]>;

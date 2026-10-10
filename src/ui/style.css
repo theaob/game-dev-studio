@@ -1159,6 +1159,14 @@ nav.tabs .dot {
   background: var(--good);
 }
 
+.chip .lv {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 0 4px;
+  border-radius: 6px;
+  background: var(--bg2);
+}
+
 .fit-2 {
   background: #7fb33f;
 }
@@ -1258,6 +1266,15 @@ nav.tabs .dot {
 .reception .face {
   font-size: 34px;
   line-height: 1;
+}
+
+.reception.perfect {
+  border-left-color: #d6457a;
+  background: #fbe3ec;
+}
+
+.reception.perfect .meter i.on {
+  background: #d6457a;
 }
 
 .reception.great {
