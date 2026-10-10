@@ -49,6 +49,7 @@ The UI is laid out like a mobile game, not a web page. The office fills the scre
     - good studios get rich (but not absurdly);
     - careless studios that expand go bankrupt;
     - careless solo developers stay small.
+- **🏆 Achievements**: 25 milestones across the whole game, from your first release, rave reviews, awards and Game of the Year to your first million, hiring a rockstar, moving to the campus, decorating the studio, the big stage at GameExpo, surviving bankruptcy with the bailout and reaching 2025. A toast pops up when one unlocks, and Menu → Achievements lists them all, locked and unlocked. Achievements belong to the device, not the save: starting over keeps them, and each one remembers the year and the studio that earned it.
 
 The game autosaves to local storage every in-game month.
 

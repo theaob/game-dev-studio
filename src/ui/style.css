@@ -2675,3 +2675,18 @@ canvas.office {
 .swatch:disabled:not(.on) {
   opacity: 0.4;
 }
+
+/* ---------- Achievements ---------- */
+
+.option.achievement.locked {
+  opacity: 0.55;
+}
+
+.option.achievement.locked .emoji {
+  filter: grayscale(1);
+}
+
+.toast.achievement {
+  background: #ffe3a3;
+  font-weight: 700;
+}
