@@ -35,6 +35,8 @@ import { onSale, paybackWeek, profit, returnMultiple, revenueRank, totalCost, ve
 import { moneyChart, spendBar, weeklyChart } from './charts';
 import { REWARDS, bailoutCash, canBailout, rewardAmount, rewardBlocker, type Reward } from '../core/rewards';
 import type { MonetizationView } from './monetization';
+import { RIVALS } from '../core/industry';
+import { VENTURES, VENTURE_OFFICE, phaseWeeks, acquirableRivals, acquireBlocker, acquisitionFans, acquisitionPrice, hasVenture, ventureBlocker, venturePrice, type Venture } from '../core/ventures';
 import { BOOTHS, EXPO_BOOKING_WEEKS, MAX_HYPE, PROMOS, SALES_PUSHES, boothById, boothPrice, hypeEffect, promoPrice, salesPushPrice, weeksToExpo } from '../core/marketing';
 import type { GameProject, GameSpec, GameState, ReleaseReport } from '../core/types';
 import { esc, money, num, scoreClass } from './format';
@@ -147,7 +149,7 @@ function help(): string {
       <p><b>Marketing.</b> Pick an ad budget when you start a game. Tap 📣 Promote while making it to build hype with previews and trailers, and book a booth at the yearly GameExpo. A game with good points builds hype on its own by word of mouth. Hype sells more copies of a good game, but a hyped flop gets a backlash. After launch, 📣 Push sales runs ads or a discount sale. Research the Marketing Department to add press tours, TV commercials and TV ad blitzes.</p>
       <p><b>Read the news.</b> Each year has a trending genre and topic (marked 🔥 when you start a game) that sell better. Rival studios release games too: right after a rival's hit, the same topic and genre sells less for a while. The News tab also shows which platforms are growing or on their way out.</p>
       <p><b>The cat.</b> Sometimes the studio cat curls up on a developer's lap, and they work 30% faster while it stays. You can carry the cat over and drop it on someone too, but it needs some alone time between laps.</p>
-      <p><b>Store.</b> Spend cash on power-ups: boosts like an espresso bar or pizza night last a few weeks of development, and studio upgrades help forever. Find it next to Contracts, or tap ⚡ Boost while making a game.</p>
+      <p><b>Store.</b> Spend cash on power-ups: boosts like an espresso bar or pizza night last a few weeks of development, and studio upgrades help forever. Once you're on the Campus it also sells big investments and rival studios to buy out. Find it next to Contracts, or tap ⚡ Boost while making a game.</p>
       <p><b>Awards.</b> A game that reviews 9.0 or better is a 🏅 Critics' Choice, and 9.5 or better a 👑 Masterpiece. Its sequel starts development with hype already built: the better the original and the longer fans have waited, the more. Those fans never get bored: the hype doesn't fade, and they don't tire of a long series. Each new year, the best-reviewed game of the last one, yours or a rival's, is named 🏆 Game of the Year: winning brings fans, more sales if it's still selling, and extra hype for its sequel.</p>
       <p><b>Track your results.</b> Tap any game to see what it cost, what it made each week, when it paid for itself and whether it was a hit or a flop. The Games tab charts the profit of every release.</p>
       <p><b>Free with a video.</b> In the Android app, the Store has rewards for watching an optional video: an investor's cash, a free Espresso Bar or a research grant. Each one can be claimed again after a few weeks.</p>
@@ -372,7 +374,7 @@ function newGameStep2(state: GameState, d: GameSpec, error?: string): string {
         .map(
           (s) => `
         <button class="option ${d.size === s.id ? 'on' : ''}" data-action="pick-size" data-arg="${s.id}">
-          <span class="grow"><b>${s.name}</b><br/><span class="sub">${s.phaseWeeks * 3} weeks · ${money(sizeCost(state, s.id))} · ${s.minStaff > 1 ? `best with ${s.minStaff}+ staff` : 'solo friendly'}</span></span>
+          <span class="grow"><b>${s.name}</b><br/><span class="sub">${phaseWeeks(state, s.id) * 3} weeks · ${money(sizeCost(state, s.id))} · ${s.minStaff > 1 ? `best with ${s.minStaff}+ staff` : 'solo friendly'}</span></span>
         </button>`,
         )
         .join('')}
@@ -676,6 +678,40 @@ function storeRow(state: GameState, item: StoreItem): string {
     </div>`;
 }
 
+function ventureRow(state: GameState, v: Venture): string {
+  const owned = hasVenture(state, v.id);
+  const blocked = owned ? null : ventureBlocker(state, v.id);
+  return `
+    <div class="option store-item">
+      <span class="emoji">${v.icon}</span>
+      <span class="grow"><b>${v.name}</b> ${owned ? '<span class="tag good">Owned</span>' : ''}<br/><span class="sub">${v.desc}</span>${
+        blocked ? `<br/><span class="sub warn">${blocked}</span>` : ''
+      }</span>
+      <button class="btn small" data-action="venture" data-arg="${v.id}" ${blocked || owned ? 'disabled' : ''}>${owned ? 'Owned' : `Buy · ${money(venturePrice(state, v.id))}`}</button>
+    </div>`;
+}
+
+/** Rival studios: the ones you can buy, then the ones you own. */
+function acquisitions(state: GameState): string {
+  const forSale = acquirableRivals(state);
+  const owned = RIVALS.filter((r) => state.acquired?.includes(r.name));
+  const rows = forSale.map((r) => {
+    const blocked = acquireBlocker(state, r.name);
+    return `
+    <div class="option store-item">
+      <span class="emoji">🏢</span>
+      <span class="grow"><b>${esc(r.name)}</b> <span class="tag">Reviews ~${r.quality.toFixed(1)}</span><br/><span class="sub">Stops competing with you. +${num(acquisitionFans(state, r.name))} fans, and their star developer asks to join.</span>${
+        blocked ? `<br/><span class="sub warn">${blocked}</span>` : ''
+      }</span>
+      <button class="btn small" data-action="acquire" data-arg="${esc(r.name)}" ${blocked ? 'disabled' : ''}>Buy · ${money(acquisitionPrice(state, r.name))}</button>
+    </div>`;
+  });
+  const ownedRow = owned.length
+    ? `<div class="option store-item"><span class="emoji">🤝</span><span class="grow"><b>Yours</b><br/><span class="sub">${owned.map((r) => esc(r.name)).join(', ')}</span></span></div>`
+    : '';
+  return rows.join('') + ownedRow || '<p class="muted center">No studios are open for business right now.</p>';
+}
+
 /** A reward for watching an optional video, with what it gives now or why not. */
 function rewardRow(state: GameState, r: Reward, ads: MonetizationView): string {
   const blocked = rewardBlocker(state, r.id) ?? (ads.busy ? 'Just a moment…' : !ads.rewardedReady ? 'Loading a video…' : null);
@@ -700,6 +736,11 @@ function store(state: GameState, ads: MonetizationView): string {
     <div class="options">${boosts.map((x) => storeRow(state, x)).join('')}</div>
     <h4>Studio upgrades</h4>
     <div class="options">${upgrades.map((x) => storeRow(state, x)).join('')}</div>
+    <h4>Big investments</h4>
+    ${state.officeLevel < VENTURE_OFFICE ? '<p class="muted">For a studio on the Campus: huge projects that help forever, and buying out rival studios.</p>' : ''}
+    <div class="options">${VENTURES.map((v) => ventureRow(state, v)).join('')}</div>
+    <h4>Buy a rival studio</h4>
+    <div class="options">${acquisitions(state)}</div>
     <h4>Studio look</h4>
     <div class="options">
       <button class="option" data-action="decor"><span class="emoji">🎨</span><span class="grow"><b>Decorate</b><br/><span class="sub">Paint the walls and floor, and buy decorations for the office.</span></span></button>

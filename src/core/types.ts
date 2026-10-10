@@ -180,6 +180,10 @@ export interface GameState {
   bailoutUsed?: boolean;
   /** The studio's look: paint ids (absent = the office's own colours) and decorations. */
   decor?: DecorState;
+  /** Big late-game investments bought (see ventures.ts). */
+  ventures?: string[];
+  /** Rival studios bought out. */
+  acquired?: string[];
 }
 
 export interface DecorState {
