@@ -18,7 +18,6 @@ import {
   isPlatformAvailable,
   marketingById,
   platformById,
-  platformGenreFit,
   platformUsers,
   sizeById,
   topicById,
@@ -45,7 +44,7 @@ import { int, pick, random, range } from './rng';
 import { RIVAL_CLASH_MULT, newTrend, rivalClash, tickIndustry, trendMult } from './industry';
 import { hasSequel, sequelSalesMult, seriesNumber } from './sequels';
 import { acclaimFor, longAwaitedHype, sequelHype } from './acclaim';
-import { ESPORTS_FANS, PUBLISHING_SALES, hasVenture, phaseWeeks, ventureHypeMult } from './ventures';
+import { ESPORTS_FANS, PUBLISHING_SALES, hasVenture, licenseCost, phaseWeeks, platformFit, ventureHypeMult } from './ventures';
 import { expertiseMult, genreLevel, topicLevel } from './expertise';
 import { average, benchmark, clamp, evaluate, normalizeFocus, rollReviews, scoreFactor } from './scoring';
 import { START_YEAR, TOTAL_WEEKS, WEEKS_PER_MONTH, WEEKS_PER_YEAR, yearFraction, yearOf } from './time';
@@ -321,7 +320,7 @@ export interface CostBreakdown {
 }
 
 export function gameCost(state: GameState, spec: Pick<GameSpec, 'platform' | 'size' | 'marketing'>): CostBreakdown {
-  const license = state.licenses.includes(spec.platform) ? 0 : platformById(spec.platform).license;
+  const license = licenseCost(state, platformById(spec.platform));
   const size = sizeCost(state, spec.size);
   const marketing = marketingCost(state, spec.marketing, spec.size);
   return { license, size, marketing, total: license + size + marketing };
@@ -591,7 +590,7 @@ export function releaseGame(state: GameState): ReleaseReport | string {
   const original = p.sequelOf !== undefined ? state.released.find((g) => g.id === p.sequelOf) : undefined;
   // A sequel sells to the original's fans (or suffers from its reputation).
   const sequelMult = original ? sequelSalesMult(original) : 1;
-  const audience = (reachableUsers(users) * 1e6 * 0.0008 + 3000) * sf * platformGenreFit(platform, p.genre) * size.unitMult * market.salesMult;
+  const audience = (reachableUsers(users) * 1e6 * 0.0008 + 3000) * sf * platformFit(state, platform, p.genre) * size.unitMult * market.salesMult;
   const fanBuyers = state.fans * 0.2 * (score / 10) * Math.sqrt(size.unitMult);
   // Hype: launch buzz for a game that delivers, a backlash for one that doesn't.
   const hype = p.hype ?? 0;
@@ -702,7 +701,7 @@ export function releaseGame(state: GameState): ReleaseReport | string {
   if (trend > 1) insights.push({ text: `Riding this year's trend: +${Math.round((trend - 1) * 100)}% sales.`, kind: 'good' });
   if (clash) insights.push({ text: `${clash.studio}'s ${clash.name} got there first: ${Math.round((clashMult - 1) * 100)}% sales.`, kind: 'bad' });
   if (ev.staffMult < 1) insights.push({ text: `A ${size.name.toLowerCase()} game really needs a team of ${size.minStaff}+.`, kind: 'bad' });
-  const pFit = platformGenreFit(platform, p.genre);
+  const pFit = platformFit(state, platform, p.genre);
   if (pFit > 1.05) insights.push({ text: `${platform.name} owners love ${genre.name} games.`, kind: 'good' });
   else if (pFit < 0.95) insights.push({ text: `${genre.name} games are a hard sell on ${platform.name}.`, kind: 'bad' });
 

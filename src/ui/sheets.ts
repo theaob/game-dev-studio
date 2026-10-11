@@ -5,7 +5,6 @@ import {
   STORE,
   genreById,
   platformById,
-  platformGenreFit,
   platformUsers,
   sizeById,
   topicById,
@@ -36,7 +35,7 @@ import { moneyChart, spendBar, weeklyChart } from './charts';
 import { REWARDS, bailoutCash, canBailout, rewardAmount, rewardBlocker, type Reward } from '../core/rewards';
 import type { MonetizationView } from './monetization';
 import { RIVALS } from '../core/industry';
-import { VENTURES, VENTURE_OFFICE, phaseWeeks, acquirableRivals, acquireBlocker, acquisitionFans, acquisitionPrice, hasVenture, ventureBlocker, venturePrice, type Venture } from '../core/ventures';
+import { VENTURES, VENTURE_OFFICE, licenseCost, phaseWeeks, platformFit, acquirableRivals, acquireBlocker, acquisitionFans, acquisitionPrice, hasVenture, ventureBlocker, venturePrice, type Venture } from '../core/ventures';
 import { BOOTHS, EXPO_BOOKING_WEEKS, MAX_HYPE, PROMOS, SALES_PUSHES, boothById, boothPrice, hypeEffect, promoPrice, salesPushPrice, weeksToExpo } from '../core/marketing';
 import type { GameProject, GameSpec, GameState, ReleaseReport } from '../core/types';
 import { esc, money, num, scoreClass } from './format';
@@ -213,7 +212,7 @@ function receptionPreview(state: GameState, d: Pick<GameSpec, 'topic' | 'genre' 
   if (state.knowledge.balance[d.genre]) notes.push(`🎯 ${genre.name} fans like about ${Math.round(genre.designTarget * 100)}% design, ${100 - Math.round(genre.designTarget * 100)}% tech.`);
   if (platformId) {
     const platform = platformById(platformId);
-    const pf = platformGenreFit(platform, d.genre);
+    const pf = platformFit(state, platform, d.genre);
     if (pf > 1.05) notes.push(`🎮 ${platform.name} owners love ${genre.name} games.`);
     else if (pf < 0.95) notes.push(`🎮 ${genre.name} games are a hard sell on ${platform.name}.`);
   }
@@ -353,7 +352,8 @@ function newGameStep2(state: GameState, d: GameSpec, error?: string): string {
     <div class="options">
       ${availablePlatforms(state)
         .map((p) => {
-          const fit = platformGenreFit(p, d.genre);
+          const fit = platformFit(state, p, d.genre);
+          const license = licenseCost(state, p);
           const owned = state.licenses.includes(p.id);
           const fitTag = fit > 1.05 ? `<span class="tag good">Loves ${genreById(d.genre).name}</span>` : fit < 0.95 ? `<span class="tag bad">Weak for ${genreById(d.genre).name}</span>` : '';
           return `
@@ -361,7 +361,7 @@ function newGameStep2(state: GameState, d: GameSpec, error?: string): string {
           <span class="emoji">${p.icon}</span>
           <span class="grow">
             <b>${p.name}</b> <span class="sub">${p.kind}</span><br/>
-            <span class="sub">${num(platformUsers(p, year) * 1e6)} users · ${owned ? 'Licensed' : `License ${money(p.license)}`}${p.priceMult < 1 ? ' · low prices' : ''}</span>
+            <span class="sub">${num(platformUsers(p, year) * 1e6)} users · ${owned ? 'Licensed' : license ? `License ${money(license)}` : 'Free dev kit'}${p.priceMult < 1 ? ' · low prices' : ''}</span>
             ${fitTag ? `<br/>${fitTag}` : ''}
           </span>
         </button>`;

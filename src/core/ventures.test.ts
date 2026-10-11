@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { createGame } from './sim';
+import { createGame, gameCost } from './sim';
+import { platformById } from './data';
 import { tickIndustry } from './industry';
 import { WEEKS_PER_YEAR } from './time';
-import { acquirableRivals, acquireBlocker, acquireRival, acquisitionPrice, buyVenture, hasVenture, phaseWeeks, ventureHypeMult, ventureBlocker, venturePrice } from './ventures';
+import { acquirableRivals, acquireBlocker, acquireRival, acquisitionPrice, buyVenture, hasVenture, licenseCost, phaseWeeks, platformFit, ventureHypeMult, ventureBlocker, venturePrice } from './ventures';
 
 function campus(year = 2010) {
   const s = createGame('Test');
@@ -36,6 +37,19 @@ describe('late-game ventures', () => {
     expect(ventureHypeMult(s)).toBe(1.25);
     expect(phaseWeeks(s, 'large')).toBe(9);
     expect(phaseWeeks(s, 'medium')).toBe(6);
+  });
+
+  it('the Hardware Division makes dev kits free and softens weak platform fits', () => {
+    const s = campus();
+    const spectra = platformById('spectra3');
+    expect(licenseCost(s, spectra)).toBeGreaterThan(0);
+    expect(platformFit(s, spectra, 'casual')).toBeCloseTo(0.85, 5);
+    expect(platformFit(s, spectra, 'rpg')).toBeCloseTo(1.15, 5);
+    expect(buyVenture(s, 'hardware')).toBeNull();
+    expect(licenseCost(s, spectra)).toBe(0);
+    expect(gameCost(s, { platform: 'spectra3', size: 'small', marketing: 'none' }).license).toBe(0);
+    expect(platformFit(s, spectra, 'casual')).toBeCloseTo(0.925, 5);
+    expect(platformFit(s, spectra, 'rpg')).toBeCloseTo(1.15, 5);
   });
 });
 

@@ -7,13 +7,13 @@ import { friendly, priceIndex } from './economy';
 import { headline, activeRivals, RIVALS } from './industry';
 import { notify, rockstarCandidate } from './sim';
 import { yearOf } from './time';
-import { sizeById } from './data';
-import type { GameState, SizeId } from './types';
+import { platformGenreFit, sizeById, type Platform } from './data';
+import type { GameState, GenreId, SizeId } from './types';
 
 /** Big investments and acquisitions need the Campus. */
 export const VENTURE_OFFICE = 3;
 
-export type VentureId = 'mocap' | 'engine_team' | 'publishing' | 'esports';
+export type VentureId = 'mocap' | 'engine_team' | 'hardware' | 'publishing' | 'esports';
 
 export interface Venture {
   id: VentureId;
@@ -28,6 +28,7 @@ export interface Venture {
 export const VENTURES: Venture[] = [
   { id: 'mocap', name: 'Motion Capture Stage', icon: '🎬', desc: 'Actors in dotted suits make jaw-dropping trailers: promos and GameExpo build 25% more hype.', price: 1_500_000, fromYear: 1995 },
   { id: 'engine_team', name: 'Engine Division', icon: '⚙️', desc: 'A team that only works on your in-house engine: large games take a week less per phase to make.', price: 4_000_000 },
+  { id: 'hardware', name: 'Hardware Division', icon: '🔧', desc: 'Engineers who take every console apart: dev kits are free, and genres that are a weak fit for a platform lose only half as much.', price: 5_000_000 },
   { id: 'esports', name: 'Esports League', icon: '🏟️', desc: 'Stadium tournaments for your games: 15% more fans from every copy sold.', price: 6_000_000, fromYear: 2005 },
   { id: 'publishing', name: 'Worldwide Publishing', icon: '🌍', desc: 'Your own offices on every continent: every new release sells 10% more copies.', price: 10_000_000 },
 ];
@@ -37,6 +38,8 @@ export const MOCAP_HYPE = 1.25;
 export const ENGINE_TEAM_WEEKS_SAVED = 1;
 export const PUBLISHING_SALES = 1.1;
 export const ESPORTS_FANS = 1.15;
+/** Share of a weak platform fit's penalty the Hardware Division takes away. */
+export const HARDWARE_FIT_RELIEF = 0.5;
 
 export function ventureById(id: string): Venture {
   const v = VENTURES.find((x) => x.id === id);
@@ -46,6 +49,17 @@ export function ventureById(id: string): Venture {
 
 export function hasVenture(state: GameState, id: VentureId): boolean {
   return state.ventures?.includes(id) ?? false;
+}
+
+/** How well a genre suits a platform for this studio: the Hardware Division softens weak fits. */
+export function platformFit(state: GameState, platform: Platform, genre: GenreId): number {
+  const fit = platformGenreFit(platform, genre);
+  return fit < 1 && hasVenture(state, 'hardware') ? fit + (1 - fit) * HARDWARE_FIT_RELIEF : fit;
+}
+
+/** What a platform's dev kit costs this studio. */
+export function licenseCost(state: GameState, platform: Platform): number {
+  return state.licenses.includes(platform.id) || hasVenture(state, 'hardware') ? 0 : platform.license;
 }
 
 /** Hype multiplier for promos and GameExpo booths. */
