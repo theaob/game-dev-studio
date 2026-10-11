@@ -6,7 +6,7 @@ import { Capacitor } from '@capacitor/core';
 import type { BoothId, PromoId, SalesPushId } from '../core/marketing';
 import { normalizeFocus } from '../core/scoring';
 import { sequelName } from '../core/sequels';
-import type { GameSpec, GameState, GenreId, MarketingId, NoticeKind, PolishMode, SimEvent, SizeId } from '../core/types';
+import type { GameSpec, GameState, GenreId, ReleasedGame, MarketingId, NoticeKind, PolishMode, SimEvent, SizeId } from '../core/types';
 import { clearSave, loadAchievements, loadGame, saveAchievements, saveGame, type Unlock } from '../save';
 import { newAchievements } from '../core/achievements';
 import { OfficeScene } from './office';
@@ -16,6 +16,7 @@ import type { OfficeView } from './office-view';
 import { money, num } from './format';
 import { focusLean, renderSheet, type Sheet } from './sheets';
 import { ChartTooltip } from './tooltip';
+import { gotyCelebration, releaseCelebration, throwParty } from './celebration';
 import { Monetization } from './monetization';
 import { PlayGames } from './play-games';
 import { claimBailout, claimReward, investorCash, rewardBlocker, type RewardId } from '../core/rewards';
@@ -141,8 +142,10 @@ export class App {
 
   private step() {
     const s = this.state!;
+    const goty = s.released.filter((g) => g.goty !== undefined).length;
     const events = tick(s);
     for (const ev of events) this.handle(ev);
+    this.celebrateGoty(goty);
     if (s.week % 4 === 0) this.save();
     this.render();
   }
@@ -244,8 +247,8 @@ export class App {
     el.classList.add('enter');
   }
 
-  /** After the last review lands: count the average up, and throw confetti for a hit. */
-  private onReviewsShown(score: number) {
+  /** After the last review lands: count the average up, throw confetti for a hit, and a party for an award. */
+  private onReviewsShown(game: ReleasedGame) {
     const el = this.els.sheet.querySelector<HTMLElement>('[data-countup]');
     if (el && !el.dataset.done) {
       el.dataset.done = '1';
@@ -259,7 +262,27 @@ export class App {
       };
       requestAnimationFrame(stepFn);
     }
-    if (score >= 8) this.confetti();
+    const party = releaseCelebration(game);
+    if (party) {
+      // Let the average finish counting up before the trophy drops in.
+      window.setTimeout(() => {
+        throwParty(party, game.name);
+        this.confetti();
+        this.vibrate([30, 60, 30, 60, 60]);
+      }, 700);
+    } else if (game.score >= 8) this.confetti();
+  }
+
+  /** A studio game just won Game of the Year: throw it a party. */
+  private celebrateGoty(before: number) {
+    const s = this.state!;
+    const winners = s.released.filter((g) => g.goty !== undefined);
+    if (winners.length <= before) return;
+    const g = winners.reduce((a, w) => (w.goty! > a.goty! ? w : a));
+    throwParty(gotyCelebration(g.goty!), g.name);
+    this.confetti();
+    this.office.cheer(gotyCelebration(g.goty!).cheer);
+    this.vibrate([30, 60, 30, 60, 60]);
   }
 
   private confetti() {
@@ -596,7 +619,7 @@ export class App {
     });
   }
 
-  private vibrate(ms: number) {
+  private vibrate(ms: number | number[]) {
     try {
       navigator.vibrate?.(ms);
     } catch {
@@ -902,7 +925,7 @@ export class App {
         this.save();
         // The team reacts once the review screen closes.
         const sc = r.game.score;
-        this.office.cheer(sc >= 8 ? ['🎉', '🥳', 'Yes!', '🏆'] : sc >= 6 ? ['🙂', 'Not bad', '👍'] : sc >= 4 ? ['😐', 'Meh', '🤷'] : ['😩', 'Ouch', '💔']);
+        this.office.cheer(releaseCelebration(r.game)?.cheer ?? (sc >= 8 ? ['🎉', '🥳', 'Yes!', '🏆'] : sc >= 6 ? ['🙂', 'Not bad', '👍'] : sc >= 4 ? ['😐', 'Meh', '🤷'] : ['😩', 'Ouch', '💔']));
         this.replace({ kind: 'review', report: r, shown: 0 });
         this.render();
         this.reviewTimer = window.setInterval(() => {
@@ -912,7 +935,7 @@ export class App {
           this.renderSheet();
           if (this.sheet.shown >= 4) {
             window.clearInterval(this.reviewTimer);
-            this.onReviewsShown(this.sheet.report.game.score);
+            this.onReviewsShown(this.sheet.report.game);
           }
         }, 650);
         return;
@@ -922,7 +945,7 @@ export class App {
           window.clearInterval(this.reviewTimer);
           sheet.shown = 4;
           this.renderSheet();
-          this.onReviewsShown(sheet.report.game.score);
+          this.onReviewsShown(sheet.report.game);
         }
         return;
       case 'game-detail':

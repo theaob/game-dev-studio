@@ -242,6 +242,280 @@ main.enter {
   }
 }
 
+/* Award party: a trophy under a ribbon, fireworks, streamers and emoji rain. */
+.award-party {
+  position: fixed;
+  inset: 0;
+  z-index: 66;
+  pointer-events: none;
+  overflow: hidden;
+  animation: ap-fade 5.2s linear forwards;
+}
+
+.ap-stage {
+  position: absolute;
+  left: 50%;
+  top: 34%;
+  width: 280px;
+  margin-left: -140px;
+  text-align: center;
+  animation: ap-stage 3.6s ease-in forwards;
+}
+
+.ap-rays {
+  position: absolute;
+  left: 50%;
+  top: 56px;
+  width: 0;
+  height: 0;
+  animation: ap-spin 6s linear infinite;
+}
+
+.ap-rays i {
+  position: absolute;
+  left: -14px;
+  bottom: 0;
+  width: 28px;
+  height: 150px;
+  transform-origin: 50% 100%;
+  transform: rotate(var(--r));
+  background: linear-gradient(to top, rgba(255, 210, 92, 0.55), rgba(255, 210, 92, 0));
+  clip-path: polygon(50% 100%, 0 0, 100% 0);
+}
+
+.ap-icon {
+  position: relative;
+  font-size: 92px;
+  line-height: 112px;
+  filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.35));
+  animation: ap-drop 0.9s cubic-bezier(0.2, 0.9, 0.3, 1.5) both, ap-bob 1.1s ease-in-out 0.9s infinite alternate;
+}
+
+.ap-ribbon {
+  position: relative;
+  display: inline-block;
+  margin-top: 4px;
+  padding: 10px 26px;
+  background: linear-gradient(180deg, #ef5a3a, #c43a1d);
+  color: #fff8ea;
+  font-family: ui-rounded, 'SF Pro Rounded', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  border-radius: 6px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3);
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.2);
+  animation: ap-ribbon 0.6s cubic-bezier(0.2, 0.9, 0.3, 1.4) 0.35s both;
+}
+
+/* Swallowtail ends. */
+.ap-ribbon::before,
+.ap-ribbon::after {
+  content: '';
+  position: absolute;
+  top: 8px;
+  width: 22px;
+  height: 100%;
+  background: #9c2c14;
+  z-index: -1;
+}
+
+.ap-ribbon::before {
+  left: -16px;
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%, 35% 50%);
+}
+
+.ap-ribbon::after {
+  right: -16px;
+  clip-path: polygon(0 0, 100% 0, 65% 50%, 100% 100%, 0 100%);
+}
+
+.tier-masterpiece .ap-ribbon,
+.tier-goty .ap-ribbon {
+  background: linear-gradient(180deg, #ffd25c, #e8a21f);
+  color: #4a2d00;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+
+.tier-masterpiece .ap-ribbon::before,
+.tier-masterpiece .ap-ribbon::after,
+.tier-goty .ap-ribbon::before,
+.tier-goty .ap-ribbon::after {
+  background: #b9770c;
+}
+
+.tier-goty .ap-ribbon {
+  padding: 10px 18px;
+  font-size: 20px;
+}
+
+.tier-classic .ap-ribbon {
+  background: linear-gradient(90deg, #ff5d8f, #ffb347, #5fd3a6, #5aa9ff, #b48cff);
+  background-size: 200% 100%;
+  animation: ap-ribbon 0.6s cubic-bezier(0.2, 0.9, 0.3, 1.4) 0.35s both, ap-rainbow 1.6s linear infinite;
+}
+
+.tier-classic .ap-ribbon::before,
+.tier-classic .ap-ribbon::after {
+  background: #7a4bd1;
+}
+
+.tier-classic .ap-rays i {
+  background: linear-gradient(to top, rgba(180, 140, 255, 0.55), rgba(90, 169, 255, 0));
+}
+
+.ap-name {
+  margin-top: 10px;
+  display: inline-block;
+  max-width: 260px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: rgba(20, 16, 12, 0.72);
+  color: #fff8ea;
+  font-size: 14px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  animation: ap-ribbon 0.5s ease-out 0.7s both;
+}
+
+.ap-burst {
+  position: absolute;
+  width: 0;
+  height: 0;
+}
+
+.ap-burst i {
+  position: absolute;
+  left: -3px;
+  top: -3px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--c);
+  box-shadow: 0 0 6px var(--c);
+  opacity: 0;
+  animation: ap-spark 1.1s cubic-bezier(0.1, 0.7, 0.3, 1) forwards;
+  animation-delay: inherit;
+}
+
+.ap-streamer {
+  position: absolute;
+  top: -40px;
+  width: 6px;
+  height: 34px;
+  border-radius: 3px;
+  animation: ap-streamer linear forwards;
+}
+
+.ap-rain {
+  position: absolute;
+  top: -40px;
+  font-size: 26px;
+  animation: ap-rain ease-in forwards;
+}
+
+@keyframes ap-fade {
+  85% {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes ap-stage {
+  80% {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-30px) scale(0.9);
+  }
+}
+
+@keyframes ap-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes ap-drop {
+  from {
+    opacity: 0;
+    transform: translateY(-160px) scale(0.4) rotate(-25deg);
+  }
+}
+
+@keyframes ap-bob {
+  to {
+    transform: translateY(-8px) rotate(4deg);
+  }
+}
+
+@keyframes ap-ribbon {
+  from {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+}
+
+@keyframes ap-rainbow {
+  to {
+    background-position: 200% 0;
+  }
+}
+
+@keyframes ap-spark {
+  0% {
+    opacity: 1;
+    transform: none;
+  }
+  70% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--dx), calc(var(--dy) + 30px)) scale(0.4);
+  }
+}
+
+@keyframes ap-streamer {
+  25% {
+    transform: translate(calc(var(--sway) * -1), 25vh) rotate(160deg);
+  }
+  50% {
+    transform: translate(var(--sway), 52vh) rotate(380deg);
+  }
+  to {
+    transform: translate(calc(var(--sway) * -0.5), 108vh) rotate(720deg);
+  }
+}
+
+@keyframes ap-rain {
+  50% {
+    transform: translate(var(--sway), 50vh) rotate(calc(var(--spin) * 0.5));
+  }
+  to {
+    transform: translate(calc(var(--sway) * -1), 110vh) rotate(var(--spin));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .award-party > :not(.ap-stage),
+  .ap-rays {
+    display: none;
+  }
+  .ap-icon,
+  .ap-ribbon,
+  .ap-name {
+    animation: none;
+  }
+}
+
 .speed {
   display: flex;
   background: var(--card);
