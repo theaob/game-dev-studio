@@ -180,6 +180,12 @@ export class App {
         this.office.cheer(ev.report.game ? ['🎪', 'Expo!', '🤩', '🔥'] : ['🎪', '👋', 'Hi!']);
         this.open({ kind: 'expo' });
         break;
+      case 'keynote':
+        this.office.cheer(['📺', '🤯', 'Want!', '🎮']);
+        this.open({ kind: 'keynote', keynote: ev.keynote });
+        this.confetti();
+        this.vibrate(30);
+        break;
       case 'contractDone':
         this.office.cheer(['💰', 'Paid!', '💵']);
         this.vibrate(15);
@@ -757,6 +763,14 @@ export class App {
       case 'new-game': {
         const draft: GameSpec = { name: '', topic: '', genre: '' as GenreId, platform: 'pc', size: 'small', marketing: 'none' };
         this.open({ kind: 'newGame', step: 1, draft });
+        return;
+      }
+      case 'keynote-skip':
+        this.els.sheet.querySelector('.keynote')?.classList.add('skip');
+        return;
+      case 'keynote-make': {
+        const draft: GameSpec = { name: '', topic: '', genre: '' as GenreId, platform: arg, size: 'small', marketing: 'none' };
+        this.replace({ kind: 'newGame', step: 1, draft });
         return;
       }
       case 'contracts':

@@ -47,6 +47,7 @@ import { marketingCost, sizeCost } from '../core/economy';
 import { ACHIEVEMENTS } from '../core/achievements';
 import type { Unlock } from '../save';
 import type { PlayGamesView } from './play-games';
+import type { Keynote } from '../core/keynote';
 
 export type Sheet =
   | { kind: 'welcome'; name: string }
@@ -64,6 +65,7 @@ export type Sheet =
   | { kind: 'decor' }
   | { kind: 'marketing' }
   | { kind: 'expo' }
+  | { kind: 'keynote'; keynote: Keynote }
   | { kind: 'achievements' }
   | { kind: 'gameOver' };
 
@@ -121,6 +123,8 @@ export function renderSheet(
       return marketing(state);
     case 'expo':
       return expoResults(state);
+    case 'keynote':
+      return keynote(state, sheet.keynote);
   }
 }
 
@@ -140,7 +144,7 @@ function help(): string {
     <h3>How to play</h3>
     <div class="help">
       <p><b>Make games.</b> Pick a name, a topic and a genre. Some combinations work much better than others, and you learn which after each release.</p>
-      <p><b>Choose a platform.</b> Platforms come and go over the decades. Bigger audiences sell more, and some platforms suit some genres better. Consoles need a one-time dev kit license.</p>
+      <p><b>Choose a platform.</b> Platforms come and go over the decades. Bigger audiences sell more, and some platforms suit some genres better. Consoles need a one-time dev kit license. Each new one launches with a keynote that shows what it's good for.</p>
       <p><b>Set the focus.</b> Development has 3 phases with 3 areas each. Put your team's effort where the genre needs it. Reviews reveal what matters.</p>
       <p><b>Design vs Tech.</b> Every genre has a sweet spot between creative (design) and technical (tech) points.</p>
       <p><b>Polish.</b> After development you can keep polishing before you release: fix bugs (they hurt reviews), or add more design or tech points to fix the game's balance. Design and tech polishing gives less each week.</p>
@@ -857,6 +861,45 @@ function expoResults(state: GameState): string {
         : `With no game in development, the booth won half the usual ${num(booth.fans)} fans. Start a game before next year's expo to build hype too.`
     } More fans means more copies sold for every game you release.</p>
     <div class="btn-row"><button class="btn big" data-action="close">Continue</button></div>`;
+}
+
+/** Millions of players, e.g. 3M or 1.1B. */
+function players(millions: number): string {
+  return num(millions * 1e6).replace(/\.0+(?=[MB])/, '').replace(/(\.\d)0(?=[MB])/, '$1');
+}
+
+/**
+ * A new console's launch keynote: a dark stage where the hardware is revealed
+ * piece by piece (tap to skip ahead), then what it means for the studio.
+ */
+function keynote(state: GameState, k: Keynote): string {
+  // A studio that's free can start a game on it straight from the stage.
+  const canMake = k.platform !== undefined && !state.activity && !state.over;
+  const step = (i: number) => `style="--i:${i}"`;
+  const fit = [
+    k.strengths.length ? `<div class="kn-fit"><span>Made for</span>${k.strengths.map((g) => `<span class="tag good">${esc(g)}</span>`).join('')}</div>` : '',
+    k.weaknesses.length ? `<div class="kn-fit"><span>Not for</span>${k.weaknesses.map((g) => `<span class="tag bad">${esc(g)}</span>`).join('')}</div>` : '',
+  ].join('');
+  return `
+    <div class="keynote${k.own ? ' own' : ''}" data-action="keynote-skip">
+      <div class="kn-lights" aria-hidden="true"></div>
+      <p class="kn-eyebrow kn-in" ${step(0)}>${k.own ? `${esc(state.studioName)} keynote` : `${esc(k.maker)} presents`}<span>${k.year}</span></p>
+      <div class="kn-icon kn-in" ${step(1)}>${k.icon}</div>
+      <h3 class="kn-name kn-in" ${step(2)}>${esc(k.name)}</h3>
+      <p class="kn-kind kn-in" ${step(2)}>The new ${esc(k.kind.toLowerCase())}</p>
+      <p class="kn-tagline kn-in" ${step(3)}>“${esc(k.tagline)}”</p>
+      <div class="kn-specs kn-in" ${step(4)}>
+        <div class="kn-spec"><b>${players(k.launchUsers)}</b><small>Players at launch</small></div>
+        <div class="kn-spec"><b>${players(k.peakUsers)}</b><small>${k.peakYear > k.year ? `Expected by ${k.peakYear}` : 'At its peak'}</small></div>
+        <div class="kn-spec"><b>${k.license ? money(k.license) : 'Free'}</b><small>Dev kit</small></div>
+      </div>
+      <div class="kn-in" ${step(5)}>${fit}</div>
+      <div class="kn-crowd kn-in" ${step(5)} aria-hidden="true"><span>👏</span><span>📸</span><span>🤩</span><span>👏</span><span>🙌</span><span>📸</span><span>👏</span></div>
+      <div class="btn-row kn-in" ${step(6)}>
+        ${canMake ? `<button class="btn big" data-action="keynote-make" data-arg="${esc(k.platform!)}">Make a game</button>` : ''}
+        <button class="btn ${canMake ? 'ghost' : 'big'}" data-action="close">${canMake ? 'Later' : 'Back to work'}</button>
+      </div>
+    </div>`;
 }
 
 /** The first bankruptcy in a save can be undone once with a video (Android app only). */
