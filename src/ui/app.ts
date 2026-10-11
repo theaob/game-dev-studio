@@ -1,5 +1,6 @@
 import { availablePlatforms, createGame, doResearch, fire, hire, startHeadhunt, randomTitle, bookBooth, buyStoreItem, catLeaveLap, pushSales, runPromo, placeCatOnLap, releaseGame, setPhaseFocus, setPolishMode, startContract, startGame, tick, train, upgradeOffice, validateGame } from '../core/sim';
 import { storeItemById } from '../core/data';
+import { acquireRival, buyVenture, ventureById, type VentureId } from '../core/ventures';
 import { App as NativeApp } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
 import type { BoothId, PromoId, SalesPushId } from '../core/marketing';
@@ -856,6 +857,18 @@ export class App {
         }
         return;
       }
+      case 'venture':
+        if (report(buyVenture(s, arg as VentureId))) {
+          this.office.cheer([ventureById(arg).icon, '🎉', 'Wow!']);
+          if (sheet?.kind === 'store') this.renderSheet();
+        }
+        return;
+      case 'acquire':
+        if (report(acquireRival(s, arg))) {
+          this.office.cheer(['🤝', '🏢', '💼']);
+          if (sheet?.kind === 'store') this.renderSheet();
+        }
+        return;
       case 'contract':
         if (sheet?.kind === 'contracts') this.close();
         report(startContract(s, Number(arg)));

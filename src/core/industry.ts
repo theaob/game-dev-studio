@@ -87,7 +87,7 @@ export function rivalClash(state: GameState, genre: string, topic: string) {
 function rivalRelease(state: GameState) {
   const ind = industry(state);
   const year = yearOf(state.week);
-  const rivals = activeRivals(year);
+  const rivals = activeRivals(year).filter((r) => !state.acquired?.includes(r.name));
   if (!rivals.length) return;
   const rival = pick(state, rivals);
   // Rivals chase the trend some of the time.
@@ -130,7 +130,7 @@ function yearlyIndustry(state: GameState) {
   }
   for (const r of RIVALS) {
     if (r.from === year && year > RIVALS[0].from) headline(state, '🏢', `A new studio, ${r.name}, has opened its doors.`);
-    if (r.until === year) headline(state, '🏚️', `${r.name} has closed down.`, 'bad');
+    if (r.until === year && !state.acquired?.includes(r.name)) headline(state, '🏚️', `${r.name} has closed down.`, 'bad');
   }
   gameOfTheYear(state, last);
   newTrend(state);

@@ -1,4 +1,5 @@
-import { genreById, platformById, platformGenreFit, sizeById, topicFit } from './data';
+import { genreById, platformById, sizeById, topicFit } from './data';
+import { platformFit } from './ventures';
 import { gaussian, type RngHolder } from './rng';
 import { sequelQualityMult } from './sequels';
 import { yearFraction, START_YEAR } from './time';
@@ -80,7 +81,7 @@ export function evaluate(state: GameState, project: GameProject): Evaluation {
   const repeatMult = original ? sequelQualityMult(state.week, original) : repeatMultiplier(state.released, project.topic, project.genre);
 
   const staffMult = state.staff.length < size.minStaff ? 0.9 - 0.05 * (size.minStaff - state.staff.length) : 1;
-  const platformMult = Math.sqrt(platformGenreFit(platformById(project.platform), project.genre));
+  const platformMult = Math.sqrt(platformFit(state, platformById(project.platform), project.genre));
 
   const quality = pointsRatio * fitMult * alignMult * balanceMult * bugMult * repeatMult * Math.max(0.6, staffMult) * platformMult;
   const score = clamp(1 + 9 * (1 - Math.exp(-1.15 * quality)), 1, 10);
