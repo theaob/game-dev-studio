@@ -795,7 +795,7 @@ export function tick(state: GameState): SimEvent[] {
   tickSales(state);
 
   tickExpo(state, events);
-  tickIndustry(state);
+  tickIndustry(state, events);
   if (state.week % WEEKS_PER_MONTH === 0) monthly(state);
   if (state.week % WEEKS_PER_YEAR === 0) yearly(state);
 
@@ -1101,8 +1101,8 @@ function yearly(state: GameState) {
   const year = yearOf(state.week);
   // Yearly pay review: salaries keep up with the market rate for each person's skills.
   for (const s of state.staff) if (!s.founder) s.salary = Math.max(s.salary, salaryFor(state, s.design, s.tech));
+  // Launches get a keynote (see industry.ts) rather than a toast.
   for (const p of PLATFORMS) {
-    if (p.start === year) notify(state, `New platform: the ${p.name} (${p.kind}) has launched!`, 'good');
     if (p.end === year) notify(state, `The ${p.name} has been discontinued.`, 'info');
   }
 }

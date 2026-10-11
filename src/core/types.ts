@@ -1,3 +1,5 @@
+import type { Keynote } from './keynote';
+
 export type GenreId = 'action' | 'adventure' | 'rpg' | 'simulation' | 'strategy' | 'puzzle' | 'casual' | 'platformer' | 'shooter' | 'rhythm';
 export type SizeId = 'small' | 'medium' | 'large';
 export type MarketingId = 'none' | 'ads' | 'campaign' | 'global';
@@ -254,4 +256,5 @@ export type SimEvent =
   | { type: 'gameOver'; reason: 'bankrupt' | 'retired' }
   | { type: 'catLap'; staffId: number; name: string }
   | { type: 'catLeft'; staffId: number }
-  | { type: 'expo'; report: ExpoReport };
+  | { type: 'expo'; report: ExpoReport }
+  | { type: 'keynote'; keynote: Keynote };
