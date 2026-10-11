@@ -1,5 +1,11 @@
 apply plugin: 'com.android.application'
 
+/** The `app_id` string from the Play Console's exported games resources XML, or '' without one. */
+String playGamesAppId(String xml) {
+    def m = (xml ?: '') =~ /<string\s+name="app_id"[^>]*>\s*(\d+)\s*<\/string>/
+    return m.find() ? m.group(1) : ''
+}
+
 android {
     namespace = "io.github.theaob.gamedevstudio"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -12,6 +18,9 @@ android {
         versionName(project.findProperty('versionName') ?: 'dev')
         // The AdMob app ID (not secret). Without one, Google's sample app ID shows test ads only.
         manifestPlaceholders = [admobAppId: System.getenv('ADMOB_APP_ID') ?: 'ca-app-pub-3940256099942544~3347511713']
+        // The Google Play Games project ID, read from the resources XML the Play Console exports
+        // (PLAY_GAMES_RESOURCES). Empty means Play Games stays off.
+        resValue 'string', 'game_services_project_id', playGamesAppId(System.getenv('PLAY_GAMES_RESOURCES'))
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -40,6 +49,9 @@ android {
             }
         }
     }
+    buildFeatures {
+        resValues = true
+    }
     buildTypes {
         release {
             signingConfig keystorePath ? signingConfigs.release : signingConfigs.debug
@@ -61,6 +73,7 @@ dependencies {
     implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
     implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
     implementation project(':capacitor-android')
+    implementation "com.google.android.gms:play-services-games-v2:$playServicesGamesVersion"
     testImplementation "junit:junit:$junitVersion"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"

@@ -1,6 +1,6 @@
 import {
   FIT_LABELS,
-  GENRES,
+  PERFECT_FIT,
   PHASES,
   STORE,
   genreById,
@@ -11,7 +11,9 @@ import {
   topicById,
 } from '../core/data';
 import { normalizeFocus, repeatMultiplier } from '../core/scoring';
+import { GENRE_LEVEL_BONUS, TOPIC_LEVEL_BONUS, EXPERTISE_MIN_SCORE, genreHits, hitsToNextLevel, topicHits, expertiseLevel } from '../core/expertise';
 import {
+  availableGenres,
   availableMarketing,
   availablePlatforms,
   availableSizes,
@@ -31,14 +33,20 @@ import { WEEKS_PER_YEAR, formatShortDate, yearFraction, yearOf } from '../core/t
 import { RIVAL_CLASH_MULT, RIVAL_CLASH_WEEKS, rivalClash, trendMult } from '../core/industry';
 import { onSale, paybackWeek, profit, returnMultiple, revenueRank, totalCost, verdict } from '../core/results';
 import { moneyChart, spendBar, weeklyChart } from './charts';
-import { REWARDS, rewardAmount, rewardBlocker, type Reward } from '../core/rewards';
+import { REWARDS, bailoutCash, canBailout, rewardAmount, rewardBlocker, type Reward } from '../core/rewards';
 import type { MonetizationView } from './monetization';
-import { BOOTHS, EXPO_BOOKING_WEEKS, PROMOS, SALES_PUSHES, boothById, boothPrice, promoPrice, salesPushPrice, weeksToExpo } from '../core/marketing';
+import { BOOTHS, EXPO_BOOKING_WEEKS, MAX_HYPE, PROMOS, SALES_PUSHES, boothById, boothPrice, hypeEffect, promoPrice, salesPushPrice, weeksToExpo } from '../core/marketing';
 import type { GameProject, GameSpec, GameState, ReleaseReport } from '../core/types';
 import { esc, money, num, scoreClass } from './format';
 import type { StoreItem } from '../core/data';
-import { polishPicker } from './views';
+import { DECOR, FLOOR_PAINTS, WALL_PAINTS, decorPrice, isPlaced, ownsDecor, paintPrice, trophyCount } from '../core/decor';
+import type { DecorItem, Paint } from '../core/decor';
+import { acclaimTag, polishPicker } from './views';
+import { acclaimOf, beloved, longAwaitedHype, sequelHype } from '../core/acclaim';
 import { marketingCost, sizeCost } from '../core/economy';
+import { ACHIEVEMENTS } from '../core/achievements';
+import type { Unlock } from '../save';
+import type { PlayGamesView } from './play-games';
 
 export type Sheet =
   | { kind: 'welcome'; name: string }
@@ -53,7 +61,10 @@ export type Sheet =
   | { kind: 'confirm'; text: string; action: string; arg?: string; confirmLabel: string }
   | { kind: 'contracts' }
   | { kind: 'store' }
+  | { kind: 'decor' }
   | { kind: 'marketing' }
+  | { kind: 'expo' }
+  | { kind: 'achievements' }
   | { kind: 'gameOver' };
 
 /** The web build: no ads, no purchases. */
@@ -61,12 +72,20 @@ const NO_ADS: MonetizationView = { native: false, rewardedReady: false, adFree: 
 
 export const OUTLETS = ['Game Weekly', 'Pixel Press', 'PlayZone', 'Joystick Journal'];
 
-export function renderSheet(state: GameState | null, sheet: Sheet, ads: MonetizationView = NO_ADS): string {
+export function renderSheet(
+  state: GameState | null,
+  sheet: Sheet,
+  ads: MonetizationView = NO_ADS,
+  unlocked: Record<string, Unlock> = {},
+  play: PlayGamesView = { available: false, signedIn: false },
+): string {
   switch (sheet.kind) {
     case 'welcome':
       return welcome(sheet.name);
     case 'help':
       return help();
+    case 'achievements':
+      return achievements(unlocked, play);
     case 'confirm':
       return `
         <h3>Are you sure?</h3>
@@ -89,15 +108,19 @@ export function renderSheet(state: GameState | null, sheet: Sheet, ads: Monetiza
     case 'gameDetail':
       return gameDetail(state, sheet.id);
     case 'menu':
-      return menu(sheet.saved, ads);
+      return menu(sheet.saved, ads, unlocked);
     case 'gameOver':
-      return gameOver(state);
+      return gameOver(state, ads);
     case 'contracts':
       return contracts(state);
     case 'store':
       return store(state, ads);
+    case 'decor':
+      return decorSheet(state);
     case 'marketing':
       return marketing(state);
+    case 'expo':
+      return expoResults(state);
   }
 }
 
@@ -120,16 +143,17 @@ function help(): string {
       <p><b>Choose a platform.</b> Platforms come and go over the decades. Bigger audiences sell more, and some platforms suit some genres better. Consoles need a one-time dev kit license.</p>
       <p><b>Set the focus.</b> Development has 3 phases with 3 areas each. Put your team's effort where the genre needs it. Reviews reveal what matters.</p>
       <p><b>Design vs Tech.</b> Every genre has a sweet spot between creative (design) and technical (tech) points.</p>
-      <p><b>Polish.</b> After development you can keep polishing before you release: fix bugs (they hurt reviews), or add more design or tech points to fix the game's balance. Design and tech polishing gives less each week.</p>
-      <p><b>Marketing.</b> Pick an ad budget when you start a game. Tap 📣 Promote while making it to build hype with previews and trailers, and book a booth at the yearly GameExpo. Hype sells more copies of a good game, but a hyped flop gets a backlash. After launch, 📣 Push sales runs ads or a discount sale.</p>
+      <p><b>Polish.</b> After development you can keep polishing before you release: fix bugs (they hurt reviews), or add more design or tech points to fix the game's balance. Design and tech polishing gives less each week. Rework moves points from one side to the other until the split suits the genre, losing a quarter of what it moves.</p>
+      <p><b>Marketing.</b> Pick an ad budget when you start a game. Tap 📣 Promote while making it to build hype with previews and trailers, and book a booth at the yearly GameExpo. A game with good points builds hype on its own by word of mouth. Hype sells more copies of a good game, but a hyped flop gets a backlash. After launch, 📣 Push sales runs ads or a discount sale. Research the Marketing Department to add press tours, TV commercials and TV ad blitzes.</p>
       <p><b>Read the news.</b> Each year has a trending genre and topic (marked 🔥 when you start a game) that sell better. Rival studios release games too: right after a rival's hit, the same topic and genre sells less for a while. The News tab also shows which platforms are growing or on their way out.</p>
       <p><b>The cat.</b> Sometimes the studio cat curls up on a developer's lap, and they work 30% faster while it stays. You can carry the cat over and drop it on someone too, but it needs some alone time between laps.</p>
       <p><b>Store.</b> Spend cash on power-ups: boosts like an espresso bar or pizza night last a few weeks of development, and studio upgrades help forever. Find it next to Contracts, or tap ⚡ Boost while making a game.</p>
+      <p><b>Awards.</b> A game that reviews 9.0 or better is a 🏅 Critics' Choice, and 9.5 or better a 👑 Masterpiece. Its sequel starts development with hype already built: the better the original and the longer fans have waited, the more. Those fans never get bored: the hype doesn't fade, and they don't tire of a long series. Each new year, the best-reviewed game of the last one, yours or a rival's, is named 🏆 Game of the Year: winning brings fans, more sales if it's still selling, and extra hype for its sequel.</p>
       <p><b>Track your results.</b> Tap any game to see what it cost, what it made each week, when it paid for itself and whether it was a hit or a flop. The Games tab charts the profit of every release.</p>
       <p><b>Free with a video.</b> In the Android app, the Store has rewards for watching an optional video: an investor's cash, a free Espresso Bar or a research grant. Each one can be claimed again after a few weeks.</p>
       <p><b>Raise the bar.</b> Players expect each game to beat your last one, and the industry keeps moving. Grow your team, train them and research better tech.</p>
       <p><b>Stay solvent.</b> Rent and salaries are paid monthly. Three months in the red and you're bankrupt. Contract work pays the bills.</p>
-      <p><b>Grow.</b> Earn research points (RP) to unlock topics, bigger games and better engines. You earn RP every week you're making a game (more with a bigger team) and with every release (more for better reviews). Move offices to hire more people.</p>
+      <p><b>Grow.</b> Earn research points (RP) to unlock topics, bigger games and better engines. You earn RP every week you're making a game (more with a bigger team), a little even while the studio has nothing on, and with every release (more for better reviews). Move offices to hire more people.</p>
       <p>The game runs from 1985 to 2025. Tap ❚❚ to pause anytime. Your progress is saved automatically.</p>
     </div>
     <div class="btn-row"><button class="btn" data-action="close">Got it</button></div>`;
@@ -140,7 +164,20 @@ const RECEPTION = [
   { face: '😐', title: 'Mixed reception', text: (t: string, g: string) => `Some players will enjoy a ${t} ${g} game, but many won't be convinced.`, cls: 'mid' },
   { face: '🙂', title: 'Players will like it', text: (t: string, g: string) => `${t} ${g} is a solid combination that fans enjoy.`, cls: 'good' },
   { face: '🤩', title: 'Players will love it', text: (t: string, g: string) => `${t} ${g} games are a proven hit!`, cls: 'great' },
+  { face: '💞', title: 'A perfect match', text: (t: string, g: string) => `${t} and ${g} were made for each other. Players can't get enough.`, cls: 'perfect' },
 ];
+
+/** The team's know-how in the genre and topic, for the reception card. */
+function knowHowNote(state: GameState, genre: string, topic: string): string {
+  const g = genreById(genre).name;
+  const gHits = genreHits(state.released, genre);
+  const gLevel = expertiseLevel(gHits);
+  const tLevel = expertiseLevel(topicHits(state.released, topic));
+  const pct = Math.round((GENRE_LEVEL_BONUS * (gLevel - 1) + TOPIC_LEVEL_BONUS * (tLevel - 1)) * 100);
+  const next = hitsToNextLevel(gHits);
+  const tip = next === null ? '' : ` ${next === 1 ? 'One more' : next} ${g} hit${next > 1 ? 's' : ''} (${EXPERTISE_MIN_SCORE}+ reviews) to reach Lv ${gLevel + 1}.`;
+  return `🧠 Team know-how: ${g} <b>Lv ${gLevel}</b>, ${esc(topicById(topic).name)} <b>Lv ${tLevel}</b>${pct ? `: <b>+${pct}%</b> design and tech` : ''}.${tip}`;
+}
 
 /**
  * How players are expected to receive a topic + genre combination. Only revealed
@@ -150,7 +187,7 @@ function receptionPreview(state: GameState, d: Pick<GameSpec, 'topic' | 'genre' 
   const topic = topicById(d.topic).name;
   const genre = genreById(d.genre);
   const fit = state.knowledge.combos[`${d.topic}|${d.genre}`];
-  const news = newsNotes(state, d.genre, d.topic);
+  const news = [...newsNotes(state, d.genre, d.topic), knowHowNote(state, d.genre, d.topic)];
   if (fit === undefined) {
     return `
     <div class="reception unknown mt">
@@ -183,7 +220,7 @@ function receptionPreview(state: GameState, d: Pick<GameSpec, 'topic' | 'genre' 
       <div class="face">${r.face}</div>
       <div class="grow">
         <b>${r.title}</b>
-        <div class="meter" aria-label="Combination rating ${FIT_LABELS[fit]}">${[0, 1, 2, 3].map((i) => `<i class="${i <= fit ? 'on' : ''}"></i>`).join('')}<span>${FIT_LABELS[fit]}</span></div>
+        <div class="meter" aria-label="Combination rating ${FIT_LABELS[fit]}">${FIT_LABELS.map((_, i) => `<i class="${i <= fit ? 'on' : ''}"></i>`).join('')}<span>${FIT_LABELS[fit]}</span></div>
         <div class="sub">${esc(r.text(topic, genre.name))}</div>
         ${notes.length ? `<ul class="reception-notes">${notes.map((n) => `<li>${n}</li>`).join('')}</ul>` : ''}
       </div>
@@ -216,7 +253,7 @@ function sequelPicker(state: GameState, d: GameSpec): string {
       .sort((a, b) => a.releaseWeek - b.releaseWeek || a.id - b.id)
       .map(
         (g) =>
-          `<button class="chip ${original?.id === g.id ? 'on' : ''}" data-action="pick-sequel" data-arg="${g.id}">🔁 ${esc(g.name)} <small class="muted">${yearOf(g.releaseWeek)}</small> <span class="tag ${g.score >= 7.5 ? 'good' : g.score >= 5 ? 'mid' : 'bad'}">${g.score.toFixed(1)}</span></button>`,
+          `<button class="chip ${original?.id === g.id ? 'on' : ''}" data-action="pick-sequel" data-arg="${g.id}">🔁 ${esc(g.name)}${acclaimOf(g) ? ` ${acclaimOf(g)!.icon}` : ''}${g.goty !== undefined ? ' 🏆' : ''} <small class="muted">${yearOf(g.releaseWeek)}</small> <span class="tag ${g.score >= 7.5 ? 'good' : g.score >= 5 ? 'mid' : 'bad'}">${g.score.toFixed(1)}</span></button>`,
       ),
   ].join('');
   let info = '';
@@ -231,8 +268,13 @@ function sequelPicker(state: GameState, d: GameSpec): string {
           : `<li>🙂 ${esc(original.name)} was average, so no built-in audience.</li>`,
       `<li>🎯 Reviewers will compare it to the original's <b>${original.score.toFixed(1)}</b>.</li>`,
     ];
+    const award = acclaimOf(original);
+    const why = [award ? `a ${award.name}` : '', original.goty !== undefined ? `Game of the Year ${original.goty}` : ''].filter(Boolean).join(' and ');
+    if (why) notes.unshift(`<li>${award?.icon ?? '🏆'} ${esc(original.name)} is ${why}: the sequel starts with <b>+${sequelHype(original, state.week)} hype</b>, and its fans stay excited all through development.</li>`);
+    const waited = longAwaitedHype(original, state.week);
+    if (waited > 0) notes.splice(1, 0, `<li>⏰ Fans have waited ${Math.floor((state.week - original.releaseWeek) / WEEKS_PER_YEAR)} years for this, so <b>+${waited}</b> of that hype comes from the long wait.</li>`);
     if (state.week - original.releaseWeek < SEQUEL_TOO_SOON_WEEKS) notes.push(`<li>⏳ ${esc(original.name)} came out less than a year ago. A rushed sequel reviews worse.</li>`);
-    if (part >= 4) notes.push(`<li>🥱 Part ${part} of a long series: players are starting to tire of it.</li>`);
+    if (part >= 4) notes.push(beloved(original) ? `<li>❤️ Part ${part}, but fans of an award winner never tire of the series.</li>` : `<li>🥱 Part ${part} of a long series: players are starting to tire of it.</li>`);
     info = `
       <div class="sequel-card mt">
         <div class="row"><b class="grow">Part ${part} of the ${esc(original.name.replace(/\s+\d+$/, ''))} series</b><span class="tag">${topicById(original.topic).icon} ${topicById(original.topic).name} ${genreById(original.genre).name}</span></div>
@@ -257,7 +299,13 @@ function newGameStep1(state: GameState, d: GameSpec, error?: string): string {
         : `
     <h4>Genre</h4>
     <div class="chips">
-      ${GENRES.map((g) => `<button class="chip ${d.genre === g.id ? 'on' : ''}" data-action="pick-genre" data-arg="${g.id}">${g.icon} ${g.name}${state.industry?.trend?.genre === g.id ? ' 🔥' : ''}</button>`).join('')}
+      ${availableGenres(state)
+        .map((g) => {
+          const level = expertiseLevel(genreHits(state.released, g.id));
+          const lv = level > 1 ? ` <small class="lv">Lv ${level}</small>` : '';
+          return `<button class="chip ${d.genre === g.id ? 'on' : ''}" data-action="pick-genre" data-arg="${g.id}">${g.icon} ${g.name}${lv}${state.industry?.trend?.genre === g.id ? ' 🔥' : ''}</button>`;
+        })
+        .join('')}
     </div>
     <h4>Topic</h4>
     <div class="chips">
@@ -265,13 +313,13 @@ function newGameStep1(state: GameState, d: GameSpec, error?: string): string {
         .map((id) => {
           const t = topicById(id);
           const known = d.genre ? state.knowledge.combos[`${id}|${d.genre}`] : undefined;
-          const dot = known !== undefined ? `<i class="fit fit-${known}" title="${FIT_LABELS[known]}"></i>` : '';
+          const dot = known === PERFECT_FIT ? ' 💞' : known !== undefined ? `<i class="fit fit-${known}" title="${FIT_LABELS[known]}"></i>` : '';
           return `<button class="chip ${d.topic === id ? 'on' : ''}" data-action="pick-topic" data-arg="${id}">${t.icon} ${t.name}${state.industry?.trend?.topic === id ? ' 🔥' : ''}${dot}</button>`;
         })
         .join('')}
     </div>`
     }
-    ${d.topic && d.genre ? receptionPreview(state, d) : '<p class="sub mt">Coloured dots show combinations you have already discovered.</p>'}
+    ${d.topic && d.genre ? receptionPreview(state, d) : '<p class="sub mt">Coloured dots show combinations you have already discovered, and 💞 a perfect one.</p>'}
     ${
       d.genre
         ? `
@@ -449,7 +497,7 @@ function balanceAdvice(p: GameProject): string {
   const target = Math.round(genre.designTarget * 100);
   if (Math.abs(share - target) <= 5) return `The design/tech balance (${share}% design) suits ${genre.name} players.`;
   const more = share < target ? 'design' : 'tech';
-  return `${genre.name} players like about ${target}% design; this game is ${share}%. Polishing ${more} would help.`;
+  return `${genre.name} players like about ${target}% design; this game is ${share}%. Polishing ${more} or reworking the game would help.`;
 }
 
 function review(report: ReleaseReport, shown: number): string {
@@ -475,6 +523,7 @@ function review(report: ReleaseReport, shown: number): string {
       <div class="summary center">
         <div class="sub">Average score</div>
         <div class="score ${scoreClass(g.score)}" style="margin:6px auto;width:64px;height:64px;font-size:24px" data-countup="${g.score.toFixed(1)}">${g.score.toFixed(1)}</div>
+        ${acclaimOf(g) ? `<div class="mt-s">${acclaimTag(g).trim()}</div>` : ''}
         <div class="sub">+${report.rpEarned} RP · your team gained experience</div>
       </div>
       <h4>What we learned</h4>
@@ -499,6 +548,7 @@ function gameDetail(state: GameState, id: number): string {
   const payText = pay !== null ? `Paid for itself in week ${pay} on sale.` : g.weekly?.revenue.length ? (selling ? "Hasn't paid for itself yet." : 'Never paid for itself.') : '';
   return `
     <h3>${esc(g.name)}</h3>
+    ${acclaimTag(g) ? `<p>${acclaimTag(g).trim()}</p>` : ''}
     ${prequel || next ? `<p class="sub">${prequel ? `Part ${seriesNumber(g)} · sequel to <b>${esc(prequel.name)}</b> (${prequel.score.toFixed(1)})` : 'Part 1'}${next ? ` · followed by <b>${esc(next.name)}</b> (${next.score.toFixed(1)})` : ''}</p>` : ''}
     <p class="muted">${topicById(g.topic).name} ${genreById(g.genre).name} · ${platformById(g.platform).name} · ${sizeById(g.size).name} · ${formatShortDate(g.releaseWeek)}</p>
     <div class="verdict v-${vd.id} mt">
@@ -530,7 +580,7 @@ function gameDetail(state: GameState, id: number): string {
     <div class="btn-row"><button class="btn ghost" data-action="close">Close</button></div>`;
 }
 
-function menu(saved: boolean | undefined, ads: MonetizationView): string {
+function menu(saved: boolean | undefined, ads: MonetizationView, unlocked: Record<string, Unlock>): string {
   // Ads and purchases only exist in the Android app.
   const shop = ads.native
     ? `
@@ -546,10 +596,40 @@ function menu(saved: boolean | undefined, ads: MonetizationView): string {
     <h3>Menu</h3>
     <div class="options mt">
       <button class="option" data-action="help"><span class="emoji">📖</span><span class="grow"><b>How to play</b></span></button>
+      <button class="option" data-action="achievements"><span class="emoji">🏆</span><span class="grow"><b>Achievements</b><br/><span class="sub">${unlockedCount(unlocked)} of ${ACHIEVEMENTS.length} unlocked</span></span></button>
       <button class="option" data-action="save"><span class="emoji">💾</span><span class="grow"><b>Save game</b>${saved ? ' <span class="tag good">Saved!</span>' : '<br/><span class="sub">The game also saves automatically every month.</span>'}</span></button>
       ${shop}
       <button class="option" data-action="ask-reset"><span class="emoji">🔄</span><span class="grow"><b>Start over</b><br/><span class="sub">Delete this save and found a new studio.</span></span></button>
     </div>
+    <div class="btn-row"><button class="btn ghost" data-action="close">Close</button></div>`;
+}
+
+function unlockedCount(unlocked: Record<string, Unlock>): number {
+  return ACHIEVEMENTS.filter((a) => unlocked[a.id]).length;
+}
+
+function achievements(unlocked: Record<string, Unlock>, play: PlayGamesView): string {
+  const done = unlockedCount(unlocked);
+  const rows = ACHIEVEMENTS.map((a) => {
+    const u = unlocked[a.id];
+    const when = u ? `<br/><span class="sub">Unlocked ${yearOf(u.week)} · ${esc(u.studio)}</span>` : '';
+    return `
+      <div class="option achievement${u ? '' : ' locked'}">
+        <span class="emoji">${u ? a.icon : '🔒'}</span>
+        <span class="grow"><b>${esc(a.name)}</b><br/><span class="sub">${esc(a.desc)}</span>${when}</span>
+        ${u ? '<span class="tag good">✓</span>' : ''}
+      </div>`;
+  }).join('');
+  return `
+    <h3>Achievements</h3>
+    <p class="muted">${done} of ${ACHIEVEMENTS.length} unlocked. They stay on this device when you start over.</p>
+    ${
+      play.available
+        ? `<div class="options mt"><button class="option" data-action="play-achievements"><span class="emoji">🎮</span><span class="grow"><b>Google Play Games</b><br/><span class="sub">${play.signedIn ? 'Your achievements are also on your Play Games profile.' : 'Sign in to collect your achievements on your Play Games profile too.'}</span></span></button></div>`
+        : ''
+    }
+    <div class="bar mt"><i style="width:${Math.round((done / ACHIEVEMENTS.length) * 100)}%"></i></div>
+    <div class="options mt">${rows}</div>
     <div class="btn-row"><button class="btn ghost" data-action="close">Close</button></div>`;
 }
 
@@ -620,7 +700,58 @@ function store(state: GameState, ads: MonetizationView): string {
     <div class="options">${boosts.map((x) => storeRow(state, x)).join('')}</div>
     <h4>Studio upgrades</h4>
     <div class="options">${upgrades.map((x) => storeRow(state, x)).join('')}</div>
+    <h4>Studio look</h4>
+    <div class="options">
+      <button class="option" data-action="decor"><span class="emoji">🎨</span><span class="grow"><b>Decorate</b><br/><span class="sub">Paint the walls and floor, and buy decorations for the office.</span></span></button>
+    </div>
     <div class="btn-row"><button class="btn ghost" data-action="close">Close</button></div>`;
+}
+
+/** One row of colour swatches for the walls or the floor, with "Original" first. */
+function swatches(state: GameState, surface: 'wall' | 'floor', paints: Paint[]): string {
+  const current = state.decor?.[surface] ?? '';
+  const price = paintPrice(state);
+  const swatch = (id: string, name: string, color: string | null) => {
+    const on = id === current;
+    const cost = id ? price : 0;
+    return `<button class="swatch${on ? ' on' : ''}${color ? '' : ' original'}" data-action="paint-${surface}" data-arg="${id}" ${on || cost > state.cash ? 'disabled' : ''} aria-label="${name}${on ? ' (current)' : ''}" title="${name}"${color ? ` style="--swatch:${color}"` : ''}></button>`;
+  };
+  return `<div class="swatches">${swatch('', 'Original', null)}${paints.map((p) => swatch(p.id, p.name, p.color)).join('')}</div>`;
+}
+
+function decorRow(state: GameState, item: DecorItem): string {
+  const owned = ownsDecor(state, item.id);
+  const placed = isPlaced(state, item.id);
+  const price = decorPrice(state, item.id);
+  const blocked = !owned && price > state.cash ? 'Not enough cash.' : null;
+  const status = placed ? '<span class="tag good">On show</span>' : owned ? '<span class="tag">In storage</span>' : '';
+  const extra = item.id === 'trophies' && owned ? ` You have ${trophyCount(state)} so far.` : '';
+  const button = owned
+    ? `<button class="btn small${placed ? ' ghost' : ''}" data-action="toggle-decor" data-arg="${item.id}">${placed ? 'Put away' : 'Place'}</button>`
+    : `<button class="btn small" data-action="buy-decor" data-arg="${item.id}" ${blocked ? 'disabled' : ''}>Buy · ${money(price)}</button>`;
+  return `
+    <div class="option store-item">
+      <span class="emoji">${item.icon}</span>
+      <span class="grow"><b>${item.name}</b> ${status}<br/><span class="sub">${item.desc}${extra}</span>${blocked ? `<br/><span class="sub warn">${blocked}</span>` : ''}</span>
+      ${button}
+    </div>`;
+}
+
+function decorSheet(state: GameState): string {
+  const wall = WALL_PAINTS.find((p) => p.id === state.decor?.wall)?.name ?? 'Original';
+  const floor = FLOOR_PAINTS.find((p) => p.id === state.decor?.floor)?.name ?? 'Original';
+  return `
+    <h3>Decorate</h3>
+    <p class="muted">Make the studio yours. It's just for looks, and it comes with you when you move.</p>
+    <h4>Walls · ${wall}</h4>
+    ${swatches(state, 'wall', WALL_PAINTS)}
+    <h4>Floor · ${floor}</h4>
+    ${swatches(state, 'floor', FLOOR_PAINTS)}
+    <p class="sub">A new colour costs ${money(paintPrice(state))}. Going back to the original is free.</p>
+    <h4>Decorations</h4>
+    <p class="sub">Buy once, then place or put away for free.</p>
+    <div class="options">${DECOR.map((d) => decorRow(state, d)).join('')}</div>
+    <div class="btn-row"><button class="btn ghost" data-action="store">Back to Store</button><button class="btn ghost" data-action="close">Close</button></div>`;
 }
 
 /** One buyable marketing option: icon, name, what it does, and a price button (or why not). */
@@ -647,7 +778,7 @@ function marketing(state: GameState): string {
       <div class="hype-bar"><i style="width:${hype}%"></i></div>
       <b>${hype}</b>
     </div>
-    <p class="sub">Hype fades a little every week. At launch it boosts sales and fans, but only if the reviews live up to it: a hyped flop gets a backlash.</p>
+    <p class="sub">Hype grows by word of mouth while the game is shaping up well, and fades a little every week when it isn't. At launch it boosts sales and fans, but only if the reviews live up to it: a hyped flop gets a backlash.</p>
     <div class="options">${PROMOS.map((pr) => {
       const done = !!p.promos?.includes(pr.id);
       return marketingRow(pr.icon, pr.name, `${pr.desc} +${pr.hype} hype.`, done ? '<span class="tag good">Done</span>' : '', 'promo', pr.id, promoPrice(state, pr.id), promoBlocker(state, pr.id), done);
@@ -659,7 +790,11 @@ function marketing(state: GameState): string {
   const year = yearOf(state.week);
   const booked = state.expo?.year === year ? boothById(state.expo.booth) : null;
   let expo: string;
-  if (booked) {
+  const result = state.expo?.year === year ? state.expo.report : undefined;
+  if (result) {
+    expo = `<p class="sub">Your ${boothById(result.booth).name.toLowerCase()} won ${num(result.fansAfter - result.fansBefore)} fans${result.game ? ` and +${Math.round((result.hypeAfter ?? 0) - (result.hypeBefore ?? 0))} hype for ${esc(result.game)}` : ''}.</p>
+    <div class="options"><button class="option" data-action="expo-results"><span class="emoji">🎪</span><span class="grow"><b>See what GameExpo did</b></span></button></div>`;
+  } else if (booked) {
     expo = `<p class="sub">Your ${booked.name.toLowerCase()} is booked${weeks ? ` · opens in ${weeks} week${weeks === 1 ? '' : 's'}` : ''}. ${p?.kind === 'game' ? `${esc(p.name)} will be on show.` : 'Start a game before then to show it off.'}</p>`;
   } else if (weeks !== null && weeks >= 1 && weeks <= EXPO_BOOKING_WEEKS) {
     expo = `<p class="sub">Opens in ${weeks} week${weeks === 1 ? '' : 's'}. A game in development gets hype and you win fans; with nothing to show, you win fewer fans.</p>
@@ -668,7 +803,7 @@ function marketing(state: GameState): string {
     const next = weeks === null || weeks < 1 ? year + 1 : year;
     expo = `<p class="sub">GameExpo ${next} is in June. Booking opens ${EXPO_BOOKING_WEEKS} weeks before.</p>`;
   }
-  parts.push(`<h4>🎪 GameExpo ${booked || (weeks !== null && weeks >= 1) ? year : year + 1}</h4>${expo}`);
+  parts.push(`<h4>🎪 GameExpo ${booked || result || (weeks !== null && weeks >= 1) ? year : year + 1}</h4>${expo}`);
 
   // Games on sale.
   const selling = state.released.filter((g) => g.weeksOnMarket < SALES_WEEKS);
@@ -685,15 +820,70 @@ function marketing(state: GameState): string {
   return parts.join('');
 }
 
-function gameOver(state: GameState): string {
+/** What this year's GameExpo booth did: hype for the game on show, fans won, and what it cost. */
+function expoResults(state: GameState): string {
+  const r = state.expo?.report;
+  if (!r) return '';
+  const booth = boothById(r.booth);
+  const fans = r.fansAfter - r.fansBefore;
+  const hasHype = r.game !== undefined && r.hypeBefore !== undefined && r.hypeAfter !== undefined;
+  const hype = hasHype ? Math.round(r.hypeAfter! - r.hypeBefore!) : 0;
+  // The most hype can do at launch: with reviews of 7+ and no big ad campaign.
+  const boostBefore = hasHype ? Math.round((hypeEffect(r.hypeBefore!, 10).salesMult - 1) * 100) : 0;
+  const boostAfter = hasHype ? Math.round((hypeEffect(r.hypeAfter!, 10).salesMult - 1) * 100) : 0;
+  const capped = hasHype && hype < booth.hype && r.hypeAfter! >= MAX_HYPE;
+  const fansPct = r.fansBefore > 0 ? Math.round((fans / r.fansBefore) * 100) : null;
+  return `
+    <div class="big-emoji">🎪</div>
+    <h3 class="center">GameExpo ${r.year}</h3>
+    <p class="muted center">${booth.name}${r.game ? ` · showing <b>${esc(r.game)}</b>` : ' · nothing new to show'}</p>
+    <div class="counters">
+      ${hasHype ? `<div class="counter"><b>+${hype}</b><small>Hype</small></div>` : ''}
+      <div class="counter"><b>+${num(fans)}</b><small>Fans</small></div>
+      ${r.price !== undefined ? `<div class="counter"><b>${money(r.price)}</b><small>Cost</small></div>` : ''}
+    </div>
+    <div class="summary">
+      ${
+        hasHype
+          ? `<div class="line"><span>📣 Hype for ${esc(r.game!)}</span><b>${Math.round(r.hypeBefore!)} → ${Math.round(r.hypeAfter!)}</b></div>
+      <div class="line"><span>Sales boost at launch (reviews 7+)</span><b>+${boostBefore}% → +${boostAfter}%</b></div>`
+          : ''
+      }
+      <div class="line"><span>👥 Fans</span><b>${num(r.fansBefore)} → ${num(r.fansAfter)}${fansPct !== null ? ` (+${fansPct}%)` : ''}</b></div>
+    </div>
+    <p class="sub">${
+      hasHype
+        ? `${capped ? 'Hype was already near the top, so the booth could only add part of its +' + booth.hype + '. ' : ''}Hype fades a little every week until launch unless the game is shaping up well. Great reviews turn it into extra sales and fans; a flop that was hyped up gets a backlash.`
+        : `With no game in development, the booth won half the usual ${num(booth.fans)} fans. Start a game before next year's expo to build hype too.`
+    } More fans means more copies sold for every game you release.</p>
+    <div class="btn-row"><button class="btn big" data-action="close">Continue</button></div>`;
+}
+
+/** The first bankruptcy in a save can be undone once with a video (Android app only). */
+function bailoutOffer(state: GameState, ads: MonetizationView): string {
+  if (!ads.native || !canBailout(state)) return '';
+  const waiting = ads.busy ? 'Just a moment…' : !ads.rewardedReady ? 'Loading a video…' : null;
+  return `
+    <div class="option store-item">
+      <span class="emoji">🏦</span>
+      <span class="grow"><b>Bailout</b> <span class="tag good">+${money(bailoutCash(state))}</span><br/><span class="sub">Watch a video and the bank pays off your debt and gives you three months of running costs. One bailout per studio.</span>${
+        waiting ? `<br/><span class="sub warn">${waiting}</span>` : ''
+      }</span>
+      <button class="btn small" data-action="bailout" ${waiting ? 'disabled' : ''}>▶ Watch</button>
+    </div>`;
+}
+
+function gameOver(state: GameState, ads: MonetizationView): string {
   const games = state.released;
   const avg = games.length ? games.reduce((a, g) => a + g.score, 0) / games.length : 0;
   const best = games.length ? games.reduce((a, g) => (g.score > a.score ? g : a)) : null;
   const bankrupt = state.over === 'bankrupt';
+  const bailout = bankrupt ? bailoutOffer(state, ads) : '';
   return `
     <div class="big-emoji">${bankrupt ? '💸' : '🏆'}</div>
     <h3 class="center">${bankrupt ? 'Bankrupt!' : 'A legendary career'}</h3>
-    <p class="muted center">${bankrupt ? 'The money ran out. Every great studio has a failure or two. Try again!' : `${esc(state.studioName)} has reached ${formatShortDate(state.week)}. Time to retire.`}</p>
+    <p class="muted center">${bankrupt ? (bailout ? 'The money ran out. But the bank is willing to give you one more chance.' : 'The money ran out. Every great studio has a failure or two. Try again!') : `${esc(state.studioName)} has reached ${formatShortDate(state.week)}. Time to retire.`}</p>
+    ${bailout ? `<div class="options">${bailout}</div>` : ''}
     <div class="summary">
       <div class="line"><span>Games released</span><b>${games.length}</b></div>
       <div class="line"><span>Average score</span><b>${avg.toFixed(1)}</b></div>

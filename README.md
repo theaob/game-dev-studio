@@ -9,10 +9,15 @@ The UI is laid out like a mobile game, not a web page. The office fills the scre
 ## Gameplay
 
 - **Make games**: pick a title, a **topic** and a **genre**. Some combinations are great and some are terrible. You learn which after each release, and from then on the new-game screen shows a **reception preview**: how players will take that combination, how your last game with it scored, and whether players are tired of seeing it.
+  - A few combinations, one or two per genre, are **perfect** (💞): they review even better than great ones, but look like any other until you release one.
+  - Start with 7 genres and research 3 more: **Platformer**, **Shooter** (needs Engine 2.0) and **Rhythm**.
+  - **Know-how**: every hit (7.5+ reviews) levels up its genre and topic, from Lv 1 to Lv 5. Each genre level adds 3% design and tech points to your next game in that genre, and each topic level 1%. The new-game screen shows the levels.
 - **Make sequels** to any released game: they keep its topic and genre, sell to its fans (up to +45% for a hit, less for a flop), and skip the "seen this recently" penalty. Rushing one out within a year reviews worse, and long series start to tire players.
+- **Awards**: a game that reviews 9.0 or better is a 🏅 Critics' Choice, 9.5 or better a 👑 Masterpiece. The badge shows on the game and in the games list, and its sequel starts development with hype already built (+20 at 9.0, +40 at 9.5, +60 for a perfect 10). Fans of an award winner (including Game of the Year) never get bored: the longer they wait for the sequel, the more hype it starts with (+8 for every year after the first, up to +32), that hype doesn't fade during development, and the series never tires them however many parts it has.
+- **🏆 Game of the Year**: each new year, the best-reviewed release of the last one, yours or a rival's, wins (ties go to you; the News tab reports the winner). Winning brings fans (3% of yours, at least 1,000), 25% more copies of what it has left to sell if it's still on sale, and +15 hype for its sequel.
 - **Choose a platform**: 18 fictional platforms launch and retire over 40 years, from home computers and 8-bit consoles to handhelds, motion consoles and phones. Each has its own audience size, license cost and genre preferences.
 - **Set the focus** for each of the 3 development phases (Foundation, Content, Presentation). Each genre cares about different areas, and reviews reveal what matters.
-- **Balance design vs tech**: every genre has an ideal ratio.
+- **Balance design vs tech**: every genre has an ideal ratio. Missing it costs review points, though a game that clearly beats expectations on total points is forgiven much of that.
 - **Watch your team work** in a 3D low-poly office (three.js) that changes as you move from the garage to the campus. Day turns to night, monitors light up faces in the dark, computers change with the decades (beige CRTs in the 80s to dual widescreens later), every desk has a personal item, and a studio cat wanders around. Tap a developer or the cat to say hi. The cat climbs onto computers (on top of the warm CRTs of the early years) and, while a game is in development, now and then curls up on someone's lap for a few weeks: that developer works 30% faster while it purrs. You can drop the cat on a developer yourself, but after each visit it wants a few weeks of alone time. Press and drag the cat to carry it around the room by the scruff, like a mother cat carries a kitten: it dangles and swings as you move, then lands on its feet (a little offended) wherever you let go. Every so often a developer gets **in the zone**: they glow, sparks fly, and for a few weeks they produce 1.8x as much with half the bugs. Staff chatter in speech bubbles (designers and tech folks say different things, and the whole team reacts to reviews and paydays) and wander off for coffee breaks. Breaks are just for show and don't affect output.
 - **Polish** before you release. Fix bugs one at a time, or add more design or tech points to fix the game's balance for its genre. Design and tech polishing gives less each week, and new bugs slip in while nobody is fixing them. All points (design, tech, bugs, research) are gained in whole numbers.
 - **Marketing**:
@@ -28,12 +33,13 @@ The UI is laid out like a mobile game, not a web page. The office fills the scre
   - A yearly round-up of your studio's releases, and your own studio log.
 - **Reviews** from 4 outlets decide sales and fans. The bar keeps rising: the market expects each game to beat your best work.
 - **Store**: spend cash on power-ups. Boosts last a few game-development weeks: the Espresso Bar adds 20% more points, Pizza Night triples the chance of getting in the zone, and a Bug Bash fixes 40% of bugs at once. Permanent studio upgrades are Ergonomic Chairs (+5% points), Noise-cancelling Headphones (zone 50% more often) and Test Automation (15% fewer bugs). Boost prices scale with team size, and all prices rise over the years like salaries.
+- **Decorate the studio** (🎨 Decorate, in the Store or the Team tab): repaint the walls and floor (a small fee, going back to the original is free), and buy decorations: a rug, potted plants, bean bags, a bookshelf, a trophy shelf (one trophy per game that scored 8 or more), an aquarium, an arcade cabinet and a neon sign with your studio's name. Each one has its own spot in the room, and once bought it can be placed or put away for free. It's just for looks, it's saved with the game, and it moves with you to bigger offices. (The 2D fallback office shows the paint but not the decorations.)
 - **Game results**: every game records what it cost (budget and license, marketing, and the team's salaries and rent while they made it) and what it sold each week.
   - Tap a game for its report card: a verdict (🏆 Blockbuster, ⭐ Hit, 👍 Success, 😐 Broke even, 💸 Flop, from how many times its cost it made), revenue, profit, copies and score.
   - Its charts show money made against cost (and the week it paid for itself), copies sold each week, and where the money went.
   - The Games tab charts the profit or loss of every release (tap a column to open the game), and games on sale show a small sales line.
 - **Grow**: take contracts to pay the bills, earn research points (RP), unlock topics, game sizes, engines and QA, hire and train staff, and move to bigger offices.
-  - Every week of development earns RP (more with a bigger team), and every release earns more, scaled by its review score and size. Contracts earn some too.
+  - Every week of development earns RP (more with a bigger team), and every release earns more, scaled by its review score and size. Contracts earn some too, and an idle studio slowly picks up a little (a fifth of the development rate).
   - A solo founder earns roughly 50–60 RP a year, enough for medium-sized games within about a year and the first engine and design upgrades by the third or fourth.
 - **Money**:
   - Monthly rent and salaries apply (including a modest wage for you, the founder), and three months in the red means bankruptcy.
@@ -46,6 +52,7 @@ The UI is laid out like a mobile game, not a web page. The office fills the scre
     - good studios get rich (but not absurdly);
     - careless studios that expand go bankrupt;
     - careless solo developers stay small.
+- **🏆 Achievements**: 26 milestones across the whole game, from your first release, rave reviews, a perfect combination, awards and Game of the Year to your first million, hiring a rockstar, moving to the campus, decorating the studio, the big stage at GameExpo, surviving bankruptcy with the bailout and reaching 2025. A toast pops up when one unlocks, and Menu → Achievements lists them all, locked and unlocked. Achievements belong to the device, not the save: starting over keeps them, and each one remembers the year and the studio that earned it.
 
 The game autosaves to local storage every in-game month.
 
@@ -90,6 +97,7 @@ If anything is missing, the deploy job fails straight away with a message saying
 ```
 src/core/      Pure, deterministic simulation (no DOM). Seeded RNG lives in the save.
   data.ts      Topics, genres, platforms, research, offices: all the tuning numbers
+  expertise.ts Genre and topic know-how levels
   sim.ts       Game state, weekly tick, player actions
   economy.ts   Prices, inflation, market reach: the money model
   scoring.ts   Review score model
@@ -145,6 +153,8 @@ Keep `release.keystore` and its passwords backed up somewhere safe. If you lose 
 - **Remove ads**: a one-time Google Play purchase (`remove_ads`) turns off interstitials; reward videos stay optional. *Restore purchases* and, where required, *Privacy options* (Google's consent form) are in the menu.
 - AdMob IDs come from the repository variables `ADMOB_APP_ID`, `ADMOB_REWARDED_ID` and `ADMOB_INTERSTITIAL_ID`. Without them the app shows Google's test ads.
 - The web and itch.io builds never load the ad or billing plugins. To try the ad UI in a browser, open the dev server with `?fake-ads`.
+
+**Google Play Games (Android only).** The app signs players in to Google Play Games (`src/ui/play-games.ts`, native side `android/app/src/main/java/io/github/theaob/gamedevstudio/PlayGamesPlugin.java`) and unlocks the matching Play Games achievement whenever one unlocks in the game, catching up on earlier ones after sign-in. Menu → Achievements has a button for the Play Games achievements screen. The project and achievement IDs come from the repository variable `PLAY_GAMES_RESOURCES` (the resources XML the Play Console exports); without it Play Games stays off. Setup steps are in [`store/README.md`](store/README.md#2c-google-play-games-achievements).
 
 **Google Play:** the store listing text, privacy policy, graphics and a step-by-step Play Console checklist are in [`store/`](store/README.md).
 

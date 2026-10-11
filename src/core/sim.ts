@@ -13,6 +13,7 @@ import {
   GENRE_TITLES,
   TOPIC_TITLE_WORDS,
   TOPICS,
+  PERFECT_FIT,
   genreById,
   isPlatformAvailable,
   marketingById,
@@ -33,7 +34,9 @@ import {
   hypeEffect,
   promoById,
   promoPrice,
+  salesPushById,
   salesPushPrice,
+  weeklyHype,
   weeksToExpo,
 } from './marketing';
 import type { BoothId, PromoId, SalesPushId } from './marketing';
@@ -41,10 +44,13 @@ import { STARTING_CASH, founderSalary, friendly, marketingCost, officeCost, offi
 import { int, pick, random, range } from './rng';
 import { RIVAL_CLASH_MULT, newTrend, rivalClash, tickIndustry, trendMult } from './industry';
 import { hasSequel, sequelSalesMult, seriesNumber } from './sequels';
-import { average, clamp, evaluate, normalizeFocus, rollReviews, scoreFactor } from './scoring';
+import { acclaimFor, longAwaitedHype, sequelHype } from './acclaim';
+import { expertiseMult, genreLevel, topicLevel } from './expertise';
+import { average, benchmark, clamp, evaluate, normalizeFocus, rollReviews, scoreFactor } from './scoring';
 import { START_YEAR, TOTAL_WEEKS, WEEKS_PER_MONTH, WEEKS_PER_YEAR, yearFraction, yearOf } from './time';
 import type {
   ContractOffer,
+  ExpoReport,
   GameProject,
   GameSpec,
   GenreId,
@@ -116,6 +122,11 @@ export function availablePlatforms(state: GameState) {
   return PLATFORMS.filter((p) => isPlatformAvailable(p, year));
 }
 
+/** Genres the studio can make: the starting ones and those it has researched. */
+export function availableGenres(state: GameState) {
+  return GENRES.filter((g) => !g.research || hasResearch(state, g.research));
+}
+
 export function monthlyCosts(state: GameState): number {
   return officeRent(state, state.officeLevel) + state.staff.reduce((a, s) => a + staffSalary(state, s), 0);
 }
@@ -177,6 +188,11 @@ export function storeOutputMultiplier(state: GameState): number {
 /** Chance per week that someone not already in the zone gets in it. */
 export function zoneChance(state: GameState): number {
   return ZONE_CHANCE * (boostWeeks(state, 'pizza') > 0 ? 3 : 1) * (hasUpgrade(state, 'headphones') ? 1.5 : 1);
+}
+
+/** How much hype is left after a week: a fan forum halves how much fades away. */
+export function hypeDecay(state: GameState): number {
+  return hasUpgrade(state, 'forum') ? 1 - (1 - HYPE_DECAY) / 2 : HYPE_DECAY;
 }
 
 /** Price today: boosts scale with team size, and everything with the years like salaries. */
@@ -323,7 +339,7 @@ export function validateGame(state: GameState, spec: GameSpec): string | null {
   if (state.activity) return 'Your team is busy.';
   if (!spec.name.trim()) return 'Give your game a name.';
   if (!state.topics.includes(spec.topic)) return 'Topic not researched.';
-  if (!GENRES.some((g) => g.id === spec.genre)) return 'Pick a genre.';
+  if (!availableGenres(state).some((g) => g.id === spec.genre)) return GENRES.some((g) => g.id === spec.genre) ? 'Genre not researched.' : 'Pick a genre.';
   const platform = PLATFORMS.find((p) => p.id === spec.platform);
   if (!platform || !isPlatformAvailable(platform, yearFraction(state.week))) return 'Platform not available.';
   if (!availableSizes(state).some((s) => s.id === spec.size)) return 'Game size not researched.';
@@ -348,6 +364,13 @@ export function startGame(state: GameState, spec: GameSpec, firstFocus: number[]
     state.licenses.push(spec.platform);
     notify(state, `Bought a ${platformById(spec.platform).name} dev kit license.`, 'info');
   }
+  // A sequel to an award winner: players are waiting for it from day one.
+  const original = spec.sequelOf !== undefined ? state.released.find((g) => g.id === spec.sequelOf) : undefined;
+  const hype = original ? sequelHype(original, state.week) : 0;
+  if (original && hype > 0) {
+    const waited = longAwaitedHype(original, state.week) > 0 ? ` They've waited ${Math.floor((state.week - original.releaseWeek) / WEEKS_PER_YEAR)} years.` : '';
+    notify(state, `Fans of ${original.name} can't wait for the sequel: +${hype} hype.${waited}`, 'good');
+  }
   const project: GameProject = {
     ...spec,
     name: spec.name.trim(),
@@ -366,6 +389,7 @@ export function startGame(state: GameState, spec: GameSpec, firstFocus: number[]
     contrib: {},
     cost: cost.total,
     spend: { budget: cost.license + cost.size, marketing: cost.marketing, team: 0 },
+    ...(hype > 0 ? { hype, fanHype: hype } : {}),
   };
   state.activity = project;
   return null;
@@ -421,7 +445,8 @@ export function doResearch(state: GameState, id: string): string | null {
   const item = RESEARCH.find((r) => r.id === id);
   if (item) {
     state.researched.push(id);
-    notify(state, `Research complete: ${item.name}.`, 'good');
+    const genre = GENRES.find((g) => g.research === id);
+    notify(state, genre ? `New genre unlocked: ${genre.name}.` : `Research complete: ${item.name}.`, 'good');
   } else {
     state.topics.push(id);
     notify(state, `New topic unlocked: ${topicById(id).name}.`, 'good');
@@ -441,6 +466,68 @@ export function hire(state: GameState, candidateId: number): string | null {
   return null;
 }
 
+/** How long a headhunter takes to find a rockstar developer. */
+export const HEADHUNT_WEEKS = 4;
+/** The headhunter's fee, in months of the rockstar's expected salary. */
+const HEADHUNT_FEE_MONTHS = 3;
+/** Rockstars ask for this much more than the market rate for their skills. */
+export const ROCKSTAR_SALARY_MULT = 1.5;
+
+/** The best skill level ordinary applicants can have right now. */
+function applicantSkillCap(state: GameState): number {
+  return Math.min(10, 3.5 + (yearFraction(state.week) - START_YEAR) * 0.18);
+}
+
+/** What a headhunter charges to search for a rockstar developer. */
+export function headhuntFee(state: GameState): number {
+  const skill = Math.min(10, applicantSkillCap(state) + 2);
+  return friendly(salaryFor(state, skill, skill) * ROCKSTAR_SALARY_MULT * HEADHUNT_FEE_MONTHS);
+}
+
+export function headhuntBlocker(state: GameState): string | null {
+  if (state.over) return 'The game is over.';
+  if (state.headhunt) return 'The headhunter is already searching.';
+  if (state.candidates.some((c) => c.rockstar)) return 'Your rockstar applicant is still waiting for an answer.';
+  if (state.cash < headhuntFee(state)) return `The headhunter charges $${headhuntFee(state).toLocaleString('en-US')}.`;
+  return null;
+}
+
+/** Pays a headhunter to find a rockstar developer, who applies after HEADHUNT_WEEKS. */
+export function startHeadhunt(state: GameState): string | null {
+  const err = headhuntBlocker(state);
+  if (err) return err;
+  state.cash -= headhuntFee(state);
+  state.headhunt = { weeks: HEADHUNT_WEEKS };
+  notify(state, 'A headhunter is searching for a rockstar developer.', 'info');
+  return null;
+}
+
+function tickHeadhunt(state: GameState) {
+  if (!state.headhunt) return;
+  if (--state.headhunt.weeks > 0) return;
+  delete state.headhunt;
+  const c = rockstarCandidate(state);
+  state.candidates.unshift(c);
+  notify(state, `The headhunter found a rockstar: ${c.name} wants to join! Check the Team tab.`, 'good');
+}
+
+function rockstarCandidate(state: GameState): Staff {
+  const cap = applicantSkillCap(state);
+  const skill = () => round1(Math.min(10, range(state, cap + 1, cap + 3)));
+  const design = skill();
+  const tech = skill();
+  return {
+    id: state.nextId++,
+    name: `${pick(state, FIRST_NAMES)} ${pick(state, LAST_NAMES)}`,
+    design,
+    tech,
+    speed: round1(range(state, 1.2, 1.45)),
+    salary: Math.round((salaryFor(state, design, tech) * ROCKSTAR_SALARY_MULT) / 50) * 50,
+    hiredWeek: state.week,
+    rockstar: true,
+  };
+}
+
 export function fire(state: GameState, staffId: number): string | null {
   const s = state.staff.find((x) => x.id === staffId);
   if (!s) return 'Staff member not found.';
@@ -452,7 +539,11 @@ export function fire(state: GameState, staffId: number): string | null {
 }
 
 export function trainingCost(state: GameState, s: Staff, skill: 'design' | 'tech') {
-  return { cash: Math.max(2000, s.salary || salaryFor(state, s.design, s.tech)), rp: Math.round(5 + s[skill] * 4) };
+  const cash = Math.max(2000, s.salary || salaryFor(state, s.design, s.tech));
+  const rp = 5 + s[skill] * 4;
+  // The course library makes every course cheaper.
+  const m = hasUpgrade(state, 'courses') ? 0.75 : 1;
+  return { cash: Math.round(cash * m), rp: Math.round(rp * m) };
 }
 
 /** Sends a staff member on a course: +0.5 to a skill. Uses research points and money. */
@@ -537,23 +628,33 @@ export function releaseGame(state: GameState): ReleaseReport | string {
     sequelOf: original?.id,
     series: original ? seriesNumber(original) + 1 : 1,
     hype: Math.round(hype),
+    acclaim: acclaimFor(score)?.id,
     spend: p.spend ? { ...p.spend } : undefined,
     weekly: { units: [], revenue: [] },
   };
 
   // Learning: knowledge about combos, area importance and balance.
   const insights: ReleaseReport['insights'] = [];
+  const award = acclaimFor(score);
+  if (award) insights.push({ text: `${award.icon} ${award.name}! Critics are raving, and a sequel would start with fans already excited.`, kind: 'good' });
   const genre = genreById(p.genre);
   const topic = topicById(p.topic);
   const comboKey = `${p.topic}|${p.genre}`;
+  const newPerfect = ev.fit === PERFECT_FIT && state.knowledge.combos[comboKey] !== PERFECT_FIT;
   state.knowledge.combos[comboKey] = ev.fit;
   const fitText = [
     `${topic.name} and ${genre.name} don't really go together.`,
     `${topic.name} + ${genre.name} is an okay combination.`,
     `${topic.name} + ${genre.name} is a good combination.`,
     `${topic.name} + ${genre.name} is a great combination!`,
+    `${topic.name} + ${genre.name} is a perfect combination! Players couldn't imagine it any other way.`,
   ][ev.fit];
   insights.push({ text: fitText, kind: ev.fit >= 2 ? 'good' : 'bad' });
+  // Know-how: a hit counts towards the genre's and topic's next level.
+  const before = { genre: genreLevel(state.released, p.genre), topic: topicLevel(state.released, p.topic) };
+  const after = { genre: genreLevel([...state.released, game], p.genre), topic: topicLevel([...state.released, game], p.topic) };
+  if (after.genre > before.genre) insights.push({ text: `Your team's ${genre.name} know-how rose to level ${after.genre}.`, kind: 'good' });
+  if (after.topic > before.topic) insights.push({ text: `Your team's ${topic.name} know-how rose to level ${after.topic}.`, kind: 'good' });
 
   const known = (state.knowledge.areas[p.genre] ??= AREAS.map(() => false));
   const hidden = known.map((k, i) => (k ? -1 : i)).filter((i) => i >= 0);
@@ -568,8 +669,9 @@ export function releaseGame(state: GameState): ReleaseReport | string {
     state.knowledge.balance[p.genre] = true;
   }
   const diff = ev.designShare - ev.designTarget;
-  if (diff > 0.08) insights.push({ text: `${genre.name} players wanted more technical polish (tech points).`, kind: 'bad' });
-  else if (diff < -0.08) insights.push({ text: `${genre.name} players wanted more creative depth (design points).`, kind: 'bad' });
+  const madeUp = ev.pointsRatio >= 1.2 ? ', but the sheer quality made up for a lot of it' : '';
+  if (diff > 0.08) insights.push({ text: `${genre.name} players wanted more technical polish (tech points)${madeUp}.`, kind: 'bad' });
+  else if (diff < -0.08) insights.push({ text: `${genre.name} players wanted more creative depth (design points)${madeUp}.`, kind: 'bad' });
   else insights.push({ text: 'The design/tech balance felt just right.', kind: 'good' });
 
   if (ev.align >= 0.7) insights.push({ text: 'Your focus during development was spot on.', kind: 'good' });
@@ -621,6 +723,8 @@ export function releaseGame(state: GameState): ReleaseReport | string {
   for (const s of state.staff) s.zone = 0;
   state.activity = null;
   notify(state, `${game.name} released to an average score of ${score.toFixed(1)}.`, score >= 7 ? 'good' : score < 5 ? 'bad' : 'info');
+  if (award) notify(state, `${award.icon} ${game.name} is a ${award.name}!`, 'good');
+  if (newPerfect) notify(state, `💞 Perfect combo discovered: ${topic.name} + ${genre.name}!`, 'good');
   return { game, insights, rpEarned };
 }
 
@@ -632,9 +736,11 @@ export function releaseGame(state: GameState): ReleaseReport | string {
 export function staffWeeklyPoints(state: GameState, s: Staff, phase: number, rawFocus: number[]) {
   const f = normalizeFocus(rawFocus);
   const areas = PHASES[phase].areas;
+  const act = state.activity;
+  const know = act?.kind === 'game' ? expertiseMult(state.released, act.genre, act.topic) : 1;
   const perArea = areas.map((a, i) => ({
-    design: f[i] * a.designShare * s.design * s.speed * designMultiplier(state),
-    tech: f[i] * (1 - a.designShare) * s.tech * s.speed * techMultiplier(state),
+    design: f[i] * a.designShare * s.design * s.speed * designMultiplier(state) * know,
+    tech: f[i] * (1 - a.designShare) * s.tech * s.speed * techMultiplier(state) * know,
   }));
   return perArea;
 }
@@ -648,8 +754,11 @@ export const RP_PER_SCORE_POINT = 1.2;
  * steady progress (contracts teach half as much).
  */
 export function weeklyRp(state: GameState): number {
-  return 1 + 0.5 * state.staff.length;
+  return (1 + 0.5 * state.staff.length) * (hasUpgrade(state, 'whiteboard') ? 1.2 : 1);
 }
+
+/** Share of {@link weeklyRp} a studio with nothing on still picks up by tinkering and reading up. */
+export const IDLE_RP_SHARE = 0.2;
 
 export function tick(state: GameState): SimEvent[] {
   const events: SimEvent[] = [];
@@ -676,12 +785,16 @@ export function tick(state: GameState): SimEvent[] {
       notify(state, `Contract "${act.offer.title}" done: +$${act.offer.pay.toLocaleString('en-US')}, +${act.offer.rp} RP.`, 'good');
       events.push({ type: 'contractDone', offer: act.offer });
     }
+  } else if (!act) {
+    // With no game in development the team tinkers and reads up, slowly earning research points.
+    state.rp = Math.floor(state.rp) + wholeNumber(state, weeklyRp(state) * IDLE_RP_SHARE);
   }
 
   tickCat(state, events);
+  tickHeadhunt(state);
   tickSales(state);
 
-  tickExpo(state);
+  tickExpo(state, events);
   tickIndustry(state);
   if (state.week % WEEKS_PER_MONTH === 0) monthly(state);
   if (state.week % WEEKS_PER_YEAR === 0) yearly(state);
@@ -699,7 +812,8 @@ export function tick(state: GameState): SimEvent[] {
 function tickProject(state: GameState, p: GameProject, events: SimEvent[]) {
   // The team's salaries and rent while they work on it count towards what the game cost.
   if (p.spend) p.spend.team += Math.round(monthlyCosts(state) / WEEKS_PER_MONTH);
-  if (p.hype) p.hype = Math.round(p.hype * HYPE_DECAY * 10) / 10;
+  // Hype fades while polishing; during development it depends on how the game is shaping up (below).
+  if (p.hype && p.phase >= 3) p.hype = Math.max(p.fanHype ?? 0, Math.round(p.hype * hypeDecay(state) * 10) / 10);
   // Saves from before points were whole numbers.
   p.bugs = Math.round(p.bugs);
   p.design = Math.round(p.design);
@@ -708,12 +822,15 @@ function tickProject(state: GameState, p: GameProject, events: SimEvent[]) {
 
   if (p.phase >= 3) {
     p.polishWeeks++;
+    if (p.polishMode === 'rework' && !reworkNeed(p)) p.polishMode = 'bugs';
     if ((p.polishMode ?? 'bugs') === 'bugs') {
       // The team squashes bugs, one whole bug at a time, at least one per week.
       const fixPower = state.staff.reduce((a, s) => a + s.tech * s.speed * catBoost(state, s.id), 0) * (hasResearch(state, 'qa2') ? 0.75 : 0.5);
       const fixed = Math.min(p.bugs, Math.max(1, Math.round(fixPower * range(state, 0.8, 1.2))));
       p.bugs -= fixed;
       events.push({ type: 'points', design: 0, tech: 0, bugs: -fixed });
+    } else if (p.polishMode === 'rework') {
+      reworkPoints(state, p, events);
     } else {
       polishPoints(state, p, p.polishMode as 'design' | 'tech', events);
     }
@@ -762,6 +879,12 @@ function tickProject(state: GameState, p: GameProject, events: SimEvent[]) {
   state.rp += wholeNumber(state, weeklyRp(state));
   events.push({ type: 'points', design: designGain, tech: techGain, bugs });
 
+  // Word of mouth: a game with good points so far builds hype, one falling behind loses it.
+  const weeksDone = p.phase * p.phaseWeeks + p.weekInPhase + 1;
+  p.hype = weeklyHype(p.hype ?? 0, (p.design + p.tech) / weeksDone / benchmark(state), hypeDecay(state));
+  // Fans of a beloved original stay excited however long it takes.
+  if (p.fanHype) p.hype = Math.max(p.hype, p.fanHype);
+
   p.weekInPhase++;
   if (p.weekInPhase >= p.phaseWeeks) {
     p.phase++;
@@ -788,7 +911,7 @@ export const POLISH_DECAY = 0.8;
 function polishPoints(state: GameState, p: GameProject, kind: 'design' | 'tech', events: SimEvent[]) {
   const n = p.pointPolishWeeks ?? 0;
   p.pointPolishWeeks = n + 1;
-  const mult = POLISH_RATE * Math.pow(POLISH_DECAY, n) * range(state, 0.85, 1.15);
+  const mult = POLISH_RATE * Math.pow(POLISH_DECAY, n) * (hasUpgrade(state, 'playtest') ? 1.25 : 1) * range(state, 0.85, 1.15);
   let raw = 0;
   for (const s of state.staff) {
     const skill = kind === 'design' ? s.design * designMultiplier(state) : s.tech * techMultiplier(state);
@@ -806,10 +929,64 @@ function polishPoints(state: GameState, p: GameProject, kind: 'design' | 'tech',
   events.push({ type: 'points', design: kind === 'design' ? gain : 0, tech: kind === 'tech' ? gain : 0, bugs });
 }
 
+/** Share of a normal development week's output that a rework week moves from one kind of points to the other. */
+export const REWORK_RATE = 0.5;
+/** Share of the reworked points that survive the move; the rest is thrown-away work. */
+export const REWORK_KEEP = 0.75;
+/** How close (as a share of all points) the split must get to the genre's ideal for rework to stop. */
+export const REWORK_DONE = 0.02;
+
+/**
+ * Which way a rework would move points, and how many points it would take from the
+ * surplus side to land exactly on the genre's ideal split. Null when the split is
+ * already close enough.
+ */
+export function reworkNeed(p: GameProject): { from: 'design' | 'tech'; to: 'design' | 'tech'; points: number } | null {
+  const target = genreById(p.genre).designTarget;
+  const total = p.design + p.tech;
+  if (total <= 0) return null;
+  const share = p.design / total;
+  if (Math.abs(share - target) <= REWORK_DONE) return null;
+  // Taking x from one side adds REWORK_KEEP * x to the other; solve for the ideal share.
+  if (share > target) return { from: 'design', to: 'tech', points: (p.design - target * total) / (1 - target * (1 - REWORK_KEEP)) };
+  return { from: 'tech', to: 'design', points: (target * total - p.design) / (REWORK_KEEP + target * (1 - REWORK_KEEP)) };
+}
+
+/**
+ * Reworking: the team rewrites parts of the game to move points from the side the
+ * genre's players care less about to the side they care more about. Some of the work
+ * is lost in the move and changes bring a few bugs. Stops (back to bug fixing) once
+ * the split is close to the ideal.
+ */
+function reworkPoints(state: GameState, p: GameProject, events: SimEvent[]) {
+  const need = reworkNeed(p)!;
+  let raw = 0;
+  for (const s of state.staff) raw += (s.design * designMultiplier(state) + s.tech * techMultiplier(state)) * 0.5 * s.speed * catBoost(state, s.id);
+  raw *= REWORK_RATE * (hasUpgrade(state, 'playtest') ? 1.25 : 1) * range(state, 0.85, 1.15);
+  const taken = Math.min(p[need.from], Math.max(1, Math.round(Math.min(raw, need.points))));
+  const added = Math.round(taken * REWORK_KEEP);
+  p[need.from] -= taken;
+  p[need.to] += added;
+  const bugs = wholeNumber(state, taken * 0.04 * bugMultiplier(state) * range(state, 0.6, 1.4));
+  p.bugs += bugs;
+  const share = 1 / state.staff.length;
+  for (const s of state.staff) {
+    const c = (p.contrib[s.id] ??= { design: 0, tech: 0 });
+    c[need.from] = Math.max(0, c[need.from] - taken * share);
+    c[need.to] += added * share;
+  }
+  events.push({ type: 'points', design: need.to === 'design' ? added : -taken, tech: need.to === 'tech' ? added : -taken, bugs });
+  if (!reworkNeed(p)) {
+    p.polishMode = 'bugs';
+    notify(state, `${p.name} now has the ${genreById(p.genre).name} balance players like. The team is back to fixing bugs.`, 'good');
+  }
+}
+
 /** Chooses what the team polishes once development is complete. */
 export function setPolishMode(state: GameState, mode: PolishMode): string | null {
   const p = state.activity;
   if (!p || p.kind !== 'game' || p.phase < 3) return 'Nothing to polish.';
+  if (mode === 'rework' && !reworkNeed(p)) return `The design/tech balance already suits ${genreById(p.genre).name} players.`;
   p.polishMode = mode;
   return null;
 }
@@ -832,6 +1009,7 @@ export function promoBlocker(state: GameState, id: PromoId): string | null {
   if (!p || p.kind !== 'game') return 'Only while making a game.';
   const promo = promoById(id);
   if (p.promos?.includes(id)) return 'Already done for this game.';
+  if (promo.research && !hasResearch(state, promo.research)) return 'Research Marketing Department to unlock.';
   if (promo.fromYear && yearOf(state.week) < promo.fromYear) return `Available from ${promo.fromYear}.`;
   if (p.phase < promo.fromPhase) return 'Needs more of the game to show.';
   if (promoPrice(state, id) > state.cash) return 'Not enough cash.';
@@ -865,7 +1043,7 @@ export function bookBooth(state: GameState, id: BoothId): string | null {
   if (blocked) return blocked;
   const price = boothPrice(state, id);
   state.cash -= price;
-  state.expo = { year: yearOf(state.week), booth: id };
+  state.expo = { year: yearOf(state.week), booth: id, price };
   // The booth shows off the game in development, if there is one.
   const p = state.activity;
   if (p?.kind === 'game' && p.spend) p.spend.marketing += price;
@@ -873,24 +1051,32 @@ export function bookBooth(state: GameState, id: BoothId): string | null {
 }
 
 /** Announces GameExpo when booking opens, and runs it on expo week. */
-function tickExpo(state: GameState) {
+function tickExpo(state: GameState, events: SimEvent[]) {
   const w = state.week % WEEKS_PER_YEAR;
   if (w === EXPO_WEEK - EXPO_BOOKING_WEEKS) {
     notify(state, `GameExpo ${yearOf(state.week)} opens in ${EXPO_BOOKING_WEEKS} weeks. Book a booth to show off your game.`, 'info');
   }
-  if (w !== EXPO_WEEK || state.expo?.year !== yearOf(state.week)) return;
-  const booth = boothById(state.expo.booth);
+  const expo = state.expo;
+  if (w !== EXPO_WEEK || expo?.year !== yearOf(state.week)) return;
+  const booth = boothById(expo.booth);
   const p = state.activity;
+  const report: ExpoReport = { year: expo.year, booth: booth.id, price: expo.price, fansBefore: state.fans, fansAfter: state.fans };
   if (p?.kind === 'game') {
     // A game in development is the star of the show.
-    p.hype = Math.min(MAX_HYPE, (p.hype ?? 0) + booth.hype);
+    report.game = p.name;
+    report.hypeBefore = p.hype ?? 0;
+    p.hype = Math.min(MAX_HYPE, report.hypeBefore + booth.hype);
+    report.hypeAfter = p.hype;
     state.fans += booth.fans;
-    notify(state, `GameExpo: crowds lined up to play ${p.name}! +${booth.hype} hype, +${booth.fans.toLocaleString('en-US')} fans.`, 'good');
+    notify(state, `GameExpo: crowds lined up to play ${p.name}! +${Math.round(p.hype - report.hypeBefore)} hype, +${booth.fans.toLocaleString('en-US')} fans.`, 'good');
   } else {
     const fans = Math.round(booth.fans / 2);
     state.fans += fans;
     notify(state, `GameExpo: with nothing new to show, the booth won ${fans.toLocaleString('en-US')} fans.`, 'info');
   }
+  report.fansAfter = state.fans;
+  expo.report = report;
+  events.push({ type: 'expo', report });
 }
 
 /** Why a post-launch push can't run on this game, or null if it can. */
@@ -899,11 +1085,13 @@ export function salesPushBlocker(state: GameState, gameId: number, id: SalesPush
   if (!g) return 'Game not found.';
   if (g.weeksOnMarket >= SALES_WEEKS) return 'It has left the charts.';
   if (g.pushes?.includes(id)) return 'Already done for this game.';
+  const push = salesPushById(id);
+  if (push.research && !hasResearch(state, push.research)) return 'Research Marketing Department to unlock.';
   if (salesPushPrice(state, id) > state.cash) return 'Not enough cash.';
   return null;
 }
 
-/** Ad push (+25% of the copies left to sell) or discount sale (40% off, 70% more copies, more fans). */
+/** Ad push (+15%) or TV ad blitz (+35% of the copies left to sell) or discount sale (40% off, 70% more copies, more fans). */
 export function pushSales(state: GameState, gameId: number, id: SalesPushId): string | null {
   const blocked = salesPushBlocker(state, gameId, id);
   if (blocked) return blocked;
@@ -913,6 +1101,7 @@ export function pushSales(state: GameState, gameId: number, id: SalesPushId): st
   if (g.spend) g.spend.marketing += price;
   const remaining = Math.max(0, g.targetUnits - g.unitsSold);
   if (id === 'ads') g.targetUnits += Math.round(remaining * 0.15);
+  else if (id === 'tv_ads') g.targetUnits += Math.round(remaining * 0.35);
   else {
     g.targetUnits += Math.round(remaining * 0.7);
     g.unitPrice *= 0.6;
@@ -1009,10 +1198,11 @@ function refreshContracts(state: GameState) {
 }
 
 function refreshCandidates(state: GameState) {
-  const years = yearFraction(state.week) - START_YEAR;
-  const hi = Math.min(10, 3.5 + years * 0.18);
+  const hi = applicantSkillCap(state);
   const lo = Math.max(1.5, hi - 3.5);
-  state.candidates = [0, 1, 2].map(() => {
+  // A rockstar the headhunter found keeps waiting; ordinary applicants move on.
+  const rockstars = state.candidates.filter((c) => c.rockstar);
+  state.candidates = [...rockstars, ...[0, 1, 2].map(() => {
     const design = round1(range(state, lo, hi));
     const tech = round1(range(state, lo, hi));
     return {
@@ -1024,7 +1214,7 @@ function refreshCandidates(state: GameState) {
       salary: salaryFor(state, design, tech),
       hiredWeek: state.week,
     };
-  });
+  })];
 }
 
 /**

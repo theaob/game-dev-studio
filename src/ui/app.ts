@@ -1,10 +1,13 @@
-import { availablePlatforms, createGame, doResearch, fire, hire, randomTitle, bookBooth, buyStoreItem, catLeaveLap, pushSales, runPromo, placeCatOnLap, releaseGame, setPhaseFocus, setPolishMode, startContract, startGame, tick, train, upgradeOffice, validateGame } from '../core/sim';
+import { availablePlatforms, createGame, doResearch, fire, hire, startHeadhunt, randomTitle, bookBooth, buyStoreItem, catLeaveLap, pushSales, runPromo, placeCatOnLap, releaseGame, setPhaseFocus, setPolishMode, startContract, startGame, tick, train, upgradeOffice, validateGame } from '../core/sim';
 import { storeItemById } from '../core/data';
+import { App as NativeApp } from '@capacitor/app';
+import { Capacitor } from '@capacitor/core';
 import type { BoothId, PromoId, SalesPushId } from '../core/marketing';
 import { normalizeFocus } from '../core/scoring';
 import { sequelName } from '../core/sequels';
 import type { GameSpec, GameState, GenreId, MarketingId, NoticeKind, PolishMode, SimEvent, SizeId } from '../core/types';
-import { clearSave, loadGame, saveGame } from '../save';
+import { clearSave, loadAchievements, loadGame, saveAchievements, saveGame, type Unlock } from '../save';
+import { newAchievements } from '../core/achievements';
 import { OfficeScene } from './office';
 import { OfficeLoading, hasWebGL } from './office-loading';
 import { CAT_ID } from './office-common';
@@ -13,19 +16,23 @@ import { money, num } from './format';
 import { focusLean, renderSheet, type Sheet } from './sheets';
 import { ChartTooltip } from './tooltip';
 import { Monetization } from './monetization';
-import { claimReward, investorCash, rewardBlocker, type RewardId } from '../core/rewards';
-import { SPEEDS, renderDock, renderGames, renderNav, renderNews, renderResearch, renderStaff, renderTopbar, type Tab } from './views';
+import { PlayGames } from './play-games';
+import { claimBailout, claimReward, investorCash, rewardBlocker, type RewardId } from '../core/rewards';
+import { buyDecor, decorById, repaint, toggleDecor, type DecorId } from '../core/decor';
+import { SPEEDS, dockLayoutKey, renderDock, renderGames, renderNav, renderNews, renderResearch, renderStaff, renderTopbar, type Tab } from './views';
 
 type StatKey = 'cash' | 'fans' | 'rp';
 
 /** Real-time milliseconds per in-game week at 1x speed. */
-const WEEK_MS = 1500;
+const WEEK_MS = 2500;
 
 /** Sheets that must be answered and can't be dismissed by tapping outside. */
 const BLOCKING: Sheet['kind'][] = ['welcome', 'focus', 'review', 'gameOver'];
 
 /** How long to wait for the 3D office before settling on the 2D one. */
 const OFFICE3D_TIMEOUT_MS = 10_000;
+/** How much of the office (px) the full game card must leave in view between the HUD and the dock. */
+const MIN_OFFICE_VIEW = 160;
 
 export class App {
   private state: GameState | null;
@@ -51,6 +58,14 @@ export class App {
   /** Ads and the "Remove ads" purchase (Android app only). */
   private ads = new Monetization();
   private lastDraw = 0;
+  /** The player's own choice for the game card: true = compact, null = whatever fits. */
+  private dockCompact: boolean | null = null;
+  /** Whether the full card fitted, for the dock layout it was measured on. */
+  private dockFit: { key: string; compact: boolean } | null = null;
+  /** Achievements unlocked on this device, across every studio. */
+  private unlocked: Record<string, Unlock> = loadAchievements();
+  /** Google Play Games: mirrors achievements to the player's profile (Android app only). */
+  private playGames = new PlayGames(() => Object.keys(this.unlocked));
 
   constructor(root: HTMLElement) {
     // A full-screen world with the interface floating on top, like a mobile game:
@@ -71,6 +86,8 @@ export class App {
       if (document.hidden) this.save();
     });
     window.addEventListener('pagehide', () => this.save());
+    // Android's back button steps back through the interface instead of closing the app.
+    if (Capacitor.isNativePlatform()) void NativeApp.addListener('backButton', () => this.back());
 
     this.state = loadGame();
     this.markNewsRead();
@@ -82,9 +99,14 @@ export class App {
 
     this.ads.onChange = () => {
       this.render();
-      if (this.sheet?.kind === 'store' || this.sheet?.kind === 'menu') this.renderSheet();
+      if (this.sheet?.kind === 'store' || this.sheet?.kind === 'menu' || this.sheet?.kind === 'gameOver') this.renderSheet();
     };
     void this.ads.init();
+
+    this.playGames.onChange = () => {
+      if (this.sheet?.kind === 'achievements') this.renderSheet();
+    };
+    void this.playGames.init();
   }
 
   // -------------------------------------------------------------------------
@@ -104,6 +126,7 @@ export class App {
       }
     }
     this.updateStats(dt);
+    this.els.top.querySelector<HTMLElement>('.week-dots .now')?.style.setProperty('--p', `${Math.min(1, this.acc / WEEK_MS)}`);
     // The office animates at ~30fps while visible.
     if (s && this.tab === 'studio' && !document.hidden && t - this.lastDraw > 32) {
       this.lastDraw = t;
@@ -152,6 +175,10 @@ export class App {
         break;
       }
       case 'catLeft':
+        break;
+      case 'expo':
+        this.office.cheer(ev.report.game ? ['🎪', 'Expo!', '🤩', '🔥'] : ['🎪', '👋', 'Hi!']);
+        this.open({ kind: 'expo' });
         break;
       case 'contractDone':
         this.office.cheer(['💰', 'Paid!', '💵']);
@@ -390,6 +417,23 @@ export class App {
     this.tooltip.refresh();
   }
 
+  /**
+   * The game card shows in full when it leaves some of the office in view between the HUD and the
+   * dock, and compact otherwise (say a GameExpo chip and a polishing game on a small phone). The fit
+   * is measured once per layout, not every week, so the card doesn't flip back and forth.
+   */
+  private renderDockFitted(s: GameState) {
+    const offer = this.cashOffer(s);
+    const key = `${dockLayoutKey(s, offer)}|${window.innerWidth}x${window.innerHeight}`;
+    const measured = this.dockFit?.key === key;
+    this.set('dock', renderDock(s, offer, this.dockCompact ?? (measured && this.dockFit!.compact)));
+    if (this.dockCompact !== null || measured || s.activity?.kind !== 'game') return;
+    const room = this.els.dock.getBoundingClientRect().top - this.els.top.getBoundingClientRect().bottom;
+    const compact = room < MIN_OFFICE_VIEW;
+    this.dockFit = { key, compact };
+    if (compact) this.set('dock', renderDock(s, offer, true));
+  }
+
   private render() {
     const s = this.state;
     if (s) {
@@ -400,7 +444,7 @@ export class App {
       this.els.dock.hidden = !studio;
       this.els.scroll.hidden = studio;
       if (studio) {
-        this.set('dock', renderDock(s, this.cashOffer(s)));
+        this.renderDockFitted(s);
       } else {
         const titles: Record<Exclude<Tab, 'studio'>, [string, string]> = {
           games: ['Games', `${s.released.length} released`],
@@ -414,6 +458,7 @@ export class App {
         this.set('main', `<header class="panel-head"><h1>${title}</h1>${extra ? `<span class="panel-chip">${extra}</span>` : ''}</header>${view(s)}`);
       }
       this.set('nav', renderNav(this.tab, s, this.unreadNews()));
+      this.checkAchievements(s);
     } else {
       this.set('top', '');
       this.els.dock.hidden = true;
@@ -431,7 +476,7 @@ export class App {
       this.html.sheet = '';
       return;
     }
-    const inner = renderSheet(this.state, this.sheet, this.ads.view());
+    const inner = renderSheet(this.state, this.sheet, this.ads.view(), this.unlocked, this.playGames.view());
     const existing = host.querySelector<HTMLElement>('.sheet');
     if (existing && host.dataset.kind === this.sheet.kind) {
       if (this.html.sheet !== inner) {
@@ -470,7 +515,47 @@ export class App {
     this.render();
   }
 
-  private toast(text: string, kind: NoticeKind = 'info') {
+  /** The back button: steps back inside a sheet, closes it, leaves a tab, or asks to quit. */
+  private back() {
+    this.tooltip.hide();
+    const sheet = this.sheet;
+    if (sheet?.kind === 'newGame' && sheet.step === 2) return this.action('ng-back', '');
+    if (sheet?.kind === 'focus' && sheet.spec) return this.action('focus-back', '');
+    if (sheet?.kind === 'welcome') {
+      // Nothing behind the first screen: offer to quit, then come back to it.
+      this.queue.unshift(sheet);
+      return this.replace(this.exitConfirm());
+    }
+    if (sheet) {
+      if (!BLOCKING.includes(sheet.kind)) this.close();
+      return;
+    }
+    if (this.tab !== 'studio') return this.action('tab', 'studio');
+    this.open(this.exitConfirm());
+  }
+
+  private exitConfirm(): Sheet {
+    const text = this.state ? 'Your studio is saved and will be here when you come back.' : 'Leave the game?';
+    return { kind: 'confirm', text, action: 'exit-app', confirmLabel: 'Exit game' };
+  }
+
+  /** Unlocks the achievements the studio has just earned, with a toast for each. */
+  private checkAchievements(s: GameState) {
+    // Wait until the reviews have been read, so a score achievement doesn't give the score away.
+    if (this.sheet?.kind === 'review') return;
+    const earned = newAchievements(s, new Set(Object.keys(this.unlocked)));
+    if (!earned.length) return;
+    for (const a of earned) this.unlocked[a.id] = { week: s.week, studio: s.studioName };
+    saveAchievements(this.unlocked);
+    this.playGames.unlock(earned.map((a) => a.id));
+    // An old save can earn a handful at once: one toast for all of them.
+    if (earned.length > 2) this.toast(`🏆 ${earned.length} achievements unlocked! See them in the menu.`, 'achievement');
+    else for (const a of earned) this.toast(`🏆 Achievement: ${a.icon} ${a.name}`, 'achievement');
+    this.vibrate(20);
+    if (this.sheet?.kind === 'menu' || this.sheet?.kind === 'achievements') this.renderSheet();
+  }
+
+  private toast(text: string, kind: NoticeKind | 'achievement' = 'info') {
     const el = document.createElement('div');
     el.className = `toast ${kind}`;
     el.textContent = text;
@@ -486,8 +571,8 @@ export class App {
     if (counters.length !== 3) return;
     const items: [number, string, string][] = [
       // All points are whole numbers: shown as e.g. "+12", "+2 🐛" or "−3 🐛".
-      [design, `+${design}`, 'var(--design)'],
-      [tech, `+${tech}`, 'var(--tech)'],
+      [design, design < 0 ? `−${-design}` : `+${design}`, 'var(--design)'],
+      [tech, tech < 0 ? `−${-tech}` : `+${tech}`, 'var(--tech)'],
       [bugs, bugs < 0 ? `−${-bugs} 🐛` : `+${bugs} 🐛`, bugs < 0 ? 'var(--good)' : 'var(--bugs)'],
     ];
     items.forEach(([v, label, color], i) => {
@@ -624,6 +709,14 @@ export class App {
       case 'privacy-options':
         void this.ads.showPrivacyOptions();
         return;
+      case 'achievements':
+        this.replace({ kind: 'achievements' });
+        return;
+      case 'play-achievements':
+        void this.playGames.showAchievements().then((ok) => {
+          if (!ok) this.toast("Couldn't open Google Play Games. Check that you're signed in and online.", 'bad');
+        });
+        return;
       case 'save':
         if (s && saveGame(s) && sheet?.kind === 'menu') {
           sheet.saved = true;
@@ -641,6 +734,10 @@ export class App {
         this.sheet = null;
         this.open({ kind: 'welcome', name: '' });
         this.render();
+        return;
+      case 'exit-app':
+        this.save();
+        void NativeApp.exitApp();
         return;
       case 'start-studio': {
         const name = sheet?.kind === 'welcome' ? sheet.name : '';
@@ -666,10 +763,39 @@ export class App {
         this.open({ kind: 'contracts' });
         return;
       case 'store':
-        this.open({ kind: 'store' });
+        if (sheet?.kind === 'decor') this.replace({ kind: 'store' });
+        else this.open({ kind: 'store' });
         return;
+      case 'decor':
+        if (sheet?.kind === 'store') this.replace({ kind: 'decor' });
+        else this.open({ kind: 'decor' });
+        return;
+      case 'paint-wall':
+      case 'paint-floor':
+      case 'buy-decor':
+      case 'toggle-decor': {
+        const err =
+          name === 'buy-decor'
+            ? buyDecor(s, arg as DecorId)
+            : name === 'toggle-decor'
+              ? toggleDecor(s, arg as DecorId)
+              : repaint(s, name === 'paint-wall' ? 'wall' : 'floor', arg);
+        if (report(err)) {
+          if (name === 'buy-decor') this.office.cheer(['😍', 'Nice!', decorById(arg).icon]);
+          this.save();
+          if (this.sheet?.kind === 'decor') this.renderSheet();
+        }
+        return;
+      }
       case 'marketing':
         this.open({ kind: 'marketing' });
+        return;
+      case 'dock-toggle':
+        this.dockCompact = this.els.dock.querySelector('.dock-card.compact') === null;
+        this.render();
+        return;
+      case 'expo-results':
+        this.open({ kind: 'expo' });
         return;
       case 'promo':
       case 'booth':
@@ -700,6 +826,20 @@ export class App {
         });
         return;
       }
+      case 'bailout':
+        void this.ads.showRewarded().then((watched) => {
+          if (!watched) {
+            this.toast('Watch the whole video to get the bailout.', 'info');
+          } else if (report(claimBailout(s))) {
+            this.save();
+            this.close();
+            this.toast("🏦 The bank bailed you out. There won't be another one!", 'good');
+            this.office.cheer(['🏦', '💰', 'Saved!']);
+            this.vibrate(25);
+          }
+          if (this.sheet?.kind === 'gameOver') this.renderSheet();
+        });
+        return;
       case 'buy': {
         const item = storeItemById(arg);
         const bugsBefore = s.activity?.kind === 'game' ? s.activity.bugs : 0;
@@ -862,6 +1002,9 @@ export class App {
         return;
       case 'hire':
         if (report(hire(s, Number(arg)))) this.office.say(Number(arg), '👋 Hi!', 3);
+        return;
+      case 'headhunt':
+        report(startHeadhunt(s));
         return;
       case 'fire': {
         const who = s.staff.find((x) => x.id === Number(arg));

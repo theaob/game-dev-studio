@@ -4,6 +4,7 @@
  * filtering so it stays crisp on any phone screen.
  */
 import { OFFICES } from '../core/data';
+import { paintColor } from '../core/decor';
 import { yearOf } from '../core/time';
 import type { GameState, Staff } from '../core/types';
 import { CAT_ID, CODE, DESK_WOOD, LINES, SIP_TIME, WALK_SPEED, daylight, eraFor, gestureFor, lookFor, pickLine, shade } from './office-common';
@@ -153,7 +154,7 @@ export class OfficeScene {
     this.era = eraFor(yearOf(state.week));
     this.level = state.officeLevel;
     const light = daylight(this.clock);
-    this.drawRoom(c, state.officeLevel, lw, lh, time, light);
+    this.drawRoom(c, state.officeLevel, lw, lh, time, light, paintColor(state, 'wall'), paintColor(state, 'floor'));
     this.hitboxes = [];
     this.staffIds = state.staff.map((x) => x.id);
     for (const id of [...this.breaks.keys()]) if (!this.staffIds.includes(id)) this.breaks.delete(id);
@@ -366,7 +367,8 @@ export class OfficeScene {
     c.restore();
   }
 
-  private drawRoom(c: CanvasRenderingContext2D, level: number, w: number, h: number, time: number, light: Daylight) {
+  /** `wall` and `floor` are the player's paint, replacing the office's own colours. */
+  private drawRoom(c: CanvasRenderingContext2D, level: number, w: number, h: number, time: number, light: Daylight, wall?: string, floor?: string) {
     const rect = (x: number, y: number, rw: number, rh: number, col: string) => {
       c.fillStyle = col;
       c.fillRect(x, y, rw, rh);
@@ -374,9 +376,9 @@ export class OfficeScene {
     const floorY = WALL_H;
     if (level === 0) {
       // Garage: concrete, roll-up door ribs, a bare bulb.
-      rect(0, 0, w, floorY, '#9a8c7a');
-      for (let y = 2; y < floorY - 2; y += 3) rect(6, y, w - 12, 1, '#8b7e6d');
-      rect(0, floorY, w, h - floorY, '#6e655a');
+      rect(0, 0, w, floorY, wall ?? '#9a8c7a');
+      for (let y = 2; y < floorY - 2; y += 3) rect(6, y, w - 12, 1, wall ? shade(wall, -0.1) : '#8b7e6d');
+      rect(0, floorY, w, h - floorY, floor ?? '#6e655a');
       rect(Math.floor(w * 0.7), h - 8, 10, 3, '#635a50');
       rect(Math.floor(w * 0.15), floorY + 4, 6, 2, '#655c51');
       rect(Math.floor(w / 2), 0, 1, 4, '#222');
@@ -388,10 +390,10 @@ export class OfficeScene {
       rect(Math.floor(w / 2) - 1, 4, 3, 3, '#ffe7a3');
     } else if (level === 1) {
       // Small office: warm wall, a window, a plant.
-      rect(0, 0, w, floorY, '#8a6f5a');
-      rect(0, floorY - 2, w, 2, '#6d5545');
-      rect(0, floorY, w, h - floorY, '#4a3a33');
-      for (let x = 0; x < w; x += 8) rect(x, floorY, 1, h - floorY, '#433530');
+      rect(0, 0, w, floorY, wall ?? '#8a6f5a');
+      rect(0, floorY - 2, w, 2, wall ? shade(wall, -0.25) : '#6d5545');
+      rect(0, floorY, w, h - floorY, floor ?? '#4a3a33');
+      for (let x = 0; x < w; x += 8) rect(x, floorY, 1, h - floorY, floor ? shade(floor, -0.12) : '#433530');
       const wx = Math.floor(w / 2) - 14;
       rect(wx, 3, 28, 12, '#e8dccf');
       this.drawSkyPane(c, wx + 1, 4, 26, 10, light, time);
@@ -402,10 +404,10 @@ export class OfficeScene {
       rect(5, floorY - 15, 4, 3, '#4fbf6f');
     } else if (level === 2) {
       // Studio floor: purple wall, posters, a clock.
-      rect(0, 0, w, floorY, '#56707a');
-      rect(0, floorY - 2, w, 2, '#46606a');
-      rect(0, floorY, w, h - floorY, '#3f4a52');
-      for (let x = 0; x < w; x += 6) for (let y = floorY; y < h; y += 6) rect(x + ((y / 6) % 2) * 3, y, 1, 1, '#4a565e');
+      rect(0, 0, w, floorY, wall ?? '#56707a');
+      rect(0, floorY - 2, w, 2, wall ? shade(wall, -0.2) : '#46606a');
+      rect(0, floorY, w, h - floorY, floor ?? '#3f4a52');
+      for (let x = 0; x < w; x += 6) for (let y = floorY; y < h; y += 6) rect(x + ((y / 6) % 2) * 3, y, 1, 1, floor ? shade(floor, 0.1) : '#4a565e');
       const posters = ['#dc4b2a', '#23877d', '#f2b33d', '#2f7fc1'];
       posters.forEach((col, i) => {
         const px = 8 + i * Math.floor((w - 16) / 4);
@@ -430,10 +432,11 @@ export class OfficeScene {
           if (lit) rect(x + 2, wy, 1, 1, '#ffe7a3');
         }
       }
-      for (let x = 0; x < w; x += 24) rect(x, 0, 1, floorY, '#5a6478');
-      rect(0, floorY - 1, w, 1, '#5a6478');
-      rect(0, floorY, w, h - floorY, '#3a4054');
-      for (let x = 0; x < w; x += 12) rect(x, floorY, 6, h - floorY, '#3f4559');
+      // The campus wall is glass, so wall paint goes on the window frames.
+      for (let x = 0; x < w; x += 24) rect(x, 0, 1, floorY, wall ?? '#5a6478');
+      rect(0, floorY - 1, w, 1, wall ?? '#5a6478');
+      rect(0, floorY, w, h - floorY, floor ?? '#3a4054');
+      for (let x = 0; x < w; x += 12) rect(x, floorY, 6, h - floorY, floor ? shade(floor, 0.06) : '#3f4559');
       const on = Math.sin(time * 2) > -0.8;
       c.fillStyle = on ? '#dc4b2a' : '#5a3328';
       c.fillRect(4, 3, 14, 1);

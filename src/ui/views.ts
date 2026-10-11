@@ -1,20 +1,26 @@
 import { OFFICES, PHASES, PLATFORMS, RESEARCH, STORE, TOPICS, genreById, platformById, platformUsers, sizeById, topicById } from '../core/data';
 import { TREND_GENRE_BONUS, TREND_TOPIC_BONUS } from '../core/industry';
 import { profit, verdict } from '../core/results';
+import { GOTY_ICON, acclaimOf } from '../core/acclaim';
 import { profitChart, sparkline } from './charts';
 import {
   SALES_WEEKS,
   boostWeeks,
   catLapStaff,
+  HEADHUNT_WEEKS,
+  ROCKSTAR_SALARY_MULT,
+  headhuntBlocker,
+  headhuntFee,
   monthlyCosts,
   officeCapacity,
   polishYield,
+  reworkNeed,
   staffSalary,
   researchBlocker,
   researchCost,
   trainingCost,
 } from '../core/sim';
-import { WEEKS_PER_YEAR, formatDate, formatShortDate, yearOf } from '../core/time';
+import { WEEKS_PER_MONTH, WEEKS_PER_YEAR, formatDate, formatShortDate, yearOf } from '../core/time';
 import { EXPO_BOOKING_WEEKS, weeksToExpo } from '../core/marketing';
 import type { GameProject, GameState, PolishMode, ReleasedGame, Staff } from '../core/types';
 import { esc, money, num, scoreClass } from './format';
@@ -31,7 +37,7 @@ export function renderTopbar(state: GameState, speed: number, lastSpeed: number)
   <div class="hud-row">
     <button class="hud-pill studio-pill" data-action="menu" aria-label="Menu">
       <span class="studio-logo">🎮</span>
-      <span class="studio-text"><b>${esc(state.studioName)}</b><small>${formatDate(state.week)}</small></span>
+      <span class="studio-text"><b>${esc(state.studioName)}</b><small>${formatDate(state.week)}${weekDots(state.week)}</small></span>
     </button>
     <div class="grow"></div>
     <button class="hud-btn ${paused ? 'paused' : ''}" data-action="toggle-pause" aria-label="${paused ? 'Play' : 'Pause'}">${paused ? '▶' : '❚❚'}</button>
@@ -42,6 +48,16 @@ export function renderTopbar(state: GameState, speed: number, lastSpeed: number)
     <div class="res" data-stat="fans"><i>❤️</i><b>${num(state.fans)}</b></div>
     <div class="res" data-stat="rp"><i>🔬</i><b>${Math.floor(state.rp)} RP</b></div>
   </div>`;
+}
+
+/**
+ * One dot per week of the month: past weeks are filled and the current one fills up as the
+ * week goes by (the app sets its `--p`), so the player can see time moving.
+ */
+function weekDots(week: number): string {
+  const w = week % WEEKS_PER_MONTH;
+  const dots = Array.from({ length: WEEKS_PER_MONTH }, (_, i) => `<i class="${i < w ? 'done' : i === w ? 'now' : ''}"></i>`);
+  return `<span class="week-dots" aria-hidden="true">${dots.join('')}</span>`;
 }
 
 export function renderNav(tab: Tab, state: GameState, unreadNews: number): string {
@@ -65,14 +81,37 @@ export function renderNav(tab: Tab, state: GameState, unreadNews: number): strin
 // Studio: an action dock floating over the office
 // ---------------------------------------------------------------------------
 
-/** `cashOffer`: the text of a "watch a video for cash" chip, when the studio is in the red (Android only). */
-export function renderDock(state: GameState, cashOffer = ''): string {
+/**
+ * `cashOffer`: the text of a "watch a video for cash" chip, when the studio is in the red (Android only).
+ * `compact`: shrink the game-in-development card to a two-line summary, so it fits next to the chips.
+ */
+export function renderDock(state: GameState, cashOffer = '', compact = false): string {
+  const chips = dockChips(state, cashOffer);
+  const row = chips.length ? `<div class="dock-chips">${chips.join('')}</div>` : '';
+  return `${row}${renderActivity(state, compact)}`;
+}
+
+/** What decides the dock's height, apart from live numbers: re-check whether the full card fits when it changes. */
+export function dockLayoutKey(state: GameState, cashOffer = ''): string {
+  const a = state.activity;
+  const card = !a ? 'idle' : a.kind === 'contract' ? 'contract' : `game:${a.phase >= 3}:${activeBoosts(state) ? 1 : 0}`;
+  return `${card}|${dockChips(state, cashOffer).length}`;
+}
+
+/** Reminders above the activity card, side by side in one row: the cash offer, GameExpo and sales. */
+function dockChips(state: GameState, cashOffer: string): string[] {
   const selling = state.released.filter((g) => g.weeksOnMarket < SALES_WEEKS);
-  const ticker = selling.length
-    ? `<button class="ticker" data-action="tab" data-arg="games">📈 ${selling.length} on sale · ${money(selling.reduce((a, g) => a + g.revenue, 0))} earned</button>`
-    : '';
-  const offer = cashOffer ? `<button class="ticker expo" data-action="ad-reward" data-arg="investor">${esc(cashOffer)}</button>` : '';
-  return `${offer}${expoChip(state)}${ticker}${renderActivity(state)}`;
+  const chips: string[] = [];
+  if (cashOffer) chips.push(`<button class="ticker expo" data-action="ad-reward" data-arg="investor">${esc(cashOffer)}</button>`);
+  const expo = expoChip(state);
+  if (expo) chips.push(expo);
+  if (selling.length) {
+    const earned = money(selling.reduce((a, g) => a + g.revenue, 0));
+    const full = `${selling.length} on sale · ${earned} earned`;
+    // Just the money when it shares the row with another chip, so both fit on a small phone.
+    chips.push(`<button class="ticker" data-action="tab" data-arg="games" title="${full}">📈 ${chips.length ? earned : full}</button>`);
+  }
+  return chips;
 }
 
 /** While GameExpo booking is open: a reminder that opens the Marketing sheet. */
@@ -80,10 +119,10 @@ function expoChip(state: GameState): string {
   const weeks = weeksToExpo(state, WEEKS_PER_YEAR);
   if (weeks === null || weeks < 1 || weeks > EXPO_BOOKING_WEEKS) return '';
   const booked = state.expo?.year === yearOf(state.week);
-  const when = `${weeks} week${weeks === 1 ? '' : 's'}`;
+  const when = `${weeks}w`;
   return booked
-    ? `<button class="ticker" data-action="marketing">🎪 GameExpo in ${when} · booth booked</button>`
-    : `<button class="ticker expo" data-action="marketing">🎪 GameExpo in ${when} · Book a booth</button>`;
+    ? `<button class="ticker" data-action="marketing">🎪 Expo in ${when} · Booked</button>`
+    : `<button class="ticker expo" data-action="marketing">🎪 Expo in ${when} · Book booth</button>`;
 }
 
 // ---------------------------------------------------------------------------
@@ -160,7 +199,7 @@ export function renderNews(state: GameState): string {
   </details>`;
 }
 
-function renderActivity(state: GameState): string {
+function renderActivity(state: GameState, compact: boolean): string {
   const a = state.activity;
   if (!a) {
     const offers = state.contractOffers.length;
@@ -193,35 +232,61 @@ function renderActivity(state: GameState): string {
   const polishing = a.phase >= 3;
   const pct = polishing ? 100 : ((a.phase * a.phaseWeeks + a.weekInPhase) / (a.phaseWeeks * 3)) * 100;
   const steps = [...PHASES.map((p) => p.name), 'Polish'];
+  const phase = polishing ? '🧹 Polish' : `${a.phase + 1}/3 ${PHASES[a.phase].name}`;
+  const hype = Math.round(a.hype ?? 0);
+  const counters = (cls: string) => `
+    <div class="counters${cls}" id="counters">
+      <div class="counter c-design"><b>${Math.round(a.design)}</b><small>Design</small></div>
+      <div class="counter c-tech"><b>${Math.round(a.tech)}</b><small>Tech</small></div>
+      <div class="counter c-bugs"><b>${Math.round(a.bugs)}</b><small>Bugs</small></div>
+    </div>`;
+  const release = polishing ? '<button class="btn big pulse mt-s" data-action="release">🚀 Release</button>' : '';
+  // Tapping the name or the grip folds the card down to two lines, or opens it back up.
+  const head = (sub: string) => `
+      <button class="dock-head grow" data-action="dock-toggle" aria-expanded="${!compact}">
+        <span class="dock-icon">${topic.icon}</span>
+        <span class="grow">
+          <span class="dock-title">${esc(a.name)}</span>
+          <span class="sub dock-sub">${sub}</span>
+        </span>
+      </button>`;
+  const grip = `<button class="dock-grip" data-action="dock-toggle" tabindex="-1" aria-hidden="true"></button>`;
+
+  if (compact) {
+    return `
+  <div class="dock-card compact" id="activity">
+    ${grip}
+    <div class="row">${head(`${phase} · 📣 Hype ${hype}`)}
+    </div>
+    <div class="row progress-row">
+      <div class="bar grow ${polishing ? '' : 'live'}"><i style="width:${pct}%"></i></div>
+      ${counters(' mini')}
+    </div>
+    ${release}
+  </div>`;
+  }
+
   return `
   <div class="dock-card" id="activity">
-    <div class="row">
-      <span class="dock-icon">${topic.icon}</span>
-      <div class="grow">
-        <div class="dock-title">${esc(a.name)}</div>
-        <div class="sub dock-sub">${genre.name} · ${platform.name} · ${sizeById(a.size).name}${a.sequelOf !== undefined ? ' · Sequel' : ''}</div>
-      </div>
+    ${grip}
+    <div class="row">${head(`${genre.name} · ${platform.name} · ${sizeById(a.size).name}${a.sequelOf !== undefined ? ' · Sequel' : ''}`)}
       <button class="boost-btn" data-action="store" aria-label="Store: boosts and upgrades">⚡<small>Boost</small></button>
     </div>
     ${activeBoosts(state)}
     <div class="hype-row">
       <span class="hype-label">📣 Hype</span>
-      <div class="hype-bar"><i style="width:${Math.round(a.hype ?? 0)}%"></i></div>
-      <b>${Math.round(a.hype ?? 0)}</b>
+      <div class="hype-bar"><i style="width:${hype}%"></i></div>
+      <b>${hype}</b>
       <button class="btn small" data-action="marketing">Promote</button>
     </div>
     <div class="steps-row">
-      <span class="phase-chip">${polishing ? '🧹 Polish' : `${a.phase + 1}/3 ${PHASES[a.phase].name}`}</span>
+      <span class="phase-chip">${phase}</span>
       <div class="steps">${steps.map((_, i) => `<i class="${i < a.phase ? 'done' : i === a.phase ? 'now' : ''}"></i>`).join('')}</div>
     </div>
     <div class="bar ${polishing ? '' : 'live'}"><i style="width:${pct}%"></i></div>
-    <div class="counters" id="counters">
-      <div class="counter c-design"><b>${Math.round(a.design)}</b><small>Design</small></div>
-      <div class="counter c-tech"><b>${Math.round(a.tech)}</b><small>Tech</small></div>
-      <div class="counter c-bugs"><b>${Math.round(a.bugs)}</b><small>Bugs</small></div>
-    </div>
+    ${counters('')}
     ${polishing ? polishPicker(a) : ''}
-    ${polishing ? '<button class="btn big pulse mt-s" data-action="release">🚀 Release</button>' : ''}
+    ${release}
   </div>`;
 }
 
@@ -238,24 +303,41 @@ function activeBoosts(state: GameState): string {
   return chips.length ? `<div class="boost-chips">${chips.join('')}</div>` : '';
 }
 
-/** What to polish: squash bugs, or add more design or tech points (with shrinking returns). */
+/**
+ * What to polish: squash bugs, add more design or tech points (with shrinking returns),
+ * or rework the game to shift points towards the genre's ideal design/tech split.
+ */
 export function polishPicker(p: GameProject): string {
   const mode = p.polishMode ?? 'bugs';
   const yieldPct = Math.round(polishYield(p) * 100);
+  const need = reworkNeed(p);
   const options: [PolishMode, string, string][] = [
     ['bugs', '🐛', 'Bugs'],
     ['design', '🎨', 'Design'],
     ['tech', '⚙️', 'Tech'],
+    ['rework', '🔁', 'Rework'],
   ];
+  const total = p.design + p.tech;
+  const share = total ? Math.round((p.design / total) * 100) : 50;
+  const target = Math.round(genreById(p.genre).designTarget * 100);
   const hint =
     mode === 'bugs'
       ? 'Squashing bugs every week.'
-      : yieldPct < 10
-        ? `Hardly adding any ${mode} now. Time to fix bugs or release.`
-        : `Adding ${mode} points at ${yieldPct}% strength · drops each week · new bugs slip in.`;
+      : mode === 'rework'
+        ? need
+          ? `Reworking ${need.from} into ${need.to}: ${share}% → ${target}% design · a quarter of moved points is lost · a few new bugs.`
+          : `Balance already suits ${genreById(p.genre).name} players.`
+        : yieldPct < 10
+          ? `Hardly adding any ${mode} now. Time to fix bugs or release.`
+          : `Adding ${mode} points at ${yieldPct}% strength · drops each week · new bugs slip in.`;
   return `
     <div class="polish-modes" role="radiogroup" aria-label="What to polish">
-      ${options.map(([id, icon, label]) => `<button class="polish-mode ${mode === id ? 'on' : ''}" role="radio" aria-checked="${mode === id}" data-action="polish-mode" data-arg="${id}"><span>${icon}</span>${label}</button>`).join('')}
+      ${options
+        .map(([id, icon, label]) => {
+          const off = id === 'rework' && !need && mode !== 'rework';
+          return `<button class="polish-mode ${mode === id ? 'on' : ''}" role="radio" aria-checked="${mode === id}" data-action="polish-mode" data-arg="${id}"${off ? ' disabled title="The design/tech balance already suits this genre"' : ''}><span>${icon}</span>${label}</button>`;
+        })
+        .join('')}
     </div>
     <div class="sub polish-hint">${hint}</div>`;
 }
@@ -271,12 +353,19 @@ function renderOnMarket(state: GameState): string {
   <button class="btn ghost mt-s wide" data-action="marketing">📣 Push sales</button>`;
 }
 
+/** "🏅 Critics' Choice" and "🏆 Game of the Year" badges for a recognized game, or nothing. */
+export function acclaimTag(g: ReleasedGame): string {
+  const a = acclaimOf(g);
+  const goty = g.goty !== undefined ? ` <span class="tag acclaim goty">${GOTY_ICON} Game of the Year ${g.goty}</span>` : '';
+  return (a ? ` <span class="tag acclaim ${a.id}">${a.icon} ${a.name}</span>` : '') + goty;
+}
+
 function gameRow(g: ReleasedGame, detail: string, aside = ''): string {
   return `
   <button class="list-item" data-action="game-detail" data-arg="${g.id}">
     <div class="score ${scoreClass(g.score)}">${g.score.toFixed(1)}</div>
     <div class="grow">
-      <div class="name">${esc(g.name)}${(g.series ?? 1) > 1 ? ` <span class="tag">Part ${g.series}</span>` : ''}</div>
+      <div class="name">${esc(g.name)}${(g.series ?? 1) > 1 ? ` <span class="tag">Part ${g.series}</span>` : ''}${acclaimTag(g)}</div>
       <div class="sub">${topicById(g.topic).name} ${genreById(g.genre).name} · ${platformById(g.platform).name}</div>
       <div class="sub">${detail}</div>
     </div>
@@ -296,6 +385,8 @@ export function renderGames(state: GameState): string {
   const avg = games.reduce((a, g) => a + g.score, 0) / games.length;
   const totalProfit = games.reduce((a, g) => a + profit(g), 0);
   const hits = games.filter((g) => ['blockbuster', 'hit'].includes(verdict(g).id)).length;
+  const awards = games.filter((g) => acclaimOf(g)).length;
+  const goty = games.filter((g) => g.goty !== undefined).length;
   const flops = games.filter((g) => verdict(g).id === 'flop').length;
   const best = games.reduce((a, g) => (g.score > a.score ? g : a));
   const top = games.reduce((a, g) => (g.revenue > a.revenue ? g : a));
@@ -318,7 +409,9 @@ export function renderGames(state: GameState): string {
   </div>
   <div class="card mt">
     <div class="sub">Best reviewed</div>
-    <div class="row"><div class="grow"><b>${esc(best.name)}</b></div><span class="tag good">${best.score.toFixed(1)}</span></div>
+    <div class="row"><div class="grow"><b>${esc(best.name)}</b>${acclaimTag(best)}</div><span class="tag good">${best.score.toFixed(1)}</span></div>
+    ${awards ? `<div class="sub mt">🏅 ${awards} game${awards === 1 ? '' : 's'} recognized by the critics (9.0 or better)</div>` : ''}
+    ${goty ? `<div class="sub mt">${GOTY_ICON} ${goty} Game of the Year award${goty === 1 ? '' : 's'}</div>` : ''}
     <div class="sub mt">Best seller</div>
     <div class="row"><div class="grow"><b>${esc(top.name)}</b></div><span class="tag">${money(top.revenue)}</span></div>
   </div>
@@ -359,7 +452,7 @@ export function renderResearch(state: GameState): string {
   const groups: Record<string, string[]> = {};
   for (const r of RESEARCH) {
     const done = state.researched.includes(r.id);
-    (groups[r.category] ??= []).push(researchRow(state, r.id, '🧪', r.name, r.desc, done));
+    (groups[r.category] ??= []).push(researchRow(state, r.id, r.icon ?? '🧪', r.name, r.desc, done));
   }
   const topics = TOPICS.filter((t) => t.cost > 0).map((t) =>
     researchRow(state, t.id, t.icon, t.name, 'New game topic', state.topics.includes(t.id)),
@@ -416,6 +509,7 @@ export function renderStaff(state: GameState): string {
            <div class="sub mt">${next.name}: room for ${next.capacity}, rent ${money(officeRent(state, state.officeLevel + 1))}/mo.</div>`
         : ''
     }
+    <div class="btn-row"><button class="btn ghost" data-action="decor">🎨 Decorate</button></div>
   </div>
   <h2>Team</h2>
   <div class="list">${state.staff.map((s) => staffRow(state, s)).join('')}</div>
@@ -427,9 +521,9 @@ export function renderStaff(state: GameState): string {
         .map(
           (c) => `
       <div class="list-item" style="align-items:flex-start">
-        <div class="emoji">🧑‍💻</div>
+        <div class="emoji">${c.rockstar ? '🎸' : '🧑‍💻'}</div>
         <div class="grow">
-          <div class="name">${esc(c.name)}</div>
+          <div class="name">${esc(c.name)}${c.rockstar ? ' <span class="tag good">Rockstar</span>' : ''}</div>
           <div class="sub">${money(c.salary)}/mo · speed ${c.speed.toFixed(1)}x</div>
           ${skillBars(c)}
         </div>
@@ -438,6 +532,28 @@ export function renderStaff(state: GameState): string {
         )
         .join('') || '<div class="empty">No applicants right now. New ones arrive every few months.</div>'
     }
+  </div>
+  ${headhuntCard(state)}`;
+}
+
+function headhuntCard(state: GameState): string {
+  const waiting = state.candidates.some((c) => c.rockstar);
+  const status = state.headhunt
+    ? `Searching… ${state.headhunt.weeks} week${state.headhunt.weeks === 1 ? '' : 's'} left.`
+    : waiting
+      ? 'Your rockstar is waiting above.'
+      : '';
+  return `
+  <div class="list mt">
+    <div class="list-item" style="align-items:flex-start">
+      <div class="emoji">🎸</div>
+      <div class="grow">
+        <div class="name">Search for a rockstar</div>
+        <div class="sub">A headhunter finds a rare developer with top skills and extra speed in ${HEADHUNT_WEEKS} weeks. Rockstars ask for ${Math.round((ROCKSTAR_SALARY_MULT - 1) * 100)}% more pay.</div>
+        ${status ? `<div class="sub" style="margin-top:4px"><b>${status}</b></div>` : ''}
+      </div>
+      ${state.headhunt || waiting ? '' : `<button class="btn small" data-action="headhunt" ${headhuntBlocker(state) ? 'disabled' : ''}>${money(headhuntFee(state))}</button>`}
+    </div>
   </div>`;
 }
 

@@ -31,3 +31,30 @@ export function clearSave(): void {
     // ignore
   }
 }
+
+// Achievements belong to the device, not the save: starting over keeps them.
+const ACHIEVEMENTS_KEY = 'game-dev-studio/achievements';
+
+/** When an achievement was unlocked: the in-game week and the studio that did it. */
+export interface Unlock {
+  week: number;
+  studio: string;
+}
+
+export function loadAchievements(): Record<string, Unlock> {
+  try {
+    const raw = localStorage.getItem(ACHIEVEMENTS_KEY);
+    const data = raw ? (JSON.parse(raw) as unknown) : null;
+    return data && typeof data === 'object' ? (data as Record<string, Unlock>) : {};
+  } catch {
+    return {};
+  }
+}
+
+export function saveAchievements(unlocked: Record<string, Unlock>): void {
+  try {
+    localStorage.setItem(ACHIEVEMENTS_KEY, JSON.stringify(unlocked));
+  } catch {
+    // ignore
+  }
+}

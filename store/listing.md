@@ -22,14 +22,14 @@ Start in a garage in 1985 with a single computer and a big dream. Forty years la
 Game Dev Studio is a relaxed management sim about making video games. Pick a topic and a genre, choose a platform, guide your team through development and wait for the reviews to roll in. Great games win fans and money; flops can sink you.
 
 MAKE GAMES
-• Combine 24 topics with 7 genres. Some ideas are hits, some are disasters: you learn which by releasing games.
+• Combine 24 topics with 10 genres. Some ideas are hits, some are disasters, and a rare few are perfect: you learn which by releasing games.
 • Set the focus for each phase of development and find the right balance of design and tech for every genre.
 • Polish for longer to squash bugs, or ship now and hope reviewers are kind.
 • Make sequels to your hits and build a series fans love.
 
 RUN YOUR STUDIO
 • Hire and train designers and programmers, and watch them work in a cosy 3D office that grows from a garage to a campus.
-• Research new topics, bigger games and better engines.
+• Research new topics, new genres, bigger games and better engines.
 • Take contract work to pay the bills when money is tight.
 • Spend on power-ups like an espresso bar or pizza night, and let the studio cat curl up on a developer's lap for a productivity boost.
 

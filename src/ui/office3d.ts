@@ -8,11 +8,14 @@
  */
 import * as THREE from 'three';
 import { OFFICES } from '../core/data';
+import { decorKey, isPlaced, paintColor, trophyCount } from '../core/decor';
 import { yearOf } from '../core/time';
 import type { GameState, Staff } from '../core/types';
 import { CAT_ID, CODE, DESK_WOOD, LINES, SIP_TIME, daylight, eraFor, gestureFor, lookFor, pickLine } from './office-common';
 import type { Daylight, Era, Gesture, Look, Mode } from './office-common';
 import type { OfficeView } from './office-view';
+import { HOME_VIEW, clampView, panBy, viewRect, zoomAt } from './camera-view';
+import type { ViewRect, ViewState } from './camera-view';
 
 const CELL_X = 2.3;
 const CELL_Z = 2.6;
@@ -425,6 +428,13 @@ export class Office3D implements OfficeView {
   private height = 0;
   private insets = { top: 0, bottom: 0 };
   private roomBox = { minX: -5, maxX: 5, minY: -5, maxY: 5 };
+  /** The framed shot of the room, before the player zooms or pans. */
+  private baseView: ViewRect = { left: -5, right: 5, top: 5, bottom: -5 };
+  private view: ViewState = HOME_VIEW;
+  /** Fingers (or the mouse) on the office that aren't carrying the cat. */
+  private touches = new Map<number, { x: number; y: number; startX: number; startY: number }>();
+  /** Set once those fingers have moved enough to be a pan or pinch rather than a tap. */
+  private gesturing = false;
   private lastT = 0;
   private clock = 0;
   private screenTimer = 0;
@@ -448,6 +458,9 @@ export class Office3D implements OfficeView {
   private skyCanvas = document.createElement('canvas');
   private skyTex: THREE.CanvasTexture;
   private level = 0;
+  /** Fish swimming in the aquarium, and textures and materials made for decorations (freed on rebuild). */
+  private fish: { mesh: THREE.Mesh; x0: number; range: number; speed: number; phase: number }[] = [];
+  private decorDisposables: { dispose(): void }[] = [];
 
   // Cat
   private cat = new THREE.Group();
@@ -527,6 +540,7 @@ export class Office3D implements OfficeView {
     renderer.domElement.addEventListener('pointermove', (e) => this.onPointerMove(e));
     renderer.domElement.addEventListener('pointerup', (e) => this.onPointerUp(e));
     renderer.domElement.addEventListener('pointercancel', (e) => this.onPointerUp(e));
+    renderer.domElement.addEventListener('wheel', (e) => this.onWheel(e), { passive: false });
     renderer.domElement.addEventListener('webglcontextlost', (e) => {
       e.preventDefault();
       this.onLost?.();
@@ -574,7 +588,7 @@ export class Office3D implements OfficeView {
     this.era = eraFor(yearOf(state.week));
     const capacity = OFFICES[state.officeLevel].capacity;
     const deskCount = Math.max(capacity, state.staff.length);
-    const key = `${state.officeLevel}|${deskCount}|${this.era}|${state.staff.map((s) => s.id).join(',')}`;
+    const key = `${state.officeLevel}|${deskCount}|${this.era}|${state.staff.map((s) => s.id).join(',')}|${decorKey(state)}`;
     if (key !== this.layoutKey) this.rebuild(state, deskCount, key);
     this.resize();
 
@@ -644,6 +658,7 @@ export class Office3D implements OfficeView {
     this.lapWanted = state.cat?.lap?.staffId;
     this.updateCat(tick, time, dt);
     this.updateParticles(dt);
+    this.updateFish(time);
     this.renderer.render(this.scene, this.camera);
     this.updateOverlays(zoners, tick, time);
 
@@ -683,6 +698,9 @@ export class Office3D implements OfficeView {
     }
     for (const l of this.lamps) this.scene.remove(l);
     this.lamps = [];
+    for (const t of this.decorDisposables) t.dispose();
+    this.decorDisposables = [];
+    this.fish = [];
 
     this.level = state.officeLevel;
     const cols = Math.min(deskCount, MAX_COLS);
@@ -692,7 +710,8 @@ export class Office3D implements OfficeView {
     const W = this.roomW;
     const D = this.roomD;
 
-    this.buildRoom(W, D);
+    this.buildRoom(W, D, paintColor(state, 'wall'), paintColor(state, 'floor'));
+    this.buildDecor(state, W, D);
 
     // Desks in a grid, centred, with an aisle along the right wall to the coffee machine.
     const x0 = -W / 2 + 1.1 + CELL_X / 2 + (W - 2.4 - cols * CELL_X) / 2;
@@ -738,19 +757,19 @@ export class Office3D implements OfficeView {
     this.fitCamera();
   }
 
-  private buildRoom(W: number, D: number) {
+  private buildRoom(W: number, D: number, wallPaint?: string, floorPaint?: string) {
     const level = this.level;
-    const floorCol = ['#6e655a', '#6a4e3c', '#3f4a52', '#454c63'][level] ?? '#454c63';
-    const wallCol = ['#a59a88', '#b89a7e', '#6a7f86', '#4a5478'][level] ?? '#4a5478';
+    const floorCol = floorPaint ?? ['#6e655a', '#6a4e3c', '#3f4a52', '#454c63'][level] ?? '#454c63';
+    const wallCol = wallPaint ?? ['#a59a88', '#b89a7e', '#6a7f86', '#4a5478'][level] ?? '#4a5478';
     // Floor slab and two cut-away walls (back and left).
     part(this.world, W, 0.12, D, floorCol, 0, -0.06, 0);
     if (level === 1) {
       // Wooden floorboards.
       for (let x = -W / 2 + 0.4; x < W / 2; x += 0.4) part(this.world, 0.012, 0.005, D, shadeHex(floorCol, -0.2), x, 0.002, 0);
-    } else if (level === 2) {
+    } else if (level === 2 && !floorPaint) {
       part(this.world, W * 0.7, 0.01, D * 0.55, '#a8442e', 0.3, 0.005, 0.2);
     } else if (level === 3) {
-      for (let x = -W / 2 + 0.8; x < W / 2; x += 1.6) part(this.world, 0.8, 0.004, D, '#4b536b', x, 0.002, 0);
+      for (let x = -W / 2 + 0.8; x < W / 2; x += 1.6) part(this.world, 0.8, 0.004, D, shadeHex(floorCol, 0.06), x, 0.002, 0);
     }
     part(this.world, W, WALL_H, 0.12, wallCol, 0, WALL_H / 2, -D / 2 - 0.06);
     part(this.world, 0.12, WALL_H, D, shadeHex(wallCol, 0.06), -W / 2 - 0.06, WALL_H / 2, 0);
@@ -790,6 +809,139 @@ export class Office3D implements OfficeView {
       for (let x = -W / 2 + 0.2; x <= W / 2; x += W / 5) part(this.world, 0.06, WALL_H, 0.06, '#d8d2c4', x, WALL_H / 2, -D / 2 + 0.03);
       part(this.world, 0.36, 0.5, 0.36, '#e8e8f0', -W / 2 + 0.4, 0.25, -D / 2 + 0.4, { geo: CYL, shadow: true });
       part(this.world, 0.55, 0.9, 0.55, '#3d9a5a', -W / 2 + 0.4, 0.95, -D / 2 + 0.4, { geo: CONE, shadow: true });
+    }
+  }
+
+  /**
+   * Decorations the player has placed. Each has a fixed spot that scales with the
+   * room: tall things against the side wall, wall pieces up high on the back wall,
+   * and only low things on the floor up front, so nothing hides the team.
+   */
+  private buildDecor(state: GameState, W: number, D: number) {
+    const w = this.world;
+    const left = -W / 2;
+    const back = -D / 2;
+    const front = D / 2;
+    if (isPlaced(state, 'rug')) {
+      part(w, Math.min(3.2, W * 0.45), 0.014, 1.3, '#b5653a', -0.2, 0.007, front - 0.95, { material: mat('#b5653a', 1) });
+      part(w, Math.min(3.2, W * 0.45) - 0.3, 0.016, 1.0, '#e2b45a', -0.2, 0.008, front - 0.95, { material: mat('#e2b45a', 1) });
+      part(w, Math.min(3.2, W * 0.45) - 0.6, 0.018, 0.7, '#b5653a', -0.2, 0.009, front - 0.95, { material: mat('#b5653a', 1) });
+    }
+    if (isPlaced(state, 'plants')) {
+      const x = W / 2 - 0.45;
+      const z = front - 0.45;
+      part(w, 0.42, 0.45, 0.42, '#d9d4c7', x, 0.225, z, { geo: CYL, shadow: true });
+      part(w, 0.75, 0.8, 0.75, '#3d9a5a', x, 0.8, z, { geo: SPHERE, shadow: true });
+      part(w, 0.45, 0.55, 0.45, '#4fbf6f', x - 0.1, 1.15, z + 0.05, { geo: SPHERE });
+      part(w, 0.3, 0.3, 0.3, '#b5653a', x - 0.6, 0.15, z + 0.05, { geo: CYL, shadow: true });
+      part(w, 0.12, 0.5, 0.12, '#3d9a5a', x - 0.6, 0.5, z + 0.05, { geo: CYL });
+      part(w, 0.1, 0.32, 0.1, '#3d9a5a', x - 0.68, 0.42, z + 0.05, { geo: CYL });
+    }
+    if (isPlaced(state, 'beanbags')) {
+      [['#d8452e', 0], ['#2ec4d6', 0.75]].forEach(([col, dx]) => {
+        const x = left + 1.35 + (dx as number);
+        part(w, 0.7, 0.42, 0.65, col as string, x, 0.21, front - 0.55, { geo: SPHERE, shadow: true, material: mat(col as string, 0.95) });
+        part(w, 0.5, 0.35, 0.3, shadeHex(col as string, -0.15), x, 0.42, front - 0.75, { geo: SPHERE, material: mat(shadeHex(col as string, -0.15), 0.95) });
+      });
+    }
+    if (isPlaced(state, 'bookshelf')) {
+      const z = back + 1.25;
+      const wood = '#7a5236';
+      const g = group(w, left + 0.2, 0, z);
+      part(g, 0.36, 1.9, 1.2, wood, 0, 0.95, 0, { shadow: true });
+      const colors = ['#dc4b2a', '#23877d', '#f2b33d', '#2f7fc1', '#9b6bff', '#e8e8f0'];
+      for (let r = 0; r < 4; r++) {
+        const y = 0.12 + r * 0.45;
+        part(g, 0.3, 0.03, 1.12, shadeHex(wood, -0.25), 0.03, y, 0);
+        let zz = -0.5;
+        for (let i = 0; zz < 0.48; i++) {
+          const bw = 0.06 + ((i * 7 + r * 3) % 4) * 0.025;
+          const bh = 0.26 + ((i * 5 + r) % 3) * 0.05;
+          part(g, 0.22, bh, bw, colors[(i + r * 2) % colors.length], 0.06, y + 0.015 + bh / 2, zz + bw / 2);
+          zz += bw + 0.01;
+        }
+      }
+    }
+    if (isPlaced(state, 'aquarium')) {
+      const z = back + 2.35;
+      const g = group(w, left + 0.3, 0, z);
+      part(g, 0.5, 0.75, 1.0, '#2a2836', 0, 0.375, 0, { shadow: true });
+      const water = new THREE.MeshStandardMaterial({ color: '#4fb3ff', emissive: '#1d6fa0', emissiveIntensity: 0.6, transparent: true, opacity: 0.55, roughness: 0.1 });
+      this.decorDisposables.push(water);
+      part(g, 0.44, 0.55, 0.94, '#4fb3ff', 0, 1.03, 0, { material: water });
+      part(g, 0.48, 0.04, 0.98, '#2a2836', 0, 1.32, 0);
+      part(g, 0.4, 0.05, 0.9, '#e2c88a', 0, 0.78, 0);
+      part(g, 0.05, 0.3, 0.05, '#3d9a5a', -0.05, 0.93, -0.3, { geo: CYL });
+      part(g, 0.05, 0.22, 0.05, '#3d9a5a', -0.05, 0.89, 0.32, { geo: CYL });
+      ['#ff8a3b', '#ffd25c', '#ff5c9a'].forEach((col, i) => {
+        const fish = part(g, 0.04, 0.06, 0.12, col, 0.05, 0.92 + i * 0.12, 0, { material: new THREE.MeshBasicMaterial({ color: col }) });
+        this.fish.push({ mesh: fish, x0: 0, range: 0.36, speed: 0.5 + i * 0.17, phase: i * 2.1 });
+      });
+    }
+    if (isPlaced(state, 'arcade')) {
+      // After the bookshelf and aquarium, clear of the garage's cardboard box.
+      const z = Math.max(back + 3.3, front - 1.6);
+      const g = group(w, left + 0.38, 0, z);
+      g.rotation.y = HALF_PI;
+      const body = '#5a2f8a';
+      part(g, 0.7, 1.15, 0.6, body, 0, 0.575, 0, { shadow: true });
+      part(g, 0.7, 0.55, 0.42, body, 0, 1.43, -0.09, { shadow: true });
+      part(g, 0.72, 0.16, 0.5, '#ff5c9a', 0, 1.78, -0.05, { material: new THREE.MeshBasicMaterial({ color: '#ff5c9a' }) });
+      part(g, 0.66, 0.06, 0.3, '#2a2836', 0, 1.18, 0.2);
+      part(g, 0.05, 0.1, 0.05, '#e8e8f0', -0.15, 1.24, 0.22, { geo: CYL });
+      part(g, 0.07, 0.03, 0.07, '#ff5c6c', 0.08, 1.225, 0.22, { geo: CYL, material: new THREE.MeshBasicMaterial({ color: '#ff5c6c' }) });
+      part(g, 0.07, 0.03, 0.07, '#3ddc97', 0.2, 1.225, 0.22, { geo: CYL, material: new THREE.MeshBasicMaterial({ color: '#3ddc97' }) });
+      const screen = part(g, 0.52, 0.4, 0.01, '#23877d', 0, 1.44, 0.125, { material: new THREE.MeshBasicMaterial({ color: '#2ec4d6' }) });
+      screen.rotation.x = -0.2;
+    }
+    if (isPlaced(state, 'trophies')) {
+      const x = W / 2 - 1.9;
+      part(w, 1.2, 0.05, 0.22, '#7a5236', x, 2.18, back + 0.11, { shadow: true });
+      const n = trophyCount(state);
+      for (let i = 0; i < n; i++) {
+        const tx = x - 0.5 + i * 0.2;
+        const gold = mat('#f2b33d', 0.3, '#3a2a00', 0.6);
+        part(w, 0.08, 0.04, 0.08, '#2a2836', tx, 2.225, back + 0.11);
+        part(w, 0.03, 0.08, 0.03, '#f2b33d', tx, 2.285, back + 0.11, { geo: CYL, material: gold });
+        part(w, 0.11, 0.1, 0.11, '#f2b33d', tx, 2.37, back + 0.11, { geo: CONE, material: gold }).rotation.x = Math.PI;
+      }
+    }
+    if (isPlaced(state, 'neon')) {
+      const c = document.createElement('canvas');
+      c.width = 512;
+      c.height = 128;
+      const g = c.getContext('2d')!;
+      g.font = '600 64px "Bricolage Grotesque Variable", system-ui, sans-serif';
+      const text = state.studioName.toUpperCase();
+      const scale = Math.min(1, 470 / Math.max(1, g.measureText(text).width));
+      g.font = `600 ${Math.floor(64 * scale)}px "Bricolage Grotesque Variable", system-ui, sans-serif`;
+      g.textAlign = 'center';
+      g.textBaseline = 'middle';
+      g.shadowColor = '#ff5c9a';
+      g.shadowBlur = 18;
+      g.lineWidth = 4;
+      g.strokeStyle = '#ff5c9a';
+      g.strokeText(text, 256, 64);
+      g.fillStyle = '#ffe3f0';
+      g.fillText(text, 256, 64);
+      const tex = new THREE.CanvasTexture(c);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      this.decorDisposables.push(tex);
+      const x = left + 1.75;
+      part(w, 2.0, 0.5, 0.01, '#ffffff', x, 2.42, back + 0.05, { material: new THREE.MeshBasicMaterial({ map: tex, transparent: true, toneMapped: false, depthWrite: false }) });
+      const lg = glowSprite('#ff5c9a', 2.4);
+      (lg.material as THREE.SpriteMaterial).opacity = 0.35;
+      this.decorDisposables.push(lg.material);
+      lg.scale.set(2.8, 1.1, 1);
+      lg.position.set(x, 2.42, back + 0.1);
+      w.add(lg);
+    }
+  }
+
+  private updateFish(time: number) {
+    for (const f of this.fish) {
+      const p = Math.sin(time * f.speed + f.phase);
+      f.mesh.position.z = f.x0 + p * f.range;
     }
   }
 
@@ -986,10 +1138,19 @@ export class Office3D implements OfficeView {
     const cy = (minY + maxY) / 2;
     // Put the room's centre in the middle of the free band.
     const centreFromTop = (top + (h - top - bottom) / 2) / h;
-    this.camera.left = cx - frustumW / 2;
-    this.camera.right = cx + frustumW / 2;
-    this.camera.top = cy + frustumH * centreFromTop;
-    this.camera.bottom = this.camera.top - frustumH;
+    const baseTop = cy + frustumH * centreFromTop;
+    this.baseView = { left: cx - frustumW / 2, right: cx + frustumW / 2, top: baseTop, bottom: baseTop - frustumH };
+    this.setView(this.view);
+  }
+
+  /** Points the camera at the player's zoomed and panned view. */
+  private setView(v: ViewState) {
+    this.view = clampView(this.baseView, v);
+    const r = viewRect(this.baseView, this.view);
+    this.camera.left = r.left;
+    this.camera.right = r.right;
+    this.camera.top = r.top;
+    this.camera.bottom = r.bottom;
     this.camera.updateProjectionMatrix();
   }
 
@@ -1642,9 +1803,14 @@ export class Office3D implements OfficeView {
   }
 
   private onPointerDown(e: PointerEvent) {
-    if (this.carry || this.catState.mode === 'falling' || this.catState.mode === 'jump') return;
+    if (this.carry) return;
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    const catBusy = this.catState.mode === 'falling' || this.catState.mode === 'jump';
     this.raycaster.setFromCamera(this.ndcFor(e), this.camera);
-    if (!this.raycaster.intersectObject(this.cat, true).length) return;
+    if (this.touches.size || catBusy || !this.raycaster.intersectObject(this.cat, true).length) {
+      this.startTouch(e);
+      return;
+    }
     const start = this.cat.position.clone();
     start.y = 0;
     this.carry = {
@@ -1712,6 +1878,10 @@ export class Office3D implements OfficeView {
   }
 
   private onPointerMove(e: PointerEvent) {
+    if (this.touches.has(e.pointerId)) {
+      this.moveTouch(e);
+      return;
+    }
     const c = this.carry;
     if (!c || e.pointerId !== c.pointerId) return;
     if (!c.lifted && Math.hypot(e.clientX - c.startX, e.clientY - c.startY) > PICKUP_MOVE_PX) this.liftCat();
@@ -1721,6 +1891,10 @@ export class Office3D implements OfficeView {
   }
 
   private onPointerUp(e: PointerEvent) {
+    if (this.touches.has(e.pointerId)) {
+      this.endTouch(e);
+      return;
+    }
     const c = this.carry;
     if (!c || e.pointerId !== c.pointerId) return;
     this.carry = null;
@@ -1745,6 +1919,67 @@ export class Office3D implements OfficeView {
     cat.mode = 'falling';
     this.catY = Math.max(0.05, this.cat.position.y);
     this.catVy = 0;
+  }
+
+  // -------------------------------------------------------------------------
+  // Zooming and panning
+  // -------------------------------------------------------------------------
+
+  private startTouch(e: PointerEvent) {
+    this.touches.set(e.pointerId, { x: e.clientX, y: e.clientY, startX: e.clientX, startY: e.clientY });
+    this.renderer.domElement.setPointerCapture(e.pointerId);
+    // A second finger makes it a pinch straight away.
+    if (this.touches.size > 1) this.gesturing = true;
+  }
+
+  private moveTouch(e: PointerEvent) {
+    const t = this.touches.get(e.pointerId)!;
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    const [a, b] = [...this.touches.values()];
+    if (!this.gesturing && Math.hypot(e.clientX - t.startX, e.clientY - t.startY) <= PICKUP_MOVE_PX) return;
+    if (!this.gesturing) {
+      this.gesturing = true;
+      if (e.pointerType === 'mouse') this.renderer.domElement.style.cursor = 'grabbing';
+    }
+    if (b) {
+      // Pinch: zoom by the change in finger spread around their midpoint, and follow the midpoint.
+      const before = { d: Math.hypot(a.x - b.x, a.y - b.y), x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+      t.x = e.clientX;
+      t.y = e.clientY;
+      const after = { d: Math.hypot(a.x - b.x, a.y - b.y), x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+      let v = panBy(this.baseView, this.view, (after.x - before.x) / rect.width, (after.y - before.y) / rect.height);
+      if (before.d > 0 && after.d > 0) {
+        v = zoomAt(this.baseView, v, after.d / before.d, (after.x - rect.left) / rect.width, (after.y - rect.top) / rect.height);
+      }
+      this.setView(v);
+      return;
+    }
+    const dx = e.clientX - t.x;
+    const dy = e.clientY - t.y;
+    t.x = e.clientX;
+    t.y = e.clientY;
+    this.setView(panBy(this.baseView, this.view, dx / rect.width, dy / rect.height));
+  }
+
+  private endTouch(e: PointerEvent) {
+    this.touches.delete(e.pointerId);
+    if (this.touches.size) return;
+    this.renderer.domElement.style.cursor = '';
+    if (!this.gesturing) return; // a plain tap: the click handler deals with it
+    this.gesturing = false;
+    this.suppressClick = true;
+    window.setTimeout(() => (this.suppressClick = false), 400);
+  }
+
+  private onWheel(e: WheelEvent) {
+    e.preventDefault();
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    // Trackpad pinches arrive as wheel events with ctrl held and small deltas.
+    const px = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? rect.height : 1);
+    const factor = Math.exp(-px * (e.ctrlKey ? 0.01 : 0.0015));
+    this.setView(zoomAt(this.baseView, this.view, factor, (e.clientX - rect.left) / rect.width, (e.clientY - rect.top) / rect.height));
   }
 
   // -------------------------------------------------------------------------

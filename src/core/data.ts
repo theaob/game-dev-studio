@@ -43,6 +43,7 @@ export const AREAS: Area[] = PHASES.flatMap((p) => p.areas);
 // ---------------------------------------------------------------------------
 // Genres. `importance` has one entry per area (9): 1.5 high, 1 normal, 0.5 low.
 // `designTarget` is the ideal share of design points vs. tech points.
+// Genres with `research` have to be researched before they can be made.
 // ---------------------------------------------------------------------------
 
 export interface Genre {
@@ -51,6 +52,7 @@ export interface Genre {
   icon: string;
   importance: number[];
   designTarget: number;
+  research?: string;
 }
 
 export const GENRES: Genre[] = [
@@ -61,6 +63,9 @@ export const GENRES: Genre[] = [
   { id: 'strategy', name: 'Strategy', icon: '♟️', importance: [1, 1.5, 0.5, 0.5, 1, 1.5, 1.5, 0.5, 0.5], designTarget: 0.55 },
   { id: 'puzzle', name: 'Puzzle', icon: '🧩', importance: [0.5, 1.5, 0.5, 0.5, 1.5, 1, 0.5, 1, 1.5], designTarget: 0.6 },
   { id: 'casual', name: 'Casual', icon: '🎈', importance: [0.5, 1.5, 0.5, 0.5, 1.5, 0.5, 0.5, 1.5, 1.5], designTarget: 0.6 },
+  { id: 'platformer', name: 'Platformer', icon: '🏃', importance: [1, 1.5, 0.5, 0.5, 1.5, 0.5, 1, 1.5, 1], designTarget: 0.55, research: 'genre_platformer' },
+  { id: 'shooter', name: 'Shooter', icon: '🎯', importance: [1.5, 1.5, 0.5, 0.5, 1, 1.5, 0.5, 1.5, 1], designTarget: 0.35, research: 'genre_shooter' },
+  { id: 'rhythm', name: 'Rhythm', icon: '🥁', importance: [0.5, 1.5, 0.5, 0.5, 1, 0.5, 1, 1, 1.5], designTarget: 0.6, research: 'genre_rhythm' },
 ];
 
 export const GENRE_IDS = GENRES.map((g) => g.id);
@@ -72,7 +77,9 @@ export function genreById(id: string): Genre {
 }
 
 // ---------------------------------------------------------------------------
-// Topics. `fit` is per genre (GENRES order): 3 great, 2 good, 1 okay, 0 bad.
+// Topics. `fit` is per genre (GENRES order): 4 perfect, 3 great, 2 good, 1 okay,
+// 0 bad. Perfect combos are rare (one or two per genre) and look like any other
+// until the studio releases a game with one.
 // ---------------------------------------------------------------------------
 
 export interface Topic {
@@ -85,30 +92,30 @@ export interface Topic {
 }
 
 export const TOPICS: Topic[] = [
-  { id: 'fantasy', name: 'Fantasy', icon: '🐉', fit: [2, 3, 3, 1, 2, 1, 1], cost: 0 },
-  { id: 'scifi', name: 'Sci-Fi', icon: '👽', fit: [3, 2, 3, 2, 3, 1, 1], cost: 0 },
-  { id: 'racing', name: 'Racing', icon: '🏎️', fit: [3, 0, 0, 3, 0, 1, 2], cost: 0 },
-  { id: 'sports', name: 'Sports', icon: '⚽', fit: [2, 0, 1, 3, 2, 0, 2], cost: 0 },
-  { id: 'medieval', name: 'Medieval', icon: '🏰', fit: [2, 2, 3, 2, 3, 0, 1], cost: 0 },
-  { id: 'pirates', name: 'Pirates', icon: '🏴‍☠️', fit: [3, 3, 2, 1, 2, 1, 1], cost: 0 },
-  { id: 'detective', name: 'Detective', icon: '🕵️', fit: [1, 3, 2, 0, 1, 3, 1], cost: 0 },
-  { id: 'space', name: 'Space', icon: '🚀', fit: [3, 2, 2, 3, 3, 2, 1], cost: 0 },
-  { id: 'horror', name: 'Horror', icon: '👻', fit: [3, 3, 2, 0, 1, 2, 0], cost: 8 },
-  { id: 'zombies', name: 'Zombies', icon: '🧟', fit: [3, 2, 1, 1, 2, 1, 2], cost: 8 },
-  { id: 'farming', name: 'Farming', icon: '🌾', fit: [0, 1, 1, 3, 2, 1, 3], cost: 8 },
-  { id: 'military', name: 'Military', icon: '🎖️', fit: [3, 1, 1, 2, 3, 0, 0], cost: 10 },
-  { id: 'dungeon', name: 'Dungeon', icon: '🗝️', fit: [3, 2, 3, 0, 2, 2, 1], cost: 10 },
-  { id: 'music', name: 'Music', icon: '🎵', fit: [1, 1, 0, 2, 0, 2, 3], cost: 10 },
-  { id: 'mystery', name: 'Mystery', icon: '🔍', fit: [0, 3, 1, 0, 1, 3, 1], cost: 10 },
-  { id: 'school', name: 'School', icon: '🏫', fit: [0, 2, 2, 3, 0, 2, 3], cost: 12 },
-  { id: 'ninja', name: 'Ninja', icon: '🥷', fit: [3, 2, 2, 0, 1, 1, 1], cost: 12 },
-  { id: 'dinosaurs', name: 'Dinosaurs', icon: '🦖', fit: [3, 3, 1, 2, 2, 1, 2], cost: 12 },
-  { id: 'city', name: 'City Building', icon: '🏙️', fit: [0, 0, 1, 3, 3, 2, 2], cost: 15 },
-  { id: 'cooking', name: 'Cooking', icon: '🍳', fit: [0, 0, 0, 3, 1, 3, 3], cost: 15 },
-  { id: 'superheroes', name: 'Superheroes', icon: '🦸', fit: [3, 2, 2, 0, 1, 1, 1], cost: 18 },
-  { id: 'cyberpunk', name: 'Cyberpunk', icon: '🤖', fit: [3, 3, 3, 1, 2, 1, 0], cost: 20 },
-  { id: 'romance', name: 'Romance', icon: '💘', fit: [0, 3, 2, 2, 0, 1, 3], cost: 20 },
-  { id: 'apocalypse', name: 'Post-Apocalyptic', icon: '☢️', fit: [3, 3, 3, 2, 3, 0, 0], cost: 25 },
+  { id: 'fantasy', name: 'Fantasy', icon: '🐉', fit: [2, 3, 4, 1, 2, 1, 1, 2, 1, 1], cost: 0 },
+  { id: 'scifi', name: 'Sci-Fi', icon: '👽', fit: [3, 2, 3, 2, 3, 1, 1, 2, 4, 1], cost: 0 },
+  { id: 'racing', name: 'Racing', icon: '🏎️', fit: [3, 0, 0, 4, 0, 1, 2, 1, 1, 1], cost: 0 },
+  { id: 'sports', name: 'Sports', icon: '⚽', fit: [2, 0, 1, 3, 2, 0, 2, 1, 0, 2], cost: 0 },
+  { id: 'medieval', name: 'Medieval', icon: '🏰', fit: [2, 2, 3, 2, 4, 0, 1, 1, 1, 0], cost: 0 },
+  { id: 'pirates', name: 'Pirates', icon: '🏴‍☠️', fit: [3, 4, 2, 1, 2, 1, 1, 2, 2, 1], cost: 0 },
+  { id: 'detective', name: 'Detective', icon: '🕵️', fit: [1, 3, 2, 0, 1, 4, 1, 0, 1, 0], cost: 0 },
+  { id: 'space', name: 'Space', icon: '🚀', fit: [3, 2, 2, 3, 4, 2, 1, 2, 3, 1], cost: 0 },
+  { id: 'horror', name: 'Horror', icon: '👻', fit: [3, 3, 2, 0, 1, 2, 0, 1, 3, 0], cost: 8 },
+  { id: 'zombies', name: 'Zombies', icon: '🧟', fit: [3, 2, 1, 1, 2, 1, 2, 2, 4, 1], cost: 8 },
+  { id: 'farming', name: 'Farming', icon: '🌾', fit: [0, 1, 1, 4, 2, 1, 3, 1, 0, 1], cost: 8 },
+  { id: 'military', name: 'Military', icon: '🎖️', fit: [3, 1, 1, 2, 3, 0, 0, 1, 3, 0], cost: 10 },
+  { id: 'dungeon', name: 'Dungeon', icon: '🗝️', fit: [3, 2, 4, 0, 2, 2, 1, 2, 2, 0], cost: 10 },
+  { id: 'music', name: 'Music', icon: '🎵', fit: [1, 1, 0, 2, 0, 2, 3, 2, 0, 4], cost: 10 },
+  { id: 'mystery', name: 'Mystery', icon: '🔍', fit: [0, 4, 1, 0, 1, 3, 1, 1, 0, 0], cost: 10 },
+  { id: 'school', name: 'School', icon: '🏫', fit: [0, 2, 2, 3, 0, 2, 3, 1, 0, 2], cost: 12 },
+  { id: 'ninja', name: 'Ninja', icon: '🥷', fit: [3, 2, 2, 0, 1, 1, 1, 4, 2, 1], cost: 12 },
+  { id: 'dinosaurs', name: 'Dinosaurs', icon: '🦖', fit: [3, 3, 1, 2, 2, 1, 2, 3, 2, 1], cost: 12 },
+  { id: 'city', name: 'City Building', icon: '🏙️', fit: [0, 0, 1, 3, 3, 2, 2, 0, 1, 0], cost: 15 },
+  { id: 'cooking', name: 'Cooking', icon: '🍳', fit: [0, 0, 0, 3, 1, 3, 4, 1, 0, 2], cost: 15 },
+  { id: 'superheroes', name: 'Superheroes', icon: '🦸', fit: [4, 2, 2, 0, 1, 1, 1, 3, 2, 1], cost: 18 },
+  { id: 'cyberpunk', name: 'Cyberpunk', icon: '🤖', fit: [3, 3, 3, 1, 2, 1, 0, 2, 3, 2], cost: 20 },
+  { id: 'romance', name: 'Romance', icon: '💘', fit: [0, 3, 2, 2, 0, 1, 3, 0, 0, 2], cost: 20 },
+  { id: 'apocalypse', name: 'Post-Apocalyptic', icon: '☢️', fit: [3, 3, 3, 2, 3, 0, 0, 1, 3, 0], cost: 25 },
 ];
 
 export function topicById(id: string): Topic {
@@ -121,7 +128,8 @@ export function topicFit(topicId: string, genreId: GenreId): number {
   return topicById(topicId).fit[GENRE_IDS.indexOf(genreId)];
 }
 
-export const FIT_LABELS = ['Bad', 'Okay', 'Good', 'Great'];
+export const FIT_LABELS = ['Bad', 'Okay', 'Good', 'Great', 'Perfect'];
+export const PERFECT_FIT = 4;
 
 // ---------------------------------------------------------------------------
 // Platforms. `users` is a curve of [year, millions of users]; linear between
@@ -143,24 +151,24 @@ export interface Platform {
 }
 
 export const PLATFORMS: Platform[] = [
-  { id: 'pc', name: 'PC', icon: '🖥️', kind: 'Computer', start: 1985, users: [[1985, 3], [1995, 40], [2005, 150], [2015, 220], [2026, 260]], license: 0, priceMult: 1, genreFit: { strategy: 1.25, simulation: 1.2, casual: 0.85 } },
-  { id: 'nova8', name: 'Nova 8', icon: '🕹️', kind: 'Console', start: 1985, end: 1994, users: [[1985, 2], [1989, 28], [1994, 6]], license: 20000, priceMult: 1, genreFit: { action: 1.2, adventure: 1.1, simulation: 0.8, strategy: 0.7 } },
-  { id: 'zephyr', name: 'Zephyr Drive', icon: '🎮', kind: 'Console', start: 1989, end: 1998, users: [[1989, 2], [1993, 22], [1998, 4]], license: 35000, priceMult: 1, genreFit: { action: 1.25, puzzle: 0.9, strategy: 0.8 } },
-  { id: 'pocketpal', name: 'Pocket Pal', icon: '📟', kind: 'Handheld', start: 1990, end: 2003, users: [[1990, 3], [1996, 45], [2003, 10]], license: 25000, priceMult: 0.8, genreFit: { puzzle: 1.3, casual: 1.2, rpg: 1.1, strategy: 0.8, simulation: 0.8 } },
-  { id: 'spectra', name: 'Spectra', icon: '💿', kind: 'Console', start: 1995, end: 2006, users: [[1995, 3], [1999, 60], [2006, 12]], license: 80000, priceMult: 1, genreFit: { rpg: 1.2, action: 1.1, strategy: 0.85 } },
-  { id: 'hyperion', name: 'Hyperion 64', icon: '🎮', kind: 'Console', start: 1996, end: 2003, users: [[1996, 3], [1999, 26], [2003, 5]], license: 70000, priceMult: 1, genreFit: { action: 1.2, adventure: 1.15, casual: 1.1, rpg: 0.9 } },
-  { id: 'spectra2', name: 'Spectra 2', icon: '💿', kind: 'Console', start: 2000, end: 2013, users: [[2000, 5], [2005, 120], [2013, 25]], license: 150000, priceMult: 1, genreFit: { rpg: 1.15, action: 1.15, strategy: 0.85 } },
-  { id: 'monolith', name: 'Monolith X', icon: '⬛', kind: 'Console', start: 2002, end: 2010, users: [[2002, 3], [2006, 25], [2010, 8]], license: 150000, priceMult: 1, genreFit: { action: 1.25, strategy: 0.9, casual: 0.85 } },
-  { id: 'pocketduo', name: 'Pocket Duo', icon: '📱', kind: 'Handheld', start: 2004, end: 2015, users: [[2004, 5], [2009, 120], [2015, 30]], license: 120000, priceMult: 0.8, genreFit: { puzzle: 1.25, casual: 1.3, rpg: 1.1, action: 0.9 } },
-  { id: 'monolith2', name: 'Monolith 360', icon: '⬛', kind: 'Console', start: 2005, end: 2016, users: [[2005, 5], [2010, 85], [2016, 20]], license: 250000, priceMult: 1, genreFit: { action: 1.25, simulation: 1.05, casual: 0.85 } },
-  { id: 'wave', name: 'Wave', icon: '🌊', kind: 'Console', start: 2006, end: 2014, users: [[2006, 8], [2009, 95], [2014, 20]], license: 180000, priceMult: 1, genreFit: { casual: 1.4, puzzle: 1.1, action: 0.9, strategy: 0.7, rpg: 0.8 } },
-  { id: 'spectra3', name: 'Spectra 3', icon: '💿', kind: 'Console', start: 2006, end: 2016, users: [[2006, 4], [2010, 80], [2016, 20]], license: 250000, priceMult: 1, genreFit: { rpg: 1.15, action: 1.15, casual: 0.85 } },
-  { id: 'apex', name: 'Apex Phone', icon: '📱', kind: 'Mobile', start: 2008, users: [[2008, 10], [2012, 400], [2020, 900], [2026, 1100]], license: 2000, priceMult: 0.25, genreFit: { casual: 1.4, puzzle: 1.3, simulation: 1.05, rpg: 0.9, strategy: 0.9, action: 0.8, adventure: 0.8 } },
-  { id: 'spectra4', name: 'Spectra 4', icon: '💿', kind: 'Console', start: 2013, end: 2023, users: [[2013, 8], [2018, 115], [2023, 40]], license: 300000, priceMult: 1, genreFit: { action: 1.15, rpg: 1.15, adventure: 1.1, casual: 0.8 } },
-  { id: 'monolithone', name: 'Monolith One', icon: '⬛', kind: 'Console', start: 2013, end: 2023, users: [[2013, 6], [2018, 50], [2023, 20]], license: 300000, priceMult: 1, genreFit: { action: 1.2, simulation: 1.05, casual: 0.8 } },
-  { id: 'switchback', name: 'Switchback', icon: '🔀', kind: 'Hybrid', start: 2017, users: [[2017, 10], [2022, 130], [2026, 150]], license: 250000, priceMult: 1, genreFit: { casual: 1.2, adventure: 1.15, puzzle: 1.1, action: 0.95 } },
-  { id: 'spectra5', name: 'Spectra 5', icon: '💿', kind: 'Console', start: 2020, users: [[2020, 8], [2025, 65]], license: 350000, priceMult: 1, genreFit: { action: 1.15, rpg: 1.15, adventure: 1.1, casual: 0.8 } },
-  { id: 'monolithseries', name: 'Monolith Series', icon: '⬛', kind: 'Console', start: 2020, users: [[2020, 6], [2025, 32]], license: 350000, priceMult: 1, genreFit: { action: 1.2, strategy: 1.05, casual: 0.8 } },
+  { id: 'pc', name: 'PC', icon: '🖥️', kind: 'Computer', start: 1985, users: [[1985, 3], [1995, 40], [2005, 150], [2015, 220], [2026, 260]], license: 0, priceMult: 1, genreFit: { strategy: 1.25, simulation: 1.2, casual: 0.85, shooter: 1.15, rhythm: 0.85 } },
+  { id: 'nova8', name: 'Nova 8', icon: '🕹️', kind: 'Console', start: 1985, end: 1994, users: [[1985, 2], [1989, 28], [1994, 6]], license: 20000, priceMult: 1, genreFit: { action: 1.2, adventure: 1.1, simulation: 0.8, strategy: 0.7, platformer: 1.25 } },
+  { id: 'zephyr', name: 'Zephyr Drive', icon: '🎮', kind: 'Console', start: 1989, end: 1998, users: [[1989, 2], [1993, 22], [1998, 4]], license: 35000, priceMult: 1, genreFit: { action: 1.25, puzzle: 0.9, strategy: 0.8, platformer: 1.3 } },
+  { id: 'pocketpal', name: 'Pocket Pal', icon: '📟', kind: 'Handheld', start: 1990, end: 2003, users: [[1990, 3], [1996, 45], [2003, 10]], license: 25000, priceMult: 0.8, genreFit: { puzzle: 1.3, casual: 1.2, rpg: 1.1, strategy: 0.8, simulation: 0.8, platformer: 1.2, rhythm: 1.1 } },
+  { id: 'spectra', name: 'Spectra', icon: '💿', kind: 'Console', start: 1995, end: 2006, users: [[1995, 3], [1999, 60], [2006, 12]], license: 80000, priceMult: 1, genreFit: { rpg: 1.2, action: 1.1, strategy: 0.85, rhythm: 1.25, platformer: 1.1 } },
+  { id: 'hyperion', name: 'Hyperion 64', icon: '🎮', kind: 'Console', start: 1996, end: 2003, users: [[1996, 3], [1999, 26], [2003, 5]], license: 70000, priceMult: 1, genreFit: { action: 1.2, adventure: 1.15, casual: 1.1, rpg: 0.9, platformer: 1.3, shooter: 1.1 } },
+  { id: 'spectra2', name: 'Spectra 2', icon: '💿', kind: 'Console', start: 2000, end: 2013, users: [[2000, 5], [2005, 120], [2013, 25]], license: 150000, priceMult: 1, genreFit: { rpg: 1.15, action: 1.15, strategy: 0.85, rhythm: 1.2, shooter: 1.05 } },
+  { id: 'monolith', name: 'Monolith X', icon: '⬛', kind: 'Console', start: 2002, end: 2010, users: [[2002, 3], [2006, 25], [2010, 8]], license: 150000, priceMult: 1, genreFit: { action: 1.25, strategy: 0.9, casual: 0.85, shooter: 1.35 } },
+  { id: 'pocketduo', name: 'Pocket Duo', icon: '📱', kind: 'Handheld', start: 2004, end: 2015, users: [[2004, 5], [2009, 120], [2015, 30]], license: 120000, priceMult: 0.8, genreFit: { puzzle: 1.25, casual: 1.3, rpg: 1.1, action: 0.9, platformer: 1.2, rhythm: 1.2, shooter: 0.8 } },
+  { id: 'monolith2', name: 'Monolith 360', icon: '⬛', kind: 'Console', start: 2005, end: 2016, users: [[2005, 5], [2010, 85], [2016, 20]], license: 250000, priceMult: 1, genreFit: { action: 1.25, simulation: 1.05, casual: 0.85, shooter: 1.35 } },
+  { id: 'wave', name: 'Wave', icon: '🌊', kind: 'Console', start: 2006, end: 2014, users: [[2006, 8], [2009, 95], [2014, 20]], license: 180000, priceMult: 1, genreFit: { casual: 1.4, puzzle: 1.1, action: 0.9, strategy: 0.7, rpg: 0.8, rhythm: 1.35, platformer: 1.2, shooter: 0.75 } },
+  { id: 'spectra3', name: 'Spectra 3', icon: '💿', kind: 'Console', start: 2006, end: 2016, users: [[2006, 4], [2010, 80], [2016, 20]], license: 250000, priceMult: 1, genreFit: { rpg: 1.15, action: 1.15, casual: 0.85, shooter: 1.1 } },
+  { id: 'apex', name: 'Apex Phone', icon: '📱', kind: 'Mobile', start: 2008, users: [[2008, 10], [2012, 400], [2020, 900], [2026, 1100]], license: 2000, priceMult: 0.25, genreFit: { casual: 1.4, puzzle: 1.3, simulation: 1.05, rpg: 0.9, strategy: 0.9, action: 0.8, adventure: 0.8, rhythm: 1.2, platformer: 0.9, shooter: 0.75 } },
+  { id: 'spectra4', name: 'Spectra 4', icon: '💿', kind: 'Console', start: 2013, end: 2023, users: [[2013, 8], [2018, 115], [2023, 40]], license: 300000, priceMult: 1, genreFit: { action: 1.15, rpg: 1.15, adventure: 1.1, casual: 0.8, shooter: 1.15 } },
+  { id: 'monolithone', name: 'Monolith One', icon: '⬛', kind: 'Console', start: 2013, end: 2023, users: [[2013, 6], [2018, 50], [2023, 20]], license: 300000, priceMult: 1, genreFit: { action: 1.2, simulation: 1.05, casual: 0.8, shooter: 1.3 } },
+  { id: 'switchback', name: 'Switchback', icon: '🔀', kind: 'Hybrid', start: 2017, users: [[2017, 10], [2022, 130], [2026, 150]], license: 250000, priceMult: 1, genreFit: { casual: 1.2, adventure: 1.15, puzzle: 1.1, action: 0.95, platformer: 1.3, rhythm: 1.15, shooter: 0.85 } },
+  { id: 'spectra5', name: 'Spectra 5', icon: '💿', kind: 'Console', start: 2020, users: [[2020, 8], [2025, 65]], license: 350000, priceMult: 1, genreFit: { action: 1.15, rpg: 1.15, adventure: 1.1, casual: 0.8, shooter: 1.15 } },
+  { id: 'monolithseries', name: 'Monolith Series', icon: '⬛', kind: 'Console', start: 2020, users: [[2020, 6], [2025, 32]], license: 350000, priceMult: 1, genreFit: { action: 1.2, strategy: 1.05, casual: 0.8, shooter: 1.3 } },
 ];
 
 export function platformById(id: string): Platform {
@@ -249,12 +257,17 @@ export interface ResearchItem {
   cost: number;
   requires?: string;
   minOffice?: number;
-  category: 'Game types' | 'Technology' | 'Business';
+  category: 'Game types' | 'Genres' | 'Technology' | 'Business';
+  /** Shown instead of the test tube in the Research list. */
+  icon?: string;
 }
 
 export const RESEARCH: ResearchItem[] = [
   { id: 'size_medium', name: 'Medium Games', desc: 'Bigger projects that sell more copies at a higher price.', cost: 30, category: 'Game types' },
   { id: 'size_large', name: 'Large Games', desc: 'Blockbusters. Needs a real team (5+ staff) and a proper office.', cost: 150, requires: 'size_medium', minOffice: 1, category: 'Game types' },
+  { id: 'genre_platformer', name: 'Platformers', icon: '🏃', desc: 'A new genre: run, jump and collect. Loves heroes, ninjas and dinosaurs.', cost: 25, category: 'Genres' },
+  { id: 'genre_shooter', name: 'Shooters', icon: '🎯', desc: 'A new genre: fast, technical and loud. Sci-fi, zombies and the military fit it well.', cost: 60, requires: 'engine2', category: 'Genres' },
+  { id: 'genre_rhythm', name: 'Rhythm Games', icon: '🥁', desc: 'A new genre: play to the beat. Sound matters more than anything.', cost: 90, category: 'Genres' },
   { id: 'engine2', name: 'Engine 2.0', desc: '+15% tech points.', cost: 40, category: 'Technology' },
   { id: 'engine3', name: '3D Engine', desc: '+15% tech points.', cost: 140, requires: 'engine2', category: 'Technology' },
   { id: 'engine4', name: 'Next-Gen Engine', desc: '+20% tech points.', cost: 400, requires: 'engine3', category: 'Technology' },
@@ -263,7 +276,7 @@ export const RESEARCH: ResearchItem[] = [
   { id: 'design3', name: 'Narrative Tools', desc: '+20% design points.', cost: 400, requires: 'design2', category: 'Technology' },
   { id: 'qa1', name: 'QA Process', desc: '30% fewer bugs during development.', cost: 60, category: 'Technology' },
   { id: 'qa2', name: 'Automated Testing', desc: 'Another 30% fewer bugs, faster polishing.', cost: 220, requires: 'qa1', category: 'Technology' },
-  { id: 'marketing', name: 'Marketing Department', desc: 'Unlocks big ad campaigns when starting a game.', cost: 80, category: 'Business' },
+  { id: 'marketing', name: 'Marketing Department', desc: 'Unlocks big ad campaigns when starting a game, plus press tours, TV commercials and TV ad blitzes in Marketing.', cost: 80, category: 'Business' },
 ];
 
 export interface OfficeDef {
@@ -284,8 +297,44 @@ export const OFFICES: OfficeDef[] = [
 // Names
 // ---------------------------------------------------------------------------
 
-export const FIRST_NAMES = ['Alex', 'Sam', 'Jordan', 'Riley', 'Morgan', 'Casey', 'Taylor', 'Jamie', 'Robin', 'Avery', 'Quinn', 'Kai', 'Noa', 'Yuki', 'Mina', 'Leo', 'Ines', 'Omar', 'Priya', 'Mateo', 'Hana', 'Elif', 'Lars', 'Zoe', 'Ravi', 'Ada', 'Theo', 'Sana', 'Ivo', 'Lena'];
-export const LAST_NAMES = ['Park', 'Novak', 'Silva', 'Okafor', 'Tanaka', 'Weber', 'Costa', 'Lindqvist', 'Moreau', 'Kowalski', 'Ahmed', 'Rossi', 'Kim', 'Haddad', 'Nguyen', 'Fischer', 'Yilmaz', 'Santos', 'Ivanova', 'Byrne'];
+export const FIRST_NAMES = [
+  'Alex', 'Sam', 'Jordan', 'Riley', 'Morgan', 'Casey', 'Taylor', 'Jamie', 'Robin', 'Avery',
+  'Quinn', 'Kai', 'Noa', 'Yuki', 'Mina', 'Leo', 'Ines', 'Omar', 'Priya', 'Mateo', 'Hana', 'Elif',
+  'Lars', 'Zoe', 'Ravi', 'Ada', 'Theo', 'Sana', 'Ivo', 'Lena', 'Onur', 'Emre', 'Burak', 'Can',
+  'Deniz', 'Ece', 'Zeynep', 'Selin', 'Mert', 'Kerem', 'Ayşe', 'Cem', 'Ozan', 'Barış', 'Defne',
+  'Ezgi', 'Tolga', 'Arda', 'Ceren', 'Umut', 'Gizem', 'Berk', 'Duygu', 'Kaan', 'Melis', 'Serkan',
+  'Pınar', 'Tuna', 'İrem', 'Volkan', 'Yasemin', 'Eren', 'Nil', 'Doruk', 'Aslı', 'Liam', 'Emma',
+  'Noah', 'Olivia', 'Ethan', 'Mia', 'Lucas', 'Chloe', 'Oliver', 'Grace', 'Jack', 'Ella', 'Henry',
+  'Ruby', 'Owen', 'Nora', 'Finn', 'Iris', 'Max', 'Lily', 'Sofia', 'Diego', 'Lucía', 'Pablo',
+  'Camila', 'Javier', 'Valentina', 'Rafael', 'Ana', 'Bruno', 'Luana', 'Thiago', 'Beatriz', 'Marco',
+  'Giulia', 'Luca', 'Chiara', 'Matteo', 'Hugo', 'Camille', 'Louis', 'Manon', 'Elsa', 'Felix',
+  'Hanna', 'Jonas', 'Clara', 'Nils', 'Freja', 'Emil', 'Astrid', 'Sven', 'Ingrid', 'Mikael', 'Saga',
+  'Aino', 'Eero', 'Pavel', 'Katya', 'Dmitri', 'Olga', 'Marek', 'Zofia', 'Jakub', 'Anja', 'Tomas',
+  'Petra', 'Milan', 'Nadia', 'Bogdan', 'Irina', 'Amara', 'Kwame', 'Zara', 'Chidi', 'Ayo', 'Nia',
+  'Tariq', 'Layla', 'Youssef', 'Amira', 'Karim', 'Salma', 'Reza', 'Shirin', 'Dara', 'Hiro', 'Aiko',
+  'Kenji', 'Sora', 'Ren', 'Mei', 'Wei', 'Lin', 'Jun', 'Min', 'Seo', 'Jin', 'Ji-woo', 'Hyun', 'Bao',
+  'Linh', 'Arjun', 'Ananya', 'Vikram', 'Meera', 'Rohan', 'Aditi', 'Nikhil', 'Tara', 'Maya', 'Ari',
+  'Eli', 'Noam', 'Tamar', 'Lior', 'Ilan', 'Malia', 'Keanu', 'Tane', 'Aroha',
+];
+export const LAST_NAMES = [
+  'Park', 'Novak', 'Silva', 'Okafor', 'Tanaka', 'Weber', 'Costa', 'Lindqvist', 'Moreau',
+  'Kowalski', 'Ahmed', 'Rossi', 'Kim', 'Haddad', 'Nguyen', 'Fischer', 'Yilmaz', 'Santos',
+  'Ivanova', 'Byrne', 'Kaya', 'Demir', 'Şahin', 'Çelik', 'Yıldız', 'Aydın', 'Öztürk', 'Arslan',
+  'Doğan', 'Kılıç', 'Aslan', 'Çetin', 'Koç', 'Kurt', 'Özdemir', 'Polat', 'Korkmaz',
+  'Güneş', 'Aksoy', 'Tekin', 'Ateş', 'Bulut', 'Akın', 'Karaca', 'Özkan', 'Uçar', 'Tuncer', 'Smith',
+  'Walker', 'Hughes', 'Murphy', 'Kelly', 'Reid', 'Bennett', 'Foster', 'Hayes', 'Brooks', 'Turner',
+  'Collins', 'Doyle', 'Gallagher', 'Fraser', 'García', 'López', 'Fernández', 'Romero', 'Herrera',
+  'Vargas', 'Mendes', 'Oliveira', 'Pereira', 'Ferreira', 'Ricci', 'Bianchi', 'Conti', 'Greco',
+  'Marino', 'Dubois', 'Laurent', 'Lefèvre', 'Girard', 'Bauer', 'Schmidt', 'Hoffmann', 'Becker',
+  'Wagner', 'Jansen', 'Bakker', 'Visser', 'Peeters', 'Nielsen', 'Larsen', 'Berg', 'Holm',
+  'Virtanen', 'Korhonen', 'Halvorsen', 'Eriksson', 'Petrov', 'Sokolov', 'Volkov', 'Horvat',
+  'Dvořák', 'Nowak', 'Wiśniewski', 'Popescu', 'Nagy', 'Kovács', 'Georgiou', 'Papadakis', 'Mensah',
+  'Adeyemi', 'Diallo', 'Mwangi', 'Abebe', 'Nkosi', 'Mansour', 'Farouk', 'Saleh', 'Karimi',
+  'Hosseini', 'Rahimi', 'Sato', 'Suzuki', 'Watanabe', 'Ito', 'Nakamura', 'Kobayashi', 'Yamamoto',
+  'Lee', 'Choi', 'Jung', 'Kang', 'Chen', 'Wang', 'Zhang', 'Liu', 'Huang', 'Tran', 'Pham', 'Le',
+  'Sharma', 'Patel', 'Gupta', 'Iyer', 'Reddy', 'Kapoor', 'Singh', 'Rao', 'Das', 'Mehta', 'Cohen',
+  'Levi', 'Mizrahi', 'Friedman', 'Rojas', 'Castillo', 'Morales', 'Navarro', 'Ortega', 'Ramos',
+];
 
 /**
  * Name ideas per genre: `{a}` and `{b}` are filled from the two word lists, so an
@@ -336,13 +385,31 @@ export const GENRE_TITLES: Record<GenreId, { patterns: string[]; topicPatterns: 
     a: ['Happy', 'Tiny', 'Sunny', 'Bouncy', 'Lucky', 'Fluffy', 'Sweet', 'Snack', 'Cozy'],
     b: ['Pets', 'Garden', 'Hop', 'Friends', 'Dash', 'Bakery', 'Town', 'Paws', 'Island'],
   },
+  platformer: {
+    patterns: ['{a} {b}', 'Super {a} {b}', '{a} {b} Land'],
+    topicPatterns: ['{t} {b}', 'Super {t} {b}', '{t} {b} Land'],
+    a: ['Jumpy', 'Rocket', 'Sonic', 'Pogo', 'Turbo', 'Spring', 'Captain', 'Mega', 'Hyper'],
+    b: ['Jump', 'Leap', 'Bounce', 'Run', 'Quest', 'Climb', 'Kid', 'Hop', 'Dash'],
+  },
+  shooter: {
+    patterns: ['{a} {b}', '{b} {a}', '{a} {b}: Reloaded'],
+    topicPatterns: ['{t} {b}', '{t} {b}', '{t} {b}: Reloaded'],
+    a: ['Dead', 'Black', 'Zero', 'Red', 'Iron', 'Ghost', 'Lone', 'Final', 'Hard'],
+    b: ['Sight', 'Trigger', 'Recoil', 'Barrage', 'Siege', 'Ops', 'Sniper', 'Squad', 'Frontier'],
+  },
+  rhythm: {
+    patterns: ['{a} {b}', '{b} {a}', '{a} {b} Revolution'],
+    topicPatterns: ['{t} {b}', '{t} {b}', '{t} {b} Revolution'],
+    a: ['Funky', 'Neon', 'Electric', 'Midnight', 'Groovy', 'Pocket', 'Sonic', 'Golden'],
+    b: ['Beat', 'Rhythm', 'Tempo', 'Drop', 'Jam', 'Remix', 'Step', 'Pulse', 'Encore'],
+  },
 };
 
 // ---------------------------------------------------------------------------
 // Store: power-ups bought with cash. Boosts last a number of game-development
 // weeks (they only count down while a game is being made); upgrades are permanent.
 
-export type StoreItemId = 'coffee' | 'pizza' | 'bugbash' | 'chairs' | 'headphones' | 'tests';
+export type StoreItemId = 'coffee' | 'pizza' | 'bugbash' | 'chairs' | 'whiteboard' | 'headphones' | 'courses' | 'forum' | 'tests' | 'playtest';
 
 export interface StoreItem {
   id: StoreItemId;
@@ -363,8 +430,12 @@ export const STORE: StoreItem[] = [
   { id: 'pizza', name: 'Pizza Night', icon: '🍕', desc: 'Developers get in the zone three times as often.', kind: 'boost', price: 1200, weeks: 4, cheer: ['🍕', 'Pizza!', '😋'] },
   { id: 'bugbash', name: 'Bug Bash', icon: '🐞', desc: 'Hire testers for a weekend: fixes 40% of the current bugs right away.', kind: 'instant', price: 900, cheer: ['🐛', 'Squash!', '🔨'] },
   { id: 'chairs', name: 'Ergonomic Chairs', icon: '🪑', desc: 'Comfier team, more output: +5% design and tech points, forever.', kind: 'upgrade', price: 25000, cheer: ['😌', 'Ahh…', '🪑'] },
+  { id: 'whiteboard', name: 'Whiteboard Wall', icon: '📝', desc: 'Ideas get written down, not forgotten: +20% research points from development, forever.', kind: 'upgrade', price: 30000, cheer: ['📝', '💡', '🤓'] },
   { id: 'headphones', name: 'Noise-cancelling Headphones', icon: '🎧', desc: 'Fewer distractions: developers get in the zone 50% more often, forever.', kind: 'upgrade', price: 35000, cheer: ['🎧', '🎶', '😎'] },
+  { id: 'courses', name: 'Course Library', icon: '📚', desc: 'A shelf of books and online courses: training costs 25% less cash and RP, forever.', kind: 'upgrade', price: 40000, cheer: ['📚', '🎓', '🧠'] },
+  { id: 'forum', name: 'Fan Forum', icon: '💬', desc: 'Fans keep talking between announcements: hype fades half as fast, forever.', kind: 'upgrade', price: 45000, cheer: ['💬', '📣', '🙌'] },
   { id: 'tests', name: 'Test Automation', icon: '🧪', desc: 'A build server runs the tests: 15% fewer new bugs, forever.', kind: 'upgrade', price: 50000, cheer: ['🧪', '✅', '🤖'] },
+  { id: 'playtest', name: 'Playtest Lab', icon: '🕹️', desc: 'Real players try every build: polishing weeks add 25% more design and tech, forever.', kind: 'upgrade', price: 60000, cheer: ['🕹️', '👍', '🔍'] },
 ];
 
 export function storeItemById(id: string): StoreItem {
