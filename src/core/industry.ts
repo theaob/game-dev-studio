@@ -8,7 +8,8 @@ import { pick, random, range } from './rng';
 import { SALES_WEEKS, notify, randomTitle } from './sim';
 import { GOTY_ICON, GOTY_SALES_BOOST, gotyFans } from './acclaim';
 import { WEEKS_PER_YEAR, yearOf } from './time';
-import type { GameState, GenreId, IndustryState, NoticeKind } from './types';
+import { platformKeynote } from './keynote';
+import type { GameState, GenreId, IndustryState, NoticeKind, SimEvent } from './types';
 
 /** Sales bonus for a game in the trending genre / on the trending topic. */
 export const TREND_GENRE_BONUS = 1.15;
@@ -87,7 +88,7 @@ export function rivalClash(state: GameState, genre: string, topic: string) {
 function rivalRelease(state: GameState) {
   const ind = industry(state);
   const year = yearOf(state.week);
-  const rivals = activeRivals(year);
+  const rivals = activeRivals(year).filter((r) => !state.acquired?.includes(r.name));
   if (!rivals.length) return;
   const rival = pick(state, rivals);
   // Rivals chase the trend some of the time.
@@ -107,7 +108,7 @@ function rivalRelease(state: GameState) {
   else headline(state, '🎮', `${rival.name} released ${name} (${what}): ${score.toFixed(1)}.`, 'info');
 }
 
-function yearlyIndustry(state: GameState) {
+function yearlyIndustry(state: GameState, events: SimEvent[]) {
   const year = yearOf(state.week);
   const last = year - 1;
   const mine = state.released.filter((g) => yearOf(g.releaseWeek) === last);
@@ -123,14 +124,17 @@ function yearlyIndustry(state: GameState) {
     );
   }
   for (const p of PLATFORMS) {
-    if (p.start === year) headline(state, '🚀', `The ${p.name} (${p.kind}) is out now!`, 'good');
+    if (p.start === year) {
+      headline(state, '🚀', `The ${p.name} (${p.kind}) is out now!`, 'good');
+      events.push({ type: 'keynote', keynote: platformKeynote(p, year) });
+    }
     if (p.start === year + 1) headline(state, '👀', `Rumour: a new ${p.kind.toLowerCase()}, the ${p.name}, arrives next year.`);
     if (p.end === year) headline(state, '🪦', `The ${p.name} has been discontinued.`);
     if (p.end === year + 1) headline(state, '📉', `The ${p.name} is on its way out: it will be discontinued next year.`, 'bad');
   }
   for (const r of RIVALS) {
     if (r.from === year && year > RIVALS[0].from) headline(state, '🏢', `A new studio, ${r.name}, has opened its doors.`);
-    if (r.until === year) headline(state, '🏚️', `${r.name} has closed down.`, 'bad');
+    if (r.until === year && !state.acquired?.includes(r.name)) headline(state, '🏚️', `${r.name} has closed down.`, 'bad');
   }
   gameOfTheYear(state, last);
   newTrend(state);
@@ -164,9 +168,9 @@ export function gameOfTheYear(state: GameState, year: number) {
   }
 }
 
-/** Weekly industry news. Call after the week has advanced. */
-export function tickIndustry(state: GameState) {
+/** Weekly industry news. Call after the week has advanced. New hardware launches add a keynote to `events`. */
+export function tickIndustry(state: GameState, events: SimEvent[] = []) {
   if (!state.industry?.trend) newTrend(state);
-  if (state.week % WEEKS_PER_YEAR === 0) yearlyIndustry(state);
+  if (state.week % WEEKS_PER_YEAR === 0) yearlyIndustry(state, events);
   if (random(state) < RIVAL_RELEASE_CHANCE) rivalRelease(state);
 }

@@ -5,7 +5,6 @@ import {
   STORE,
   genreById,
   platformById,
-  platformGenreFit,
   platformUsers,
   sizeById,
   topicById,
@@ -35,6 +34,8 @@ import { onSale, paybackWeek, profit, returnMultiple, revenueRank, totalCost, ve
 import { moneyChart, spendBar, weeklyChart } from './charts';
 import { REWARDS, bailoutCash, canBailout, rewardAmount, rewardBlocker, type Reward } from '../core/rewards';
 import type { MonetizationView } from './monetization';
+import { RIVALS } from '../core/industry';
+import { VENTURES, VENTURE_OFFICE, licenseCost, phaseWeeks, platformFit, acquirableRivals, acquireBlocker, acquisitionFans, acquisitionPrice, hasVenture, ventureBlocker, venturePrice, type Venture } from '../core/ventures';
 import { BOOTHS, EXPO_BOOKING_WEEKS, MAX_HYPE, PROMOS, SALES_PUSHES, boothById, boothPrice, hypeEffect, promoPrice, salesPushPrice, weeksToExpo } from '../core/marketing';
 import type { GameProject, GameSpec, GameState, ReleaseReport } from '../core/types';
 import { esc, money, num, scoreClass } from './format';
@@ -47,6 +48,7 @@ import { marketingCost, sizeCost } from '../core/economy';
 import { ACHIEVEMENTS } from '../core/achievements';
 import type { Unlock } from '../save';
 import type { PlayGamesView } from './play-games';
+import type { Keynote } from '../core/keynote';
 
 export type Sheet =
   | { kind: 'welcome'; name: string }
@@ -64,6 +66,7 @@ export type Sheet =
   | { kind: 'decor' }
   | { kind: 'marketing' }
   | { kind: 'expo' }
+  | { kind: 'keynote'; keynote: Keynote }
   | { kind: 'achievements' }
   | { kind: 'gameOver' };
 
@@ -121,6 +124,8 @@ export function renderSheet(
       return marketing(state);
     case 'expo':
       return expoResults(state);
+    case 'keynote':
+      return keynote(state, sheet.keynote);
   }
 }
 
@@ -140,14 +145,14 @@ function help(): string {
     <h3>How to play</h3>
     <div class="help">
       <p><b>Make games.</b> Pick a name, a topic and a genre. Some combinations work much better than others, and you learn which after each release.</p>
-      <p><b>Choose a platform.</b> Platforms come and go over the decades. Bigger audiences sell more, and some platforms suit some genres better. Consoles need a one-time dev kit license.</p>
+      <p><b>Choose a platform.</b> Platforms come and go over the decades. Bigger audiences sell more, and some platforms suit some genres better. Consoles need a one-time dev kit license. Each new one launches with a keynote that shows what it's good for.</p>
       <p><b>Set the focus.</b> Development has 3 phases with 3 areas each. Put your team's effort where the genre needs it. Reviews reveal what matters.</p>
       <p><b>Design vs Tech.</b> Every genre has a sweet spot between creative (design) and technical (tech) points.</p>
       <p><b>Polish.</b> After development you can keep polishing before you release: fix bugs (they hurt reviews), or add more design or tech points to fix the game's balance. Design and tech polishing gives less each week.</p>
       <p><b>Marketing.</b> Pick an ad budget when you start a game. Tap 📣 Promote while making it to build hype with previews and trailers, and book a booth at the yearly GameExpo. A game with good points builds hype on its own by word of mouth. Hype sells more copies of a good game, but a hyped flop gets a backlash. After launch, 📣 Push sales runs ads or a discount sale. Research the Marketing Department to add press tours, TV commercials and TV ad blitzes.</p>
       <p><b>Read the news.</b> Each year has a trending genre and topic (marked 🔥 when you start a game) that sell better. Rival studios release games too: right after a rival's hit, the same topic and genre sells less for a while. The News tab also shows which platforms are growing or on their way out.</p>
       <p><b>The cat.</b> Sometimes the studio cat curls up on a developer's lap, and they work 30% faster while it stays. You can carry the cat over and drop it on someone too, but it needs some alone time between laps.</p>
-      <p><b>Store.</b> Spend cash on power-ups: boosts like an espresso bar or pizza night last a few weeks of development, and studio upgrades help forever. Find it next to Contracts, or tap ⚡ Boost while making a game.</p>
+      <p><b>Store.</b> Spend cash on power-ups: boosts like an espresso bar or pizza night last a few weeks of development, and studio upgrades help forever. Once you're on the Campus it also sells big investments and rival studios to buy out. Find it next to Contracts, or tap ⚡ Boost while making a game.</p>
       <p><b>Awards.</b> A game that reviews 9.0 or better is a 🏅 Critics' Choice, and 9.5 or better a 👑 Masterpiece. A perfect 10 is an 💎 Instant Classic. Its sequel starts development with hype already built: the better the original and the longer fans have waited, the more. Those fans never get bored: the hype doesn't fade, and they don't tire of a long series. Each new year, the best-reviewed game of the last one, yours or a rival's, is named 🏆 Game of the Year: winning brings fans, more sales if it's still selling, and extra hype for its sequel.</p>
       <p><b>Track your results.</b> Tap any game to see what it cost, what it made each week, when it paid for itself and whether it was a hit or a flop. The Games tab charts the profit of every release.</p>
       <p><b>Free with a video.</b> In the Android app, the Store has rewards for watching an optional video: an investor's cash, a free Espresso Bar or a research grant. Each one can be claimed again after a few weeks.</p>
@@ -211,7 +216,7 @@ function receptionPreview(state: GameState, d: Pick<GameSpec, 'topic' | 'genre' 
   if (state.knowledge.balance[d.genre]) notes.push(`🎯 ${genre.name} fans like about ${Math.round(genre.designTarget * 100)}% design, ${100 - Math.round(genre.designTarget * 100)}% tech.`);
   if (platformId) {
     const platform = platformById(platformId);
-    const pf = platformGenreFit(platform, d.genre);
+    const pf = platformFit(state, platform, d.genre);
     if (pf > 1.05) notes.push(`🎮 ${platform.name} owners love ${genre.name} games.`);
     else if (pf < 0.95) notes.push(`🎮 ${genre.name} games are a hard sell on ${platform.name}.`);
   }
@@ -351,7 +356,8 @@ function newGameStep2(state: GameState, d: GameSpec, error?: string): string {
     <div class="options">
       ${availablePlatforms(state)
         .map((p) => {
-          const fit = platformGenreFit(p, d.genre);
+          const fit = platformFit(state, p, d.genre);
+          const license = licenseCost(state, p);
           const owned = state.licenses.includes(p.id);
           const fitTag = fit > 1.05 ? `<span class="tag good">Loves ${genreById(d.genre).name}</span>` : fit < 0.95 ? `<span class="tag bad">Weak for ${genreById(d.genre).name}</span>` : '';
           return `
@@ -359,7 +365,7 @@ function newGameStep2(state: GameState, d: GameSpec, error?: string): string {
           <span class="emoji">${p.icon}</span>
           <span class="grow">
             <b>${p.name}</b> <span class="sub">${p.kind}</span><br/>
-            <span class="sub">${num(platformUsers(p, year) * 1e6)} users · ${owned ? 'Licensed' : `License ${money(p.license)}`}${p.priceMult < 1 ? ' · low prices' : ''}</span>
+            <span class="sub">${num(platformUsers(p, year) * 1e6)} users · ${owned ? 'Licensed' : license ? `License ${money(license)}` : 'Free dev kit'}${p.priceMult < 1 ? ' · low prices' : ''}</span>
             ${fitTag ? `<br/>${fitTag}` : ''}
           </span>
         </button>`;
@@ -372,7 +378,7 @@ function newGameStep2(state: GameState, d: GameSpec, error?: string): string {
         .map(
           (s) => `
         <button class="option ${d.size === s.id ? 'on' : ''}" data-action="pick-size" data-arg="${s.id}">
-          <span class="grow"><b>${s.name}</b><br/><span class="sub">${s.phaseWeeks * 3} weeks · ${money(sizeCost(state, s.id))} · ${s.minStaff > 1 ? `best with ${s.minStaff}+ staff` : 'solo friendly'}</span></span>
+          <span class="grow"><b>${s.name}</b><br/><span class="sub">${phaseWeeks(state, s.id) * 3} weeks · ${money(sizeCost(state, s.id))} · ${s.minStaff > 1 ? `best with ${s.minStaff}+ staff` : 'solo friendly'}</span></span>
         </button>`,
         )
         .join('')}
@@ -676,6 +682,40 @@ function storeRow(state: GameState, item: StoreItem): string {
     </div>`;
 }
 
+function ventureRow(state: GameState, v: Venture): string {
+  const owned = hasVenture(state, v.id);
+  const blocked = owned ? null : ventureBlocker(state, v.id);
+  return `
+    <div class="option store-item">
+      <span class="emoji">${v.icon}</span>
+      <span class="grow"><b>${v.name}</b> ${owned ? '<span class="tag good">Owned</span>' : ''}<br/><span class="sub">${v.desc}</span>${
+        blocked ? `<br/><span class="sub warn">${blocked}</span>` : ''
+      }</span>
+      <button class="btn small" data-action="venture" data-arg="${v.id}" ${blocked || owned ? 'disabled' : ''}>${owned ? 'Owned' : `Buy · ${money(venturePrice(state, v.id))}`}</button>
+    </div>`;
+}
+
+/** Rival studios: the ones you can buy, then the ones you own. */
+function acquisitions(state: GameState): string {
+  const forSale = acquirableRivals(state);
+  const owned = RIVALS.filter((r) => state.acquired?.includes(r.name));
+  const rows = forSale.map((r) => {
+    const blocked = acquireBlocker(state, r.name);
+    return `
+    <div class="option store-item">
+      <span class="emoji">🏢</span>
+      <span class="grow"><b>${esc(r.name)}</b> <span class="tag">Reviews ~${r.quality.toFixed(1)}</span><br/><span class="sub">Stops competing with you. +${num(acquisitionFans(state, r.name))} fans, and their star developer asks to join.</span>${
+        blocked ? `<br/><span class="sub warn">${blocked}</span>` : ''
+      }</span>
+      <button class="btn small" data-action="acquire" data-arg="${esc(r.name)}" ${blocked ? 'disabled' : ''}>Buy · ${money(acquisitionPrice(state, r.name))}</button>
+    </div>`;
+  });
+  const ownedRow = owned.length
+    ? `<div class="option store-item"><span class="emoji">🤝</span><span class="grow"><b>Yours</b><br/><span class="sub">${owned.map((r) => esc(r.name)).join(', ')}</span></span></div>`
+    : '';
+  return rows.join('') + ownedRow || '<p class="muted center">No studios are open for business right now.</p>';
+}
+
 /** A reward for watching an optional video, with what it gives now or why not. */
 function rewardRow(state: GameState, r: Reward, ads: MonetizationView): string {
   const blocked = rewardBlocker(state, r.id) ?? (ads.busy ? 'Just a moment…' : !ads.rewardedReady ? 'Loading a video…' : null);
@@ -700,6 +740,11 @@ function store(state: GameState, ads: MonetizationView): string {
     <div class="options">${boosts.map((x) => storeRow(state, x)).join('')}</div>
     <h4>Studio upgrades</h4>
     <div class="options">${upgrades.map((x) => storeRow(state, x)).join('')}</div>
+    <h4>Big investments</h4>
+    ${state.officeLevel < VENTURE_OFFICE ? '<p class="muted">For a studio on the Campus: huge projects that help forever, and buying out rival studios.</p>' : ''}
+    <div class="options">${VENTURES.map((v) => ventureRow(state, v)).join('')}</div>
+    <h4>Buy a rival studio</h4>
+    <div class="options">${acquisitions(state)}</div>
     <h4>Studio look</h4>
     <div class="options">
       <button class="option" data-action="decor"><span class="emoji">🎨</span><span class="grow"><b>Decorate</b><br/><span class="sub">Paint the walls and floor, and buy decorations for the office.</span></span></button>
@@ -857,6 +902,45 @@ function expoResults(state: GameState): string {
         : `With no game in development, the booth won half the usual ${num(booth.fans)} fans. Start a game before next year's expo to build hype too.`
     } More fans means more copies sold for every game you release.</p>
     <div class="btn-row"><button class="btn big" data-action="close">Continue</button></div>`;
+}
+
+/** Millions of players, e.g. 3M or 1.1B. */
+function players(millions: number): string {
+  return num(millions * 1e6).replace(/\.0+(?=[MB])/, '').replace(/(\.\d)0(?=[MB])/, '$1');
+}
+
+/**
+ * A new console's launch keynote: a dark stage where the hardware is revealed
+ * piece by piece (tap to skip ahead), then what it means for the studio.
+ */
+function keynote(state: GameState, k: Keynote): string {
+  // A studio that's free can start a game on it straight from the stage.
+  const canMake = k.platform !== undefined && !state.activity && !state.over;
+  const step = (i: number) => `style="--i:${i}"`;
+  const fit = [
+    k.strengths.length ? `<div class="kn-fit"><span>Made for</span>${k.strengths.map((g) => `<span class="tag good">${esc(g)}</span>`).join('')}</div>` : '',
+    k.weaknesses.length ? `<div class="kn-fit"><span>Not for</span>${k.weaknesses.map((g) => `<span class="tag bad">${esc(g)}</span>`).join('')}</div>` : '',
+  ].join('');
+  return `
+    <div class="keynote${k.own ? ' own' : ''}" data-action="keynote-skip">
+      <div class="kn-lights" aria-hidden="true"></div>
+      <p class="kn-eyebrow kn-in" ${step(0)}>${k.own ? `${esc(state.studioName)} keynote` : `${esc(k.maker)} presents`}<span>${k.year}</span></p>
+      <div class="kn-icon kn-in" ${step(1)}>${k.icon}</div>
+      <h3 class="kn-name kn-in" ${step(2)}>${esc(k.name)}</h3>
+      <p class="kn-kind kn-in" ${step(2)}>The new ${esc(k.kind.toLowerCase())}</p>
+      <p class="kn-tagline kn-in" ${step(3)}>“${esc(k.tagline)}”</p>
+      <div class="kn-specs kn-in" ${step(4)}>
+        <div class="kn-spec"><b>${players(k.launchUsers)}</b><small>Players at launch</small></div>
+        <div class="kn-spec"><b>${players(k.peakUsers)}</b><small>${k.peakYear > k.year ? `Expected by ${k.peakYear}` : 'At its peak'}</small></div>
+        <div class="kn-spec"><b>${k.license ? money(k.license) : 'Free'}</b><small>Dev kit</small></div>
+      </div>
+      <div class="kn-in" ${step(5)}>${fit}</div>
+      <div class="kn-crowd kn-in" ${step(5)} aria-hidden="true"><span>👏</span><span>📸</span><span>🤩</span><span>👏</span><span>🙌</span><span>📸</span><span>👏</span></div>
+      <div class="btn-row kn-in" ${step(6)}>
+        ${canMake ? `<button class="btn big" data-action="keynote-make" data-arg="${esc(k.platform!)}">Make a game</button>` : ''}
+        <button class="btn ${canMake ? 'ghost' : 'big'}" data-action="close">${canMake ? 'Later' : 'Back to work'}</button>
+      </div>
+    </div>`;
 }
 
 /** The first bankruptcy in a save can be undone once with a video (Android app only). */

@@ -1,3 +1,5 @@
+import type { Keynote } from './keynote';
+
 export type GenreId = 'action' | 'adventure' | 'rpg' | 'simulation' | 'strategy' | 'puzzle' | 'casual' | 'platformer' | 'shooter' | 'rhythm';
 export type SizeId = 'small' | 'medium' | 'large';
 export type MarketingId = 'none' | 'ads' | 'campaign' | 'global';
@@ -180,6 +182,10 @@ export interface GameState {
   bailoutUsed?: boolean;
   /** The studio's look: paint ids (absent = the office's own colours) and decorations. */
   decor?: DecorState;
+  /** Big late-game investments bought (see ventures.ts). */
+  ventures?: string[];
+  /** Rival studios bought out. */
+  acquired?: string[];
 }
 
 export interface DecorState {
@@ -250,4 +256,5 @@ export type SimEvent =
   | { type: 'gameOver'; reason: 'bankrupt' | 'retired' }
   | { type: 'catLap'; staffId: number; name: string }
   | { type: 'catLeft'; staffId: number }
-  | { type: 'expo'; report: ExpoReport };
+  | { type: 'expo'; report: ExpoReport }
+  | { type: 'keynote'; keynote: Keynote };

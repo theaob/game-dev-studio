@@ -1,5 +1,6 @@
 import { availablePlatforms, createGame, doResearch, fire, hire, startHeadhunt, randomTitle, bookBooth, buyStoreItem, catLeaveLap, pushSales, runPromo, placeCatOnLap, releaseGame, setPhaseFocus, setPolishMode, startContract, startGame, tick, train, upgradeOffice, validateGame } from '../core/sim';
 import { storeItemById } from '../core/data';
+import { acquireRival, buyVenture, ventureById, type VentureId } from '../core/ventures';
 import { App as NativeApp } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
 import type { BoothId, PromoId, SalesPushId } from '../core/marketing';
@@ -182,6 +183,12 @@ export class App {
       case 'expo':
         this.office.cheer(ev.report.game ? ['🎪', 'Expo!', '🤩', '🔥'] : ['🎪', '👋', 'Hi!']);
         this.open({ kind: 'expo' });
+        break;
+      case 'keynote':
+        this.office.cheer(['📺', '🤯', 'Want!', '🎮']);
+        this.open({ kind: 'keynote', keynote: ev.keynote });
+        this.confetti();
+        this.vibrate(30);
         break;
       case 'contractDone':
         this.office.cheer(['💰', 'Paid!', '💵']);
@@ -782,6 +789,14 @@ export class App {
         this.open({ kind: 'newGame', step: 1, draft });
         return;
       }
+      case 'keynote-skip':
+        this.els.sheet.querySelector('.keynote')?.classList.add('skip');
+        return;
+      case 'keynote-make': {
+        const draft: GameSpec = { name: '', topic: '', genre: '' as GenreId, platform: arg, size: 'small', marketing: 'none' };
+        this.replace({ kind: 'newGame', step: 1, draft });
+        return;
+      }
       case 'contracts':
         this.open({ kind: 'contracts' });
         return;
@@ -879,6 +894,18 @@ export class App {
         }
         return;
       }
+      case 'venture':
+        if (report(buyVenture(s, arg as VentureId))) {
+          this.office.cheer([ventureById(arg).icon, '🎉', 'Wow!']);
+          if (sheet?.kind === 'store') this.renderSheet();
+        }
+        return;
+      case 'acquire':
+        if (report(acquireRival(s, arg))) {
+          this.office.cheer(['🤝', '🏢', '💼']);
+          if (sheet?.kind === 'store') this.renderSheet();
+        }
+        return;
       case 'contract':
         if (sheet?.kind === 'contracts') this.close();
         report(startContract(s, Number(arg)));
