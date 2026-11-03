@@ -12,7 +12,8 @@ import com.google.android.gms.games.PlayGamesSdk;
 import com.google.android.gms.tasks.Task;
 
 /**
- * Google Play Games Services (v2): sign-in, unlocking achievements and the achievements screen.
+ * Google Play Games Services (v2): sign-in, unlocking achievements, submitting leaderboard scores
+ * and the Play Games achievements and leaderboards screens.
  * Only active when the build has a Play Games project ID (PLAY_GAMES_RESOURCES, see README
  * "Google Play Games"). Without one every call answers "not configured" and nothing loads.
  */
@@ -20,6 +21,7 @@ import com.google.android.gms.tasks.Task;
 public class PlayGamesPlugin extends Plugin {
 
     private static final int RC_ACHIEVEMENTS = 9003;
+    private static final int RC_LEADERBOARDS = 9004;
     private boolean configured;
 
     @Override
@@ -79,6 +81,38 @@ public class PlayGamesPlugin extends Plugin {
                 call.resolve();
             })
             .addOnFailureListener(e -> call.reject("Could not open Play Games achievements", e));
+    }
+
+    /**
+     * Submits a leaderboard score by the board's Play Games ID. Play Games keeps the player's best,
+     * so submitting a lower score is harmless. The score is a whole number in the board's units.
+     */
+    @PluginMethod
+    public void submitScore(PluginCall call) {
+        String id = call.getString("id");
+        Double score = call.getDouble("score");
+        if (!configured || id == null || id.isEmpty() || score == null || score < 0) {
+            call.reject("Play Games is not configured");
+            return;
+        }
+        PlayGames.getLeaderboardsClient(getActivity()).submitScore(id, score.longValue());
+        call.resolve();
+    }
+
+    /** Opens Play Games' list of the game's leaderboards. */
+    @PluginMethod
+    public void showLeaderboards(PluginCall call) {
+        if (!configured) {
+            call.reject("Play Games is not configured");
+            return;
+        }
+        PlayGames.getLeaderboardsClient(getActivity())
+            .getAllLeaderboardsIntent()
+            .addOnSuccessListener(intent -> {
+                getActivity().startActivityForResult(intent, RC_LEADERBOARDS);
+                call.resolve();
+            })
+            .addOnFailureListener(e -> call.reject("Could not open Play Games leaderboards", e));
     }
 
     private static boolean authenticated(Task<AuthenticationResult> task) {

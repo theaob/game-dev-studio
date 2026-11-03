@@ -74,8 +74,8 @@ Play Console → **Create app**:
 4. **app-ads.txt**: it's at https://theaob.github.io/app-ads.txt (repo `theaob/theaob.github.io`), authorising publisher `pub-3615836489279250`. In the Play Console's **Store settings → Store listing contact details**, set the website to `https://theaob.github.io/` (the game's page is https://theaob.github.io/games/game-dev-studio/). AdMob checks the file within about a day of the app being linked to its Play listing; see AdMob → Apps → app-ads.txt.
 5. **Play Console → Monetize → Products → In-app products**: create a one-time product with ID **`remove_ads`** (it must match exactly), a name like "Remove ads" and a price, then activate it. This needs a payments profile (merchant account) in the Play Console. The product only shows a price in the app once a build with billing has been uploaded to a testing track.
 
-### 2c. Google Play Games achievements
-The Android app signs players in to **Google Play Games** and unlocks the matching Play Games achievement whenever they earn one in the game (and catches up on ones they earned before signing in). Until it's set up, the app works exactly as before, with achievements only in the game.
+### 2c. Google Play Games achievements and leaderboards
+The Android app signs players in to **Google Play Games**, unlocks the matching Play Games achievement whenever they earn one in the game (and catches up on ones they earned before signing in), and submits their best scores to four leaderboards. Until it's set up, the app works exactly as before, with achievements only in the game.
 
 1. **Create the project.** Play Console → the app → Grow users → **Play Games Services → Setup and management → Configuration**. Choose *No, my game doesn't use Google APIs* and create a new Play Games Services project named `Game Dev Studio`.
 2. **OAuth consent screen.** Under Credentials, follow the link to Google Cloud and configure the consent screen: *External*, app name `Game Dev Studio`, your support email. No scopes are needed.
@@ -84,12 +84,13 @@ The Android app signs players in to **Google Play Games** and unlocks the matchi
    - **Shared debug key** (CI builds from pull requests and itch.io, when no release key is set): SHA-1 `3E:F8:3C:67:56:18:B2:1B:73:D9:C1:19:BB:E2:15:8E:D8:D1:4A:35`.
    - **Your upload key**, if you install CI release builds directly: its SHA-1 is on the same App signing page.
 4. **Achievements.** Setup and management → **Achievements** → Add achievement, once per row of [`play-games/achievements.csv`](play-games/achievements.csv): name, description, the icon from [`play-games/icons/`](play-games/icons/), points as listed (they add up to exactly 1,000, the maximum), and *Revealed*. Keep the names exactly as listed: the game matches achievements by name.
-5. **Testers.** Setup and management → **Testers**: add your Google account (and your testers'). Until Play Games is published, only testers can sign in.
-6. **Get the IDs.** Achievements → **Get resources** → *Android (XML)*, and copy the whole XML. In GitHub → Settings → Secrets and variables → Actions → **Variables**, add `PLAY_GAMES_RESOURCES` with that XML as the value. CI reads the project ID and every achievement ID from it, and its tests fail if any achievement is missing an ID.
-7. **Build and try it.** Run CI on `main` (or wait for the next push), install the new build, open Menu → Achievements → *Google Play Games* and sign in.
-8. **Publish.** Play Games Services → **Review and publish**, so everyone (not just testers) can sign in. Do this alongside the production release.
+5. **Leaderboards.** Setup and management → **Leaderboards** → Add leaderboard, once per row of [`play-games/leaderboards.csv`](play-games/leaderboards.csv): name, the icon from [`play-games/leaderboard-icons/`](play-games/leaderboard-icons/), the score format as listed (*Numeric* with the decimal places shown, or *Currency* in USD), *Larger is better*, and leave the limits empty. Keep the names exactly as listed: the game matches leaderboards by name, the same way as achievements.
+6. **Testers.** Setup and management → **Testers**: add your Google account (and your testers'). Until Play Games is published, only testers can sign in.
+7. **Get the IDs.** Achievements → **Get resources** → *Android (XML)*, and copy the whole XML. In GitHub → Settings → Secrets and variables → Actions → **Variables**, add `PLAY_GAMES_RESOURCES` with that XML as the value. CI reads the project ID and every achievement and leaderboard ID from it, and its tests fail if any achievement or leaderboard is missing an ID. Copy it again whenever you add an achievement or leaderboard.
+8. **Build and try it.** Run CI on `main` (or wait for the next push), install the new build, open Menu → Achievements → *Google Play Games* and sign in. *Leaderboards* sits just below it.
+9. **Publish.** Play Games Services → **Review and publish**, so everyone (not just testers) can sign in. Do this alongside the production release.
 
-**Data safety and privacy.** The Play Games SDK sends the player's Play Games profile and achievement progress to Google. Add what Google lists for Play Games Services to the Data safety form; the privacy policy already covers it.
+**Data safety and privacy.** The Play Games SDK sends the player's Play Games profile, achievement progress and leaderboard scores to Google. Add what Google lists for Play Games Services to the Data safety form; the privacy policy already covers it.
 
 ### 3. Store listing
 Grow users → Store presence → **Main store listing**: paste the text from `listing.md` and upload `graphics/icon-512.png`, `graphics/feature-graphic.png` and `graphics/phone/*` in order. Also set **Store settings**: category *Simulation* and a contact email.

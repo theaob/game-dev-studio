@@ -1,0 +1,5 @@
+"In-game id","Name","Description","Icon file","Format","Decimal places","Currency","Ordering"
+"best_review","Best Review","The best review score of any game you released.","leaderboard-icons/01-best_review.png","Numeric","1","","Larger is better"
+"biggest_hit","Biggest Hit","The most money a single game made.","leaderboard-icons/02-biggest_hit.png","Currency","","USD","Larger is better"
+"richest_studio","Richest Studio","The most money in the bank.","leaderboard-icons/03-richest_studio.png","Currency","","USD","Larger is better"
+"most_fans","Most Fans","The most fans a studio won.","leaderboard-icons/04-most_fans.png","Numeric","0","","Larger is better"

@@ -80,7 +80,7 @@ export function renderSheet(
   sheet: Sheet,
   ads: MonetizationView = NO_ADS,
   unlocked: Record<string, Unlock> = {},
-  play: PlayGamesView = { available: false, signedIn: false },
+  play: PlayGamesView = { available: false, leaderboards: false, signedIn: false },
 ): string {
   switch (sheet.kind) {
     case 'welcome':
@@ -631,7 +631,11 @@ function achievements(unlocked: Record<string, Unlock>, play: PlayGamesView): st
     <p class="muted">${done} of ${ACHIEVEMENTS.length} unlocked. They stay on this device when you start over.</p>
     ${
       play.available
-        ? `<div class="options mt"><button class="option" data-action="play-achievements"><span class="emoji">🎮</span><span class="grow"><b>Google Play Games</b><br/><span class="sub">${play.signedIn ? 'Your achievements are also on your Play Games profile.' : 'Sign in to collect your achievements on your Play Games profile too.'}</span></span></button></div>`
+        ? `<div class="options mt"><button class="option" data-action="play-achievements"><span class="emoji">🎮</span><span class="grow"><b>Google Play Games</b><br/><span class="sub">${play.signedIn ? 'Your achievements are also on your Play Games profile.' : 'Sign in to collect your achievements on your Play Games profile too.'}</span></span></button>${
+            play.leaderboards
+              ? `<button class="option" data-action="play-leaderboards"><span class="emoji">📊</span><span class="grow"><b>Leaderboards</b><br/><span class="sub">See how your best review, biggest hit, fortune and fans rank against other players.</span></span></button>`
+              : ''
+          }</div>`
         : ''
     }
     <div class="bar mt"><i style="width:${Math.round((done / ACHIEVEMENTS.length) * 100)}%"></i></div>

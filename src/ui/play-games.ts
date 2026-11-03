@@ -1,11 +1,13 @@
 /**
- * Google Play Games Services (Android app only): signs the player in and mirrors the game's
- * achievements to their Play Games profile. The native side is PlayGamesPlugin.java. The
+ * Google Play Games Services (Android app only): signs the player in, mirrors the game's
+ * achievements to their Play Games profile and submits their best scores to the leaderboards. The native side is PlayGamesPlugin.java. The
  * Play Games IDs come from the build (PLAY_GAMES_RESOURCES, see README "Google Play Games");
  * without them, and on the web and itch.io, everything here is off.
  */
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import { playGamesIds } from '../core/achievements';
+import { LEADERBOARDS, leaderboardIds } from '../core/leaderboards';
+import type { GameState } from '../core/types';
 
 interface Status {
   configured: boolean;
@@ -17,28 +19,41 @@ interface PlayGamesNative {
   signIn(): Promise<Status>;
   unlock(options: { id: string }): Promise<void>;
   showAchievements(): Promise<void>;
+  submitScore(options: { id: string; score: number }): Promise<void>;
+  showLeaderboards(): Promise<void>;
 }
 
 const IDS = playGamesIds(import.meta.env.VITE_PLAY_GAMES_RESOURCES);
+const BOARD_IDS = leaderboardIds(import.meta.env.VITE_PLAY_GAMES_RESOURCES);
+/** Cash and fans climb every week: send them at most this often (the best score is all that counts). */
+const SUBMIT_EVERY_MS = 60_000;
 
 export interface PlayGamesView {
   /** Play Games is set up in this build (Android app with achievement IDs). */
   available: boolean;
+  /** The build also has leaderboard IDs. */
+  leaderboards: boolean;
   signedIn: boolean;
 }
 
 export class PlayGames {
   private plugin?: PlayGamesNative;
   private signedIn = false;
+  /** The best score sent to each leaderboard since signing in, and when scores were last sent. */
+  private submitted: Record<string, number> = {};
+  private lastSubmit = 0;
   /** Called when the sign-in state changes. */
   onChange: () => void = () => {};
 
-  constructor(private unlocked: () => string[]) {
-    if (Capacitor.isNativePlatform() && Object.keys(IDS).length) this.plugin = registerPlugin<PlayGamesNative>('PlayGames');
+  constructor(
+    private unlocked: () => string[],
+    private state: () => GameState | null,
+  ) {
+    if (Capacitor.isNativePlatform() && (Object.keys(IDS).length || Object.keys(BOARD_IDS).length)) this.plugin = registerPlugin<PlayGamesNative>('PlayGames');
   }
 
   view(): PlayGamesView {
-    return { available: !!this.plugin, signedIn: this.signedIn };
+    return { available: !!this.plugin, leaderboards: !!this.plugin && Object.keys(BOARD_IDS).length > 0, signedIn: this.signedIn };
   }
 
   /** Checks the automatic sign-in at launch and catches up on achievements earned while signed out. */
@@ -73,11 +88,38 @@ export class PlayGames {
     }
   }
 
-  async showAchievements(): Promise<boolean> {
+  /**
+   * Submits the studio's leaderboard scores that beat what was last sent. Cash and fans change
+   * every week, so unless `now` is set this waits a minute between batches; Play Games keeps
+   * each player's best anyway.
+   */
+  submitScores(s: GameState | null, now = false): void {
+    if (!this.plugin || !this.signedIn || !s) return;
+    if (!now && Date.now() - this.lastSubmit < SUBMIT_EVERY_MS) return;
+    this.lastSubmit = Date.now();
+    for (const board of LEADERBOARDS) {
+      const id = BOARD_IDS[board.id];
+      const score = board.score(s);
+      if (!id || score <= 0 || score <= (this.submitted[board.id] ?? 0)) continue;
+      this.submitted[board.id] = score;
+      void this.plugin.submitScore({ id, score }).catch(() => {});
+    }
+  }
+
+  showAchievements(): Promise<boolean> {
+    return this.show((p) => p.showAchievements());
+  }
+
+  showLeaderboards(): Promise<boolean> {
+    this.submitScores(this.state(), true);
+    return this.show((p) => p.showLeaderboards());
+  }
+
+  private async show(open: (plugin: PlayGamesNative) => Promise<void>): Promise<boolean> {
     if (!this.plugin) return false;
     if (!this.signedIn && !(await this.signIn())) return false;
     try {
-      await this.plugin.showAchievements();
+      await open(this.plugin);
       return true;
     } catch {
       return false;
@@ -87,7 +129,11 @@ export class PlayGames {
   private update(signedIn: boolean) {
     const changed = signedIn !== this.signedIn;
     this.signedIn = signedIn;
-    if (signedIn) this.unlock(this.unlocked());
+    if (changed) this.submitted = {};
+    if (signedIn) {
+      this.unlock(this.unlocked());
+      this.submitScores(this.state(), true);
+    }
     if (changed) this.onChange();
   }
 }

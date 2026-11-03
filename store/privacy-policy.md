@@ -1,6 +1,6 @@
 # Privacy policy for Game Dev Studio
 
-_Last updated: 10 October 2026_
+_Last updated: 3 November 2026_
 
 Game Dev Studio ("the game") is a single-player game for Android and the web.
 
@@ -32,7 +32,7 @@ The "Remove ads" purchase is handled by **Google Play**. The game never sees you
 
 ## Google Play Games
 
-In the Android app you can sign in to **Google Play Games** to collect the game's achievements on your Play Games profile. When you're signed in, Google's Play Games SDK sends your Play Games player profile and the achievements you unlock to Google. Signing in is optional: achievements also work in the game without it. Google's privacy policy applies: https://policies.google.com/privacy
+In the Android app you can sign in to **Google Play Games** to collect the game's achievements on your Play Games profile and compare your best scores on its leaderboards. When you're signed in, Google's Play Games SDK sends your Play Games player profile, the achievements you unlock and your leaderboard scores (your best review score, biggest-selling game, most money and most fans) to Google, and other players can see your leaderboard scores under your Play Games name. Signing in is optional: achievements also work in the game without it. Google's privacy policy applies: https://policies.google.com/privacy
 
 ## Children
 
