@@ -8,6 +8,7 @@ import { OFFICES, PERFECT_FIT, RESEARCH, STORE } from './data';
 import { DECOR } from './decor';
 import { acclaimOf } from './acclaim';
 import { onSale, verdict } from './results';
+import { playResourceIds } from './play-resources';
 import type { GameState } from './types';
 
 export interface Achievement {
@@ -67,30 +68,7 @@ export function newAchievements(s: GameState, unlocked: ReadonlySet<string>): Ac
   return ACHIEVEMENTS.filter((a) => !unlocked.has(a.id) && a.done(s));
 }
 
-/**
- * Play Games achievement IDs by in-game id, from the build's PLAY_GAMES_RESOURCES: either the
- * Android resources XML the Play Console exports (Achievements → Get resources), whose string
- * names come from the achievement names, or a JSON object of in-game id → Play Games ID.
- */
+/** Play Games achievement IDs by in-game id, from the build's PLAY_GAMES_RESOURCES (see play-resources.ts). */
 export function playGamesIds(config: string | undefined): Record<string, string> {
-  const text = config?.trim() ?? '';
-  if (!text) return {};
-  const known = new Set(ACHIEVEMENTS.map((a) => a.id));
-  if (text.startsWith('{')) {
-    try {
-      const data = JSON.parse(text) as Record<string, unknown>;
-      return Object.fromEntries(Object.entries(data).filter((e): e is [string, string] => known.has(e[0]) && typeof e[1] === 'string' && !!e[1]));
-    } catch {
-      return {};
-    }
-  }
-  // "Know-It-All" is exported as achievement_knowitall, "Hello, World" as achievement_hello_world.
-  const key = (name: string) => name.toLowerCase().replace(/[^a-z0-9]/g, '');
-  const byName = new Map(ACHIEVEMENTS.map((a) => [key(a.name), a.id]));
-  const ids: Record<string, string> = {};
-  for (const [, name, value] of text.matchAll(/<string\s+name="achievement_([^"]+)"[^>]*>\s*([^<\s]+)\s*<\/string>/g)) {
-    const id = byName.get(key(name));
-    if (id) ids[id] = value;
-  }
-  return ids;
+  return playResourceIds(config, 'achievement', ACHIEVEMENTS);
 }

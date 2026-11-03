@@ -7,9 +7,17 @@ export function loadGame(): GameState | null {
   try {
     const raw = localStorage.getItem(KEY);
     if (!raw) return null;
+    return parseSave(raw);
+  } catch {
+    return null;
+  }
+}
+
+/** Reads a save from its text (a cloud save, say), or null if it isn't one this version can load. */
+export function parseSave(raw: string): GameState | null {
+  try {
     const state = JSON.parse(raw) as GameState;
-    if (state.version !== SAVE_VERSION) return null;
-    return state;
+    return state && typeof state === 'object' && state.version === SAVE_VERSION ? state : null;
   } catch {
     return null;
   }
@@ -54,6 +62,26 @@ export function loadAchievements(): Record<string, Unlock> {
 export function saveAchievements(unlocked: Record<string, Unlock>): void {
   try {
     localStorage.setItem(ACHIEVEMENTS_KEY, JSON.stringify(unlocked));
+  } catch {
+    // ignore
+  }
+}
+
+// The cloud save (Google Play Games, Android app only): when the one this device last wrote,
+// loaded or turned down was written. A cloud save newer than that came from another device.
+const CLOUD_SYNCED_KEY = 'game-dev-studio/cloud-synced';
+
+export function loadCloudSynced(): number {
+  try {
+    return Number(localStorage.getItem(CLOUD_SYNCED_KEY)) || 0;
+  } catch {
+    return 0;
+  }
+}
+
+export function saveCloudSynced(modified: number): void {
+  try {
+    localStorage.setItem(CLOUD_SYNCED_KEY, String(modified));
   } catch {
     // ignore
   }
