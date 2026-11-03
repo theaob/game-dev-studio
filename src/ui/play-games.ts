@@ -1,13 +1,17 @@
 /**
  * Google Play Games Services (Android app only): signs the player in, mirrors the game's
- * achievements to their Play Games profile and submits their best scores to the leaderboards. The native side is PlayGamesPlugin.java. The
+ * achievements to their Play Games profile, submits their best scores to the leaderboards and
+ * keeps a copy of the save in their Play Games account (see cloud-save.ts). The native side is PlayGamesPlugin.java. The
  * Play Games IDs come from the build (PLAY_GAMES_RESOURCES, see README "Google Play Games");
  * without them, and on the web and itch.io, everything here is off.
  */
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import { playGamesIds } from '../core/achievements';
 import { LEADERBOARDS, leaderboardIds } from '../core/leaderboards';
+import { formatShortDate } from '../core/time';
 import type { GameState } from '../core/types';
+import { saveCloudSynced } from '../save';
+import type { CloudSave } from './cloud-save';
 
 interface Status {
   configured: boolean;
@@ -21,18 +25,25 @@ interface PlayGamesNative {
   showAchievements(): Promise<void>;
   submitScore(options: { id: string; score: number }): Promise<void>;
   showLeaderboards(): Promise<void>;
+  loadSnapshot(options: { name: string }): Promise<{ found: boolean; data?: string; modified?: number }>;
+  saveSnapshot(options: { name: string; data: string; description: string }): Promise<{ modified: number }>;
 }
 
 const IDS = playGamesIds(import.meta.env.VITE_PLAY_GAMES_RESOURCES);
 const BOARD_IDS = leaderboardIds(import.meta.env.VITE_PLAY_GAMES_RESOURCES);
 /** Cash and fans climb every week: send them at most this often (the best score is all that counts). */
 const SUBMIT_EVERY_MS = 60_000;
+/** The cloud save's slot name, and how often it's written while playing (it's also written on leaving the app). */
+const SNAPSHOT = 'studio';
+const UPLOAD_EVERY_MS = 2 * 60_000;
 
 export interface PlayGamesView {
   /** Play Games is set up in this build (Android app with achievement IDs). */
   available: boolean;
   /** The build also has leaderboard IDs. */
   leaderboards: boolean;
+  /** When the studio was last saved to the cloud in this session (ms), 0 if not yet. */
+  cloudSavedAt: number;
   signedIn: boolean;
 }
 
@@ -42,6 +53,18 @@ export class PlayGames {
   /** The best score sent to each leaderboard since signing in, and when scores were last sent. */
   private submitted: Record<string, number> = {};
   private lastSubmit = 0;
+  /**
+   * Cloud save: writes wait until the app has checked the cloud save after signing in, so a
+   * save from another device is never overwritten before the player has had their say.
+   */
+  private cloudChecked = false;
+  private uploaded = '';
+  private lastUpload = 0;
+  private uploading = false;
+  private uploadAgain = false;
+  private cloudSavedAt = 0;
+  /** Called when the player signs in, to check the cloud save. */
+  onSignIn: () => void = () => {};
   /** Called when the sign-in state changes. */
   onChange: () => void = () => {};
 
@@ -53,7 +76,7 @@ export class PlayGames {
   }
 
   view(): PlayGamesView {
-    return { available: !!this.plugin, leaderboards: !!this.plugin && Object.keys(BOARD_IDS).length > 0, signedIn: this.signedIn };
+    return { available: !!this.plugin, leaderboards: !!this.plugin && Object.keys(BOARD_IDS).length > 0, signedIn: this.signedIn, cloudSavedAt: this.cloudSavedAt };
   }
 
   /** Checks the automatic sign-in at launch and catches up on achievements earned while signed out. */
@@ -115,6 +138,64 @@ export class PlayGames {
     return this.show((p) => p.showLeaderboards());
   }
 
+  /** Reads the cloud save: null when there is none, undefined when it couldn't be read. */
+  async readCloud(): Promise<CloudSave | null | undefined> {
+    if (!this.plugin || !this.signedIn) return undefined;
+    try {
+      const r = await this.plugin.loadSnapshot({ name: SNAPSHOT });
+      return r.found && r.data ? { data: r.data, modified: r.modified ?? 0 } : null;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
+   * The cloud save has been dealt with (see cloud-save.ts): from now on the studio is written to
+   * it. `modified` is when the cloud save the player kept or turned down was written.
+   */
+  cloudReady(modified?: number): void {
+    if (modified !== undefined) saveCloudSynced(modified);
+    this.cloudChecked = true;
+  }
+
+  /** The cloud save holds exactly this, so there's no need to write it again. */
+  cloudHas(data: string): void {
+    this.uploaded = data;
+  }
+
+  /**
+   * Writes the studio to the cloud save when it has changed, at most every couple of minutes
+   * unless `now` is set. Resolves with whether the cloud save now holds it.
+   */
+  async writeCloud(s: GameState | null, now = false): Promise<boolean> {
+    if (!this.plugin || !this.signedIn || !this.cloudChecked || !s) return false;
+    const data = JSON.stringify(s);
+    if (data === this.uploaded) return true;
+    if (!now && Date.now() - this.lastUpload < UPLOAD_EVERY_MS) return false;
+    if (this.uploading) {
+      this.uploadAgain = true;
+      return false;
+    }
+    this.uploading = true;
+    this.lastUpload = Date.now();
+    try {
+      const { modified } = await this.plugin.saveSnapshot({ name: SNAPSHOT, data, description: `${s.studioName} · ${formatShortDate(s.week)}` });
+      saveCloudSynced(modified);
+      this.uploaded = data;
+      this.cloudSavedAt = Date.now();
+      this.onChange();
+      return true;
+    } catch {
+      return false;
+    } finally {
+      this.uploading = false;
+      if (this.uploadAgain) {
+        this.uploadAgain = false;
+        void this.writeCloud(this.state(), true);
+      }
+    }
+  }
+
   private async show(open: (plugin: PlayGamesNative) => Promise<void>): Promise<boolean> {
     if (!this.plugin) return false;
     if (!this.signedIn && !(await this.signIn())) return false;
@@ -129,11 +210,16 @@ export class PlayGames {
   private update(signedIn: boolean) {
     const changed = signedIn !== this.signedIn;
     this.signedIn = signedIn;
-    if (changed) this.submitted = {};
+    if (changed) {
+      this.submitted = {};
+      this.cloudChecked = false;
+      this.uploaded = '';
+    }
     if (signedIn) {
       this.unlock(this.unlocked());
       this.submitScores(this.state(), true);
     }
     if (changed) this.onChange();
+    if (changed && signedIn) this.onSignIn();
   }
 }

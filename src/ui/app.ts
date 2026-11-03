@@ -7,7 +7,8 @@ import type { BoothId, PromoId, SalesPushId } from '../core/marketing';
 import { normalizeFocus } from '../core/scoring';
 import { sequelName } from '../core/sequels';
 import type { GameSpec, GameState, GenreId, ReleasedGame, MarketingId, NoticeKind, PolishMode, SimEvent, SizeId } from '../core/types';
-import { clearSave, loadAchievements, loadGame, saveAchievements, saveGame, type Unlock } from '../save';
+import { clearSave, loadAchievements, loadCloudSynced, loadGame, parseSave, saveAchievements, saveGame, type Unlock } from '../save';
+import { cloudChoice } from './cloud-save';
 import { newAchievements } from '../core/achievements';
 import { OfficeScene } from './office';
 import { OfficeLoading, hasWebGL } from './office-loading';
@@ -29,7 +30,7 @@ type StatKey = 'cash' | 'fans' | 'rp';
 const WEEK_MS = 2500;
 
 /** Sheets that must be answered and can't be dismissed by tapping outside. */
-const BLOCKING: Sheet['kind'][] = ['welcome', 'focus', 'review', 'gameOver'];
+const BLOCKING: Sheet['kind'][] = ['welcome', 'focus', 'review', 'gameOver', 'cloudSave'];
 
 /** How long to wait for the 3D office before settling on the 2D one. */
 const OFFICE3D_TIMEOUT_MS = 10_000;
@@ -91,6 +92,7 @@ export class App {
       if (!document.hidden) return;
       this.save();
       this.playGames.submitScores(this.state, true);
+      void this.playGames.writeCloud(this.state, true);
     });
     window.addEventListener('pagehide', () => this.save());
     // Android's back button steps back through the interface instead of closing the app.
@@ -111,8 +113,9 @@ export class App {
     void this.ads.init();
 
     this.playGames.onChange = () => {
-      if (this.sheet?.kind === 'achievements') this.renderSheet();
+      if (this.sheet?.kind === 'achievements' || this.sheet?.kind === 'menu') this.renderSheet();
     };
+    this.playGames.onSignIn = () => void this.syncCloud(false);
     void this.playGames.init();
   }
 
@@ -434,7 +437,44 @@ export class App {
   }
 
   private save() {
-    if (this.state) saveGame(this.state);
+    if (!this.state) return;
+    saveGame(this.state);
+    void this.playGames.writeCloud(this.state);
+  }
+
+  /**
+   * Checks the Play Games cloud save after signing in (or when the player taps Cloud save): backs
+   * this studio up, or, when another device has saved a different studio since, asks which to keep.
+   */
+  private async syncCloud(manual: boolean) {
+    const cloud = await this.playGames.readCloud();
+    if (cloud === undefined) {
+      if (manual) this.toast("Couldn't reach Google Play Games. Check that you're online.", 'bad');
+      return;
+    }
+    const local = this.state ? JSON.stringify(this.state) : null;
+    const choice = cloudChoice(cloud, local, loadCloudSynced());
+    const other = choice === 'ask' && cloud ? parseSave(cloud.data) : null;
+    if (choice === 'same' && cloud) {
+      this.playGames.cloudReady(cloud.modified);
+      this.playGames.cloudHas(cloud.data);
+      if (manual) this.toast('☁️ Your studio is backed up to Google Play Games.', 'good');
+      return;
+    }
+    if (!other || !cloud) {
+      // Nothing there, or a save this device can't load (an older version): this studio replaces it.
+      this.playGames.cloudReady();
+      const ok = await this.playGames.writeCloud(this.state, true);
+      if (manual) this.toast(ok ? '☁️ Saved to Google Play Games.' : this.state ? "Couldn't save to Google Play Games. Try again later." : 'Found a studio first, then it will be backed up as you play.', ok ? 'good' : 'info');
+      return;
+    }
+    const prompt: Sheet = { kind: 'cloudSave', cloud: other, modified: cloud.modified };
+    if (this.sheet?.kind === 'cloudSave') this.replace(prompt);
+    else if (this.sheet?.kind === 'welcome' || this.sheet?.kind === 'menu') {
+      if (this.sheet.kind === 'welcome') this.queue.unshift(this.sheet);
+      this.replace(prompt);
+    } else if (this.sheet) this.queue.unshift(prompt);
+    else this.open(prompt);
   }
 
   // -------------------------------------------------------------------------
@@ -752,6 +792,34 @@ export class App {
         void this.playGames.showAchievements().then((ok) => {
           if (!ok) this.toast("Couldn't open Google Play Games. Check that you're signed in and online.", 'bad');
         });
+        return;
+      case 'cloud-sync':
+        if (!this.playGames.view().signedIn) void this.playGames.signIn();
+        else void this.syncCloud(true);
+        return;
+      case 'cloud-load':
+        if (sheet?.kind === 'cloudSave') {
+          this.state = sheet.cloud;
+          saveGame(sheet.cloud);
+          this.playGames.cloudReady(sheet.modified);
+          this.playGames.cloudHas(JSON.stringify(sheet.cloud));
+          this.queue = [];
+          this.sheet = null;
+          this.tab = 'studio';
+          this.shownStats = this.lastStats = null;
+          this.acc = 0;
+          this.markNewsRead();
+          this.resumePrompts();
+          this.render();
+          this.toast(`☁️ Welcome back to ${sheet.cloud.studioName}!`, 'good');
+        }
+        return;
+      case 'cloud-keep':
+        if (sheet?.kind === 'cloudSave') {
+          this.playGames.cloudReady(sheet.modified);
+          void this.playGames.writeCloud(this.state, true);
+          this.close();
+        }
         return;
       case 'play-leaderboards':
         void this.playGames.showLeaderboards().then((ok) => {

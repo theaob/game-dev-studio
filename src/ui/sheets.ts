@@ -68,6 +68,8 @@ export type Sheet =
   | { kind: 'expo' }
   | { kind: 'keynote'; keynote: Keynote }
   | { kind: 'achievements' }
+  /** Another device has put a studio in the Play Games cloud save: load it or keep this one? */
+  | { kind: 'cloudSave'; cloud: GameState; modified: number }
   | { kind: 'gameOver' };
 
 /** The web build: no ads, no purchases. */
@@ -80,7 +82,7 @@ export function renderSheet(
   sheet: Sheet,
   ads: MonetizationView = NO_ADS,
   unlocked: Record<string, Unlock> = {},
-  play: PlayGamesView = { available: false, leaderboards: false, signedIn: false },
+  play: PlayGamesView = { available: false, leaderboards: false, signedIn: false, cloudSavedAt: 0 },
 ): string {
   switch (sheet.kind) {
     case 'welcome':
@@ -89,6 +91,8 @@ export function renderSheet(
       return help();
     case 'achievements':
       return achievements(unlocked, play);
+    case 'cloudSave':
+      return cloudSave(state, sheet.cloud, sheet.modified);
     case 'confirm':
       return `
         <h3>Are you sure?</h3>
@@ -111,7 +115,7 @@ export function renderSheet(
     case 'gameDetail':
       return gameDetail(state, sheet.id);
     case 'menu':
-      return menu(sheet.saved, ads, unlocked);
+      return menu(sheet.saved, ads, unlocked, play);
     case 'gameOver':
       return gameOver(state, ads);
     case 'contracts':
@@ -586,7 +590,7 @@ function gameDetail(state: GameState, id: number): string {
     <div class="btn-row"><button class="btn ghost" data-action="close">Close</button></div>`;
 }
 
-function menu(saved: boolean | undefined, ads: MonetizationView, unlocked: Record<string, Unlock>): string {
+function menu(saved: boolean | undefined, ads: MonetizationView, unlocked: Record<string, Unlock>, play: PlayGamesView): string {
   // Ads and purchases only exist in the Android app.
   const shop = ads.native
     ? `
@@ -604,10 +608,40 @@ function menu(saved: boolean | undefined, ads: MonetizationView, unlocked: Recor
       <button class="option" data-action="help"><span class="emoji">📖</span><span class="grow"><b>How to play</b></span></button>
       <button class="option" data-action="achievements"><span class="emoji">🏆</span><span class="grow"><b>Achievements</b><br/><span class="sub">${unlockedCount(unlocked)} of ${ACHIEVEMENTS.length} unlocked</span></span></button>
       <button class="option" data-action="save"><span class="emoji">💾</span><span class="grow"><b>Save game</b>${saved ? ' <span class="tag good">Saved!</span>' : '<br/><span class="sub">The game also saves automatically every month.</span>'}</span></button>
+      ${play.available ? cloudOption(play) : ''}
       ${shop}
       <button class="option" data-action="ask-reset"><span class="emoji">🔄</span><span class="grow"><b>Start over</b><br/><span class="sub">Delete this save and found a new studio.</span></span></button>
     </div>
     <div class="btn-row"><button class="btn ghost" data-action="close">Close</button></div>`;
+}
+
+function cloudOption(play: PlayGamesView): string {
+  const sub = !play.signedIn
+    ? 'Sign in to Google Play Games to back up your studio and carry on on another phone.'
+    : play.cloudSavedAt
+      ? `Backed up to Google Play Games at ${new Date(play.cloudSavedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}. Tap to back up now.`
+      : 'Your studio is backed up to Google Play Games as you play. Tap to back up now.';
+  return `<button class="option" data-action="cloud-sync"><span class="emoji">☁️</span><span class="grow"><b>Cloud save</b><br/><span class="sub">${sub}</span></span></button>`;
+}
+
+function studioSummary(s: GameState): string {
+  return `<b>${esc(s.studioName)}</b><br/><span class="sub">${formatShortDate(s.week)} · ${money(s.cash)} · ${s.released.length} game${s.released.length === 1 ? '' : 's'} released</span>`;
+}
+
+function cloudSave(local: GameState | null, cloud: GameState, modified: number): string {
+  const when = modified ? new Date(modified).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : '';
+  return `
+    <h3>Cloud save found</h3>
+    <p class="muted">${local ? 'Your Google Play Games account has a different studio, saved on another device. Which one do you want to play?' : 'Your Google Play Games account has a studio saved on another device. Pick up where you left off?'}</p>
+    <div class="options mt">
+      <div class="option"><span class="emoji">☁️</span><span class="grow">${studioSummary(cloud)}${when ? `<br/><span class="sub">Saved ${esc(when)}</span>` : ''}</span></div>
+      ${local ? `<div class="option"><span class="emoji">📱</span><span class="grow">${studioSummary(local)}<br/><span class="sub">On this device</span></span></div>` : ''}
+    </div>
+    ${local ? '<p class="sub mt">The one you don\'t pick is replaced in the cloud.</p>' : ''}
+    <div class="btn-row">
+      <button class="btn ghost" data-action="cloud-keep">${local ? 'Keep this device\'s' : 'Start a new studio'}</button>
+      <button class="btn" data-action="cloud-load">Load cloud save</button>
+    </div>`;
 }
 
 function unlockedCount(unlocked: Record<string, Unlock>): number {
