@@ -187,6 +187,8 @@ export interface GameState {
   ventures?: string[];
   /** Rival studios bought out. */
   acquired?: string[];
+  /** Levels of the never-ending R&D projects (see rnd.ts). */
+  rnd?: Partial<Record<string, number>>;
 }
 
 export interface DecorState {

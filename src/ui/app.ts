@@ -10,6 +10,7 @@ import type { GameSpec, GameState, GenreId, ReleasedGame, MarketingId, NoticeKin
 import { clearSave, loadAchievements, loadGame, loadRecords, saveAchievements, saveGame, saveRecords, type Unlock } from '../save';
 import { newAchievements } from '../core/achievements';
 import { addCareer } from '../core/career';
+import { doRnd, type RndId } from '../core/rnd';
 import { OfficeScene } from './office';
 import { OfficeLoading, hasWebGL } from './office-loading';
 import { CAT_ID } from './office-common';
@@ -1059,6 +1060,9 @@ export class App {
       // Research & staff
       case 'research':
         report(doResearch(s, arg));
+        return;
+      case 'rnd':
+        report(doRnd(s, arg as RndId));
         return;
       case 'hire':
         if (report(hire(s, Number(arg)))) this.office.say(Number(arg), '👋 Hi!', 3);
