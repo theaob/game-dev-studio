@@ -3,10 +3,10 @@
  * cooldown in game weeks, so they help without replacing the real economy.
  */
 import { friendly, priceIndex } from './economy';
-import { boostWeeks, monthlyCosts, notify, weeklyRp } from './sim';
+import { SALES_WEEKS, boostWeeks, headhuntBlocker, monthlyCosts, notify, startHeadhunt, weeklyRp } from './sim';
 import type { GameState } from './types';
 
-export type RewardId = 'investor' | 'espresso' | 'research';
+export type RewardId = 'investor' | 'espresso' | 'research' | 'headhunter';
 
 export interface Reward {
   id: RewardId;
@@ -15,12 +15,15 @@ export interface Reward {
   desc: string;
   /** Game weeks before it can be claimed again. */
   cooldown: number;
+  /** Offered somewhere else than the Store's list (the headhunter is in the Team tab). */
+  notInStore?: boolean;
 }
 
 export const REWARDS: Reward[] = [
   { id: 'investor', icon: '💼', name: 'Investor visit', desc: 'An angel investor tops up your cash.', cooldown: 12 },
   { id: 'espresso', icon: '☕', name: 'Free Espresso Bar', desc: 'Four weeks of +20% design and tech points, on the house.', cooldown: 8 },
   { id: 'research', icon: '🔬', name: 'Research grant', desc: 'A university shares its findings with your team.', cooldown: 12 },
+  { id: 'headhunter', icon: '🎸', name: 'Headhunter on the house', desc: 'The headhunter searches for a rockstar without charging a fee.', cooldown: 52, notInStore: true },
 ];
 
 /** Espresso Bar weeks a reward gives (the same as buying it). */
@@ -46,6 +49,7 @@ export function researchGrant(state: GameState): number {
 export function rewardAmount(state: GameState, id: RewardId): string {
   if (id === 'investor') return `+$${investorCash(state).toLocaleString('en-US')}`;
   if (id === 'research') return `+${researchGrant(state)} RP`;
+  if (id === 'headhunter') return 'Free search';
   return `+${ESPRESSO_WEEKS} weeks`;
 }
 
@@ -62,6 +66,7 @@ export function rewardBlocker(state: GameState, id: RewardId): string | null {
   const wait = rewardCooldown(state, id);
   if (wait > 0) return `Available again in ${wait} week${wait === 1 ? '' : 's'}.`;
   if (id === 'espresso' && state.activity?.kind !== 'game') return 'Only while making a game.';
+  if (id === 'headhunter') return headhuntBlocker(state, true);
   return null;
 }
 
@@ -77,6 +82,8 @@ export function claimReward(state: GameState, id: RewardId): string | null {
     const rp = researchGrant(state);
     state.rp += rp;
     notify(state, `Research grant: +${rp} RP.`, 'good');
+  } else if (id === 'headhunter') {
+    startHeadhunt(state, true);
   } else {
     state.boosts = { ...state.boosts, coffee: boostWeeks(state, 'coffee') + ESPRESSO_WEEKS };
     notify(state, `Free Espresso Bar for ${ESPRESSO_WEEKS} weeks!`, 'good');
@@ -107,5 +114,40 @@ export function claimBailout(state: GameState): string | null {
   state.over = null;
   state.bailoutUsed = true;
   notify(state, `A bailout saved the studio: +$${cash.toLocaleString('en-US')}. There won't be another one!`, 'good');
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// Press tour: a launch boost for one game
+// ---------------------------------------------------------------------------
+
+/** A press tour sells this much more of what a game has left to sell (as much as winning Game of the Year). */
+export const PRESS_TOUR_BOOST = 0.25;
+
+/** Why a game can't get a press tour, or null if it can. One per game, while it's on sale. */
+export function pressTourBlocker(state: GameState, gameId: number): string | null {
+  if (state.over) return 'The game is over.';
+  const g = state.released.find((x) => x.id === gameId);
+  if (!g) return 'Game not found.';
+  if (g.pressTour) return 'This game already had its press tour.';
+  if (g.weeksOnMarket >= SALES_WEEKS) return 'This game is no longer on sale.';
+  return null;
+}
+
+/** Extra copies a press tour would sell right now. */
+export function pressTourCopies(state: GameState, gameId: number): number {
+  const g = state.released.find((x) => x.id === gameId);
+  return g ? Math.round(Math.max(0, g.targetUnits - g.unitsSold) * PRESS_TOUR_BOOST) : 0;
+}
+
+/** Sends the game on a press tour (call once the ad has been watched). Returns an error message, or null on success. */
+export function claimPressTour(state: GameState, gameId: number): string | null {
+  const blocked = pressTourBlocker(state, gameId);
+  if (blocked) return blocked;
+  const g = state.released.find((x) => x.id === gameId)!;
+  const copies = pressTourCopies(state, gameId);
+  g.targetUnits += copies;
+  g.pressTour = true;
+  notify(state, `${g.name} went on a press tour: about ${copies.toLocaleString('en-US')} more copies to sell.`, 'good');
   return null;
 }

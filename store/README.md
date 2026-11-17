@@ -16,8 +16,8 @@ The app bundle (AAB) comes from CI: open the latest run of *CI & itch.io deploy*
 | Package name | `io.github.theaob.gamedevstudio` (can't change after the first upload) |
 | Target SDK | 36 |
 | Version code | the CI run number, so every build is higher than the last |
-| Ads | Google AdMob: rewarded videos (Store, and when cash is negative) and an occasional interstitial after a game's reviews |
-| In-app purchases | `remove_ads`, a one-time product |
+| Ads | Google AdMob: optional rewarded videos (Store, studio screen, press tours, headhunter, bailout) and an occasional interstitial at natural breaks (reviews, GameExpo, Game of the Year) |
+| In-app purchases | `remove_ads` and `supporter_pack`, one-time products |
 
 ## Checklist
 
@@ -74,6 +74,8 @@ Play Console → **Create app**:
 4. **app-ads.txt**: it's at https://theaob.github.io/app-ads.txt (repo `theaob/theaob.github.io`), authorising publisher `pub-3615836489279250`. In the Play Console's **Store settings → Store listing contact details**, set the website to `https://theaob.github.io/` (the game's page is https://theaob.github.io/games/game-dev-studio/). AdMob checks the file within about a day of the app being linked to its Play listing; see AdMob → Apps → app-ads.txt.
 5. **Play Console → Monetize → Products → In-app products**: create a one-time product with ID **`remove_ads`** (it must match exactly), a name like "Remove ads" and a price, then activate it. This needs a payments profile (merchant account) in the Play Console. The product only shows a price in the app once a build with billing has been uploaded to a testing track.
 
+6. **Supporter Pack** (optional, same page): create a second one-time product with ID **`supporter_pack`**, a name like "Supporter Pack" and a description like "Remove ads, rewards without videos, and two exclusive studio decorations". A price around twice Remove ads works well. The game only shows it once Play returns a price, so nothing changes until it's active.
+
 ### 2c. Google Play Games achievements
 The Android app signs players in to **Google Play Games** and unlocks the matching Play Games achievement whenever they earn one in the game (and catches up on ones they earned before signing in). Until it's set up, the app works exactly as before, with achievements only in the game.
 
@@ -90,6 +92,14 @@ The Android app signs players in to **Google Play Games** and unlocks the matchi
 8. **Publish.** Play Games Services → **Review and publish**, so everyone (not just testers) can sign in. Do this alongside the production release.
 
 **Data safety and privacy.** The Play Games SDK sends the player's Play Games profile and achievement progress to Google. Add what Google lists for Play Games Services to the Data safety form; the privacy policy already covers it.
+
+### 2d. AdMob mediation (optional)
+Mediation lets other ad networks bid for the same rewarded and interstitial slots, which usually raises what each ad pays.
+1. Sign up with the networks you want (AppLovin, Unity Ads, Meta Audience Network) and create an app and ad units there.
+2. In AdMob → **Mediation**, create a mediation group for the rewarded unit and one for the interstitial unit, and add each network to both.
+3. Add each network's line to `app-ads.txt` in the `theaob/theaob.github.io` repo (the network's dashboard shows it).
+4. In GitHub → Settings → Secrets and variables → Actions → **Variables**, add `ADMOB_MEDIATION` with the networks, comma separated, for example `applovin,unity`. The next Android build includes their adapters.
+5. Update **Data safety** if a network collects more than AdMob does (each network documents what it collects).
 
 ### 3. Store listing
 Grow users → Store presence → **Main store listing**: paste the text from `listing.md` and upload `graphics/icon-512.png`, `graphics/feature-graphic.png` and `graphics/phone/*` in order. Also set **Store settings**: category *Simulation* and a contact email.

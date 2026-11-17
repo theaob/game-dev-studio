@@ -105,6 +105,8 @@ export interface ReleasedGame extends GameSpec {
   /** Hype at launch, and the post-launch pushes used on it. */
   hype?: number;
   pushes?: string[];
+  /** The free press tour (a reward video) was used on it. */
+  pressTour?: boolean;
   /** Special recognition for a great score ('choice' or 'masterpiece'), see acclaim.ts. */
   acclaim?: string;
   /** Year it was named Game of the Year. */

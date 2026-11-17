@@ -3431,3 +3431,11 @@ canvas.office {
   font-weight: 400;
   margin-left: 4px;
 }
+
+/* A price button with a free-with-a-video button under it (the headhunter). */
+.btn-col {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: stretch;
+}

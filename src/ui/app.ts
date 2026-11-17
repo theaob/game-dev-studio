@@ -18,11 +18,11 @@ import { money, num } from './format';
 import { focusLean, renderSheet, type Sheet } from './sheets';
 import { ChartTooltip } from './tooltip';
 import { gotyCelebration, releaseCelebration, throwParty } from './celebration';
-import { Monetization } from './monetization';
+import { Monetization, REMOVE_ADS_PRODUCT, SUPPORTER_PRODUCT } from './monetization';
 import { PlayGames } from './play-games';
-import { claimBailout, claimReward, investorCash, rewardBlocker, type RewardId } from '../core/rewards';
+import { claimBailout, claimPressTour, claimReward, investorCash, pressTourBlocker, researchGrant, rewardBlocker, type RewardId } from '../core/rewards';
 import { buyDecor, decorById, repaint, toggleDecor, type DecorId } from '../core/decor';
-import { SPEEDS, dockLayoutKey, renderDock, renderGames, renderNav, renderNews, renderResearch, renderStaff, renderTopbar, type Tab } from './views';
+import { SPEEDS, dockLayoutKey, renderDock, renderGames, renderNav, renderNews, renderResearch, renderStaff, renderTopbar, type RewardOffer, type Tab } from './views';
 
 type StatKey = 'cash' | 'fans' | 'rp';
 
@@ -30,6 +30,8 @@ type StatKey = 'cash' | 'fans' | 'rp';
 const WEEK_MS = 2500;
 
 /** Sheets that must be answered and can't be dismissed by tapping outside. */
+/** How long the Game of the Year party runs before the game may show an ad. */
+const GOTY_PARTY_MS = 6000;
 const BLOCKING: Sheet['kind'][] = ['welcome', 'focus', 'review', 'gameOver'];
 
 /** How long to wait for the 3D office before settling on the 2D one. */
@@ -290,6 +292,10 @@ export class App {
     this.confetti();
     this.office.cheer(gotyCelebration(g.goty!).cheer);
     this.vibrate([30, 60, 30, 60, 60]);
+    // Once the party is over, a natural break (unless the player is busy with a sheet by then).
+    window.setTimeout(() => {
+      if (!this.sheet) this.adBreak();
+    }, GOTY_PARTY_MS);
   }
 
   private confetti() {
@@ -428,11 +434,37 @@ export class App {
     return Math.min(list.length, 9);
   }
 
-  /** When the studio is in the red, offer the investor video on the studio screen. */
-  private cashOffer(s: GameState): string {
+  /**
+   * A reward that's ready, offered as a chip on the studio screen (Android only), one at a time:
+   * the investor when the studio is in the red, the Espresso Bar while a game is in development
+   * (and none is running), and the research grant otherwise.
+   */
+  private rewardOffer(s: GameState): RewardOffer | null {
     const v = this.ads.view();
-    if (!v.rewardedReady || s.cash >= 0 || rewardBlocker(s, 'investor')) return '';
-    return `📺 In the red? Watch a video: +${money(investorCash(s))}`;
+    if (!v.rewardedReady || v.busy || s.over) return null;
+    const how = v.adFree ? '🎁' : '📺';
+    const ready = (id: RewardId) => !rewardBlocker(s, id);
+    if (s.cash < 0 && ready('investor')) return { id: 'investor', text: `${how} In the red? ${v.adFree ? 'Claim' : 'Watch a video'}: +${money(investorCash(s))}` };
+    const a = s.activity;
+    if (a?.kind === 'game' && a.phase < 3 && !s.boosts?.coffee && ready('espresso')) return { id: 'espresso', text: `${how} Free Espresso Bar` };
+    if (a?.kind !== 'game' && ready('research')) return { id: 'research', text: `${how} Research grant: +${researchGrant(s)} RP` };
+    return null;
+  }
+
+  /** The headhunter's free-search button on the Team tab, when that reward is ready. */
+  private headhunterVideo(s: GameState): string {
+    const v = this.ads.view();
+    if (!v.native || rewardBlocker(s, 'headhunter')) return '';
+    return `<button class="btn small ghost" data-action="ad-reward" data-arg="headhunter" ${v.rewardedReady && !v.busy ? '' : 'disabled'}>${v.adFree ? '🎁 Free' : '▶ Free'}</button>`;
+  }
+
+  /** Shows a full-screen ad at a natural break, maybe; after a few, offers Remove ads once. */
+  private adBreak() {
+    const s = this.state;
+    if (!s) return;
+    void this.ads.maybeInterstitial(s.released.length).then((shown) => {
+      if (shown && this.ads.takeNudge() && !this.sheet) this.open({ kind: 'supportOffer' });
+    });
   }
 
   private save() {
@@ -460,7 +492,7 @@ export class App {
    * is measured once per layout, not every week, so the card doesn't flip back and forth.
    */
   private renderDockFitted(s: GameState) {
-    const offer = this.cashOffer(s);
+    const offer = this.rewardOffer(s);
     const key = `${dockLayoutKey(s, offer)}|${window.innerWidth}x${window.innerHeight}`;
     const measured = this.dockFit?.key === key;
     this.set('dock', renderDock(s, offer, this.dockCompact ?? (measured && this.dockFit!.compact)));
@@ -491,7 +523,7 @@ export class App {
         };
         const tab = this.tab as Exclude<Tab, 'studio'>;
         const [title, extra] = titles[tab];
-        const view = { games: renderGames, research: renderResearch, staff: renderStaff, news: renderNews }[tab];
+        const view = { games: renderGames, research: renderResearch, staff: (st: GameState) => renderStaff(st, this.headhunterVideo(st)), news: renderNews }[tab];
         this.set('main', `<header class="panel-head"><h1>${title}</h1>${extra ? `<span class="panel-chip">${extra}</span>` : ''}</header>${view(s)}`);
       }
       this.set('nav', renderNav(this.tab, s, this.unreadNews()));
@@ -730,19 +762,26 @@ export class App {
         this.replace({ kind: 'help' });
         return;
       case 'close': {
-        const afterReviews = sheet?.kind === 'review';
+        // Natural breaks: after a game's reviews and after GameExpo. Maybe a full-screen ad (rare, never for ad-free players).
+        const atBreak = sheet?.kind === 'review' || sheet?.kind === 'expo';
         this.close();
-        // A natural break: maybe a full-screen ad (rare, never for ad-free players).
-        if (afterReviews && s) void this.ads.maybeInterstitial(s.released.length);
+        if (atBreak) this.adBreak();
         return;
       }
       case 'remove-ads':
-        void this.ads.buyRemoveAds().then((err) => {
+      case 'buy-supporter': {
+        const supporter = name === 'buy-supporter';
+        void this.ads.buy(supporter ? SUPPORTER_PRODUCT : REMOVE_ADS_PRODUCT).then((err) => {
           if (err) this.toast(err, 'bad');
-          else this.toast('Ads removed. Thanks for your support!', 'good');
-          if (this.sheet?.kind === 'menu') this.renderSheet();
+          else {
+            this.toast(supporter ? '🌟 Thanks for your support! Your decorations are in the Decorate sheet.' : 'Ads removed. Thanks for your support!', 'good');
+            if (this.sheet?.kind === 'supportOffer') this.close();
+          }
+          if (this.sheet) this.renderSheet();
+          this.render();
         });
         return;
+      }
       case 'restore-purchases':
         void this.ads.restore().then((msg) => this.toast(msg, 'info'));
         return;
@@ -824,7 +863,7 @@ export class App {
       case 'toggle-decor': {
         const err =
           name === 'buy-decor'
-            ? buyDecor(s, arg as DecorId)
+            ? buyDecor(s, arg as DecorId, this.ads.view().supporter)
             : name === 'toggle-decor'
               ? toggleDecor(s, arg as DecorId)
               : repaint(s, name === 'paint-wall' ? 'wall' : 'floor', arg);
@@ -863,19 +902,35 @@ export class App {
       case 'ad-reward': {
         const id = arg as RewardId;
         if (!report(rewardBlocker(s, id))) return;
-        void this.ads.showRewarded().then((watched) => {
+        void this.ads.earnReward().then((watched) => {
           if (!watched) {
             this.toast('Watch the whole video to get the reward.', 'info');
           } else if (report(claimReward(s, id))) {
-            this.office.cheer(id === 'investor' ? ['💼', '💰', 'Yes!'] : id === 'research' ? ['🔬', '💡', 'Eureka!'] : ['☕', 'Yum!', '⚡']);
+            this.office.cheer(id === 'investor' ? ['💼', '💰', 'Yes!'] : id === 'research' ? ['🔬', '💡', 'Eureka!'] : id === 'headhunter' ? ['🎸', '🔎', 'Rockstar!'] : ['☕', 'Yum!', '⚡']);
             this.save();
           }
           if (this.sheet?.kind === 'store') this.renderSheet();
+          this.render();
+        });
+        return;
+      }
+      case 'press-tour': {
+        const id = Number(arg);
+        if (!report(pressTourBlocker(s, id))) return;
+        void this.ads.earnReward().then((watched) => {
+          if (!watched) {
+            this.toast('Watch the whole video to send the game on tour.', 'info');
+          } else if (report(claimPressTour(s, id))) {
+            this.office.cheer(['🎤', '📰', 'On tour!']);
+            this.vibrate(15);
+            this.save();
+          }
+          if (this.sheet?.kind === 'review' || this.sheet?.kind === 'gameDetail') this.renderSheet();
         });
         return;
       }
       case 'bailout':
-        void this.ads.showRewarded().then((watched) => {
+        void this.ads.earnReward().then((watched) => {
           if (!watched) {
             this.toast('Watch the whole video to get the bailout.', 'info');
           } else if (report(claimBailout(s))) {

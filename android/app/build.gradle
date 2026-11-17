@@ -6,6 +6,23 @@ String playGamesAppId(String xml) {
     return m.find() ? m.group(1) : ''
 }
 
+/**
+ * AdMob mediation: other ad networks bid for the same ad slots, which usually pays more per ad.
+ * `ADMOB_MEDIATION` lists the networks to include, comma separated (say "applovin,unity"). Empty means
+ * AdMob alone, exactly as before. Each network also needs its own account and a mediation group in AdMob.
+ */
+List<String> admobMediation(String list) {
+    def adapters = [
+        applovin: 'com.google.ads.mediation:applovin:+',
+        unity: 'com.google.ads.mediation:unity:+',
+        meta: 'com.google.ads.mediation:facebook:+',
+    ]
+    return (list ?: '').split(',').collect { it.trim().toLowerCase() }.findAll { it }.collect { name ->
+        if (!adapters[name]) throw new GradleException("Unknown ADMOB_MEDIATION network '$name'. Known: ${adapters.keySet().join(', ')}")
+        adapters[name]
+    }
+}
+
 android {
     namespace = "io.github.theaob.gamedevstudio"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -78,6 +95,8 @@ dependencies {
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
     implementation project(':capacitor-cordova-android-plugins')
+    // AdMob mediation adapters, only for the networks listed in ADMOB_MEDIATION (see README "Android").
+    admobMediation(System.getenv('ADMOB_MEDIATION')).each { implementation it }
 }
 
 apply from: 'capacitor.build.gradle'

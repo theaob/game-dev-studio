@@ -48,7 +48,7 @@ export const ACHIEVEMENTS: Achievement[] = [
   { id: 'moved', name: 'Out of the Garage', icon: '🏢', points: 15, desc: 'Move into a real office.', done: (s) => s.officeLevel >= 1 },
   { id: 'campus', name: 'Campus Life', icon: '🏫', points: 50, desc: `Move to the ${OFFICES[OFFICES.length - 1].name}.`, done: (s) => s.officeLevel >= OFFICES.length - 1 },
   { id: 'kitted_out', name: 'Fully Kitted', icon: '🛠️', points: 40, desc: 'Buy every studio upgrade in the Store.', done: (s) => upgrades.every((id) => s.upgrades?.includes(id)) },
-  { id: 'decorator', name: 'Interior Designer', icon: '🎨', points: 30, desc: 'Buy every decoration for the studio.', done: (s) => DECOR.every((d) => s.decor?.owned?.includes(d.id)) },
+  { id: 'decorator', name: 'Interior Designer', icon: '🎨', points: 30, desc: 'Buy every decoration for the studio.', done: (s) => DECOR.every((d) => d.supporter || s.decor?.owned?.includes(d.id)) },
   { id: 'researcher', name: 'Know-It-All', icon: '🔬', points: 60, desc: 'Research everything.', done: (s) => RESEARCH.every((r) => s.researched.includes(r.id)) },
   { id: 'expo', name: 'Center Stage', icon: '🎪', points: 30, desc: 'Exhibit on the big stage at GameExpo.', done: (s) => s.expo?.booth === 'big' && !!s.expo.report },
   { id: 'cat', name: 'Lap Cat', icon: '🐈', points: 10, desc: "Have the studio cat curl up on someone's lap.", done: (s) => !!s.cat?.lap },
