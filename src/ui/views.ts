@@ -39,7 +39,7 @@ export function renderTopbar(state: GameState, speed: number, lastSpeed: number)
   <div class="hud-row">
     <button class="hud-pill studio-pill" data-action="menu" aria-label="Menu">
       <span class="studio-logo">🎮</span>
-      <span class="studio-text"><b>${esc(state.studioName)}</b><small>${formatDate(state.week)}${weekDots(state.week)}</small></span>
+      <span class="studio-text"><b>${esc(state.studioName)}</b><small>${state.endless ? '<span title="Playing for high scores">🥇</span> ' : ''}${formatDate(state.week)}${weekDots(state.week)}</small></span>
     </button>
     <div class="grow"></div>
     <button class="hud-btn ${paused ? 'paused' : ''}" data-action="toggle-pause" aria-label="${paused ? 'Play' : 'Pause'}">${paused ? '▶' : '❚❚'}</button>

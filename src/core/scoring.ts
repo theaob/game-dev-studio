@@ -2,7 +2,7 @@ import { genreById, platformById, sizeById, topicFit } from './data';
 import { platformFit } from './ventures';
 import { gaussian, type RngHolder } from './rng';
 import { sequelQualityMult } from './sequels';
-import { WEEKS_PER_YEAR, yearFraction, START_YEAR } from './time';
+import { WEEKS_PER_YEAR, marketWeek, yearFraction, START_YEAR } from './time';
 import type { GameProject, GameState } from './types';
 
 /** Quality multiplier per topic/genre fit: bad, okay, good, great, perfect. */
@@ -54,7 +54,7 @@ export function rememberedBest(state: Pick<GameState, 'week' | 'bestPPW'> & { re
 
 /** The market's expectation of points-per-week: rises over time and with your own recent best work. */
 export function benchmark(state: Pick<GameState, 'week' | 'bestPPW'> & { released?: { ppw: number; releaseWeek: number }[] }): number {
-  const years = yearFraction(state.week) - START_YEAR;
+  const years = yearFraction(marketWeek(state.week)) - START_YEAR;
   return Math.max(3 * Math.pow(1.07, years), rememberedBest(state) * 0.9);
 }
 

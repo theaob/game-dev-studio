@@ -48,7 +48,7 @@ import { ESPORTS_FANS, PUBLISHING_SALES, hasVenture, licenseCost, phaseWeeks, pl
 import { expertiseMult, genreLevel, topicLevel } from './expertise';
 import { rndBugMult, rndDesignMult, rndTechMult } from './rnd';
 import { average, benchmark, clamp, evaluate, normalizeFocus, rollReviews, scoreFactor } from './scoring';
-import { END_YEAR, START_YEAR, TOTAL_WEEKS, WEEKS_PER_MONTH, WEEKS_PER_YEAR, yearFraction, yearOf } from './time';
+import { END_YEAR, START_YEAR, TOTAL_WEEKS, WEEKS_PER_MONTH, WEEKS_PER_YEAR, formatShortDate, marketWeek, yearFraction, yearOf } from './time';
 import type {
   ContractOffer,
   ExpoReport,
@@ -119,7 +119,7 @@ export function currentYear(state: GameState): number {
 }
 
 export function availablePlatforms(state: GameState) {
-  const year = yearFraction(state.week);
+  const year = yearFraction(marketWeek(state.week));
   return PLATFORMS.filter((p) => isPlatformAvailable(p, year));
 }
 
@@ -342,7 +342,7 @@ export function validateGame(state: GameState, spec: GameSpec): string | null {
   if (!state.topics.includes(spec.topic)) return 'Topic not researched.';
   if (!availableGenres(state).some((g) => g.id === spec.genre)) return GENRES.some((g) => g.id === spec.genre) ? 'Genre not researched.' : 'Pick a genre.';
   const platform = PLATFORMS.find((p) => p.id === spec.platform);
-  if (!platform || !isPlatformAvailable(platform, yearFraction(state.week))) return 'Platform not available.';
+  if (!platform || !isPlatformAvailable(platform, yearFraction(marketWeek(state.week)))) return 'Platform not available.';
   if (!availableSizes(state).some((s) => s.id === spec.size)) return 'Game size not researched.';
   if (!availableMarketing(state).some((m) => m.id === spec.marketing)) return 'Marketing not available.';
   if (spec.sequelOf !== undefined) {
@@ -584,7 +584,7 @@ export function releaseGame(state: GameState): ReleaseReport | string {
   const size = sizeById(p.size);
   const platform = platformById(p.platform);
   const market = marketingById(p.marketing);
-  const year = yearFraction(state.week);
+  const year = yearFraction(marketWeek(state.week));
   const years = year - START_YEAR;
 
   // A platform discontinued during development still has owners, but they are drifting away.
@@ -805,7 +805,7 @@ export function tick(state: GameState): SimEvent[] {
   if (state.week % WEEKS_PER_MONTH === 0) monthly(state);
   if (state.week % WEEKS_PER_YEAR === 0) yearly(state);
 
-  if (!state.over && state.week >= TOTAL_WEEKS) {
+  if (!state.over && !state.endless && state.week >= TOTAL_WEEKS) {
     state.over = 'retired';
     notify(state, 'After 41 years, it is time to retire. What a journey!', 'good');
   }
@@ -813,6 +813,31 @@ export function tick(state: GameState): SimEvent[] {
   for (const n of state.notices.slice(state.notices.lastIndexOf(lastNotice) + 1)) events.push({ type: 'notice', notice: n });
   if (state.over) events.push({ type: 'gameOver', reason: state.over });
   return events;
+}
+
+/**
+ * After retiring at the end of the last year, the studio can keep going for high scores:
+ * the career is already in the records, and from here on it can only push them higher.
+ */
+export function keepPlaying(state: GameState): string | null {
+  if (state.over !== 'retired' || state.endless) return 'Only a studio that just retired can keep playing.';
+  state.over = null;
+  state.endless = true;
+  notify(state, `${state.studioName} keeps going! No new platforms or research will arrive after ${END_YEAR}: from here on it's all about high scores. Retire from the menu whenever you like.`, 'good');
+  return null;
+}
+
+/** Ends a career that kept playing past the last year. */
+export function retireForGood(state: GameState): string | null {
+  if (!state.endless || state.over) return 'The studio can only retire early once it has kept playing past the last year.';
+  state.over = 'retired';
+  notify(state, `${state.studioName} retires in ${formatShortDate(state.week)}. What a run!`, 'good');
+  return null;
+}
+
+/** Whole years played past the last year. */
+export function bonusYears(state: GameState): number {
+  return Math.max(0, Math.floor((state.week - TOTAL_WEEKS) / WEEKS_PER_YEAR));
 }
 
 function tickProject(state: GameState, p: GameProject, events: SimEvent[]) {

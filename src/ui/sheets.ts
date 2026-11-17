@@ -16,6 +16,7 @@ import {
   availableMarketing,
   availablePlatforms,
   availableSizes,
+  bonusYears,
   boostWeeks,
   gameCost,
   hasUpgrade,
@@ -28,7 +29,7 @@ import {
   salesPushBlocker,
 } from '../core/sim';
 import { SEQUEL_TOO_SOON_WEEKS, sequelCandidates, sequelSalesMult, seriesNumber, seriesTitle } from '../core/sequels';
-import { END_YEAR, WEEKS_PER_MONTH, WEEKS_PER_YEAR, formatShortDate, yearFraction, yearOf } from '../core/time';
+import { WEEKS_PER_MONTH, WEEKS_PER_YEAR, formatShortDate, marketWeek, yearFraction, yearOf } from '../core/time';
 import { RIVAL_CLASH_MULT, RIVAL_CLASH_WEEKS, rivalClash, trendMult } from '../core/industry';
 import { onSale, paybackWeek, profit, returnMultiple, revenueRank, totalCost, verdict } from '../core/results';
 import { moneyChart, spendBar, weeklyChart } from './charts';
@@ -131,7 +132,7 @@ function stateSheet(state: GameState, sheet: Sheet, ads: MonetizationView, unloc
     case 'gameDetail':
       return gameDetail(state, sheet.id);
     case 'menu':
-      return menu(sheet.saved, ads, unlocked);
+      return menu(state, sheet.saved, ads, unlocked);
     case 'gameOver':
       return gameOver(state, ads, sheet);
     case 'contracts':
@@ -372,7 +373,7 @@ function newGameStep1(state: GameState, d: GameSpec, error?: string, allSequels 
 }
 
 function newGameStep2(state: GameState, d: GameSpec, error?: string): string {
-  const year = yearFraction(state.week);
+  const year = yearFraction(marketWeek(state.week));
   const cost = gameCost(state, d);
   const size = sizeById(d.size);
   const sizes = availableSizes(state);
@@ -389,7 +390,7 @@ function newGameStep2(state: GameState, d: GameSpec, error?: string): string {
           const license = licenseCost(state, p);
           const owned = state.licenses.includes(p.id);
           // A game that launches after the platform is gone has nobody to sell to.
-          const launch = yearFraction(state.week + phaseWeeks(state, d.size) * 3);
+          const launch = yearFraction(marketWeek(state.week + phaseWeeks(state, d.size) * 3));
           const endTag = p.end === undefined ? '' : launch >= p.end ? '<span class="tag bad">Discontinued before launch</span>' : p.end - launch < 1 ? `<span class="tag mid">Discontinued in ${p.end}</span>` : '';
           const fitTag = fit > 1.05 ? `<span class="tag good">Loves ${genreById(d.genre).name}</span>` : fit < 0.95 ? `<span class="tag bad">Weak for ${genreById(d.genre).name}</span>` : '';
           return `
@@ -619,7 +620,7 @@ function gameDetail(state: GameState, id: number): string {
     <div class="btn-row"><button class="btn ghost" data-action="close">Close</button></div>`;
 }
 
-function menu(saved: boolean | undefined, ads: MonetizationView, unlocked: Record<string, Unlock>): string {
+function menu(state: GameState | null, saved: boolean | undefined, ads: MonetizationView, unlocked: Record<string, Unlock>): string {
   // Ads and purchases only exist in the Android app.
   const shop = ads.native
     ? `
@@ -638,6 +639,11 @@ function menu(saved: boolean | undefined, ads: MonetizationView, unlocked: Recor
       <button class="option" data-action="achievements"><span class="emoji">🏆</span><span class="grow"><b>Achievements</b><br/><span class="sub">${unlockedCount(unlocked)} of ${ACHIEVEMENTS.length} unlocked</span></span></button>
       <button class="option" data-action="save"><span class="emoji">💾</span><span class="grow"><b>Save game</b>${saved ? ' <span class="tag good">Saved!</span>' : '<br/><span class="sub">The game also saves automatically every month.</span>'}</span></button>
       ${shop}
+      ${
+        state?.endless && !state.over
+          ? `<button class="option" data-action="ask-retire"><span class="emoji">🏁</span><span class="grow"><b>Retire the studio</b><br/><span class="sub">End the career here and see how it did against the records. New records are also saved every New Year.</span></span></button>`
+          : ''
+      }
       <button class="option" data-action="ask-reset"><span class="emoji">🔄</span><span class="grow"><b>Start over</b><br/><span class="sub">Delete this save and found a new studio.</span></span></button>
     </div>
     <div class="btn-row"><button class="btn ghost" data-action="close">Close</button></div>`;
@@ -1033,10 +1039,14 @@ function gameOver(state: GameState, ads: MonetizationView, sheet: Extract<Sheet,
   const best = games.length ? games.reduce((a, g) => (g.score > a.score ? g : a)) : null;
   const bankrupt = state.over === 'bankrupt';
   const bailout = bankrupt ? bailoutOffer(state, ads) : '';
+  const extra = bonusYears(state);
+  const retiredText = state.endless
+    ? `${esc(state.studioName)} kept going ${extra ? `${extra} year${extra === 1 ? '' : 's'} past ${LAST_YEAR}` : `past ${LAST_YEAR}`} and retires in ${formatShortDate(state.week)}.`
+    : `${esc(state.studioName)} has reached ${formatShortDate(state.week)}. Time to retire.`;
   return `
     <div class="big-emoji">${bankrupt ? '💸' : '🏆'}</div>
     <h3 class="center">${bankrupt ? 'Bankrupt!' : 'A legendary career'}</h3>
-    <p class="muted center">${bankrupt ? (bailout ? 'The money ran out. But the bank is willing to give you one more chance.' : 'The money ran out. Every great studio has a failure or two. Try again!') : `${esc(state.studioName)} has made it to the end of ${END_YEAR}. Time to retire.`}</p>
+    <p class="muted center">${bankrupt ? (bailout ? 'The money ran out. But the bank is willing to give you one more chance.' : 'The money ran out. Every great studio has a failure or two. Try again!') : retiredText}</p>
     ${bailout ? `<div class="options">${bailout}</div>` : ''}
     <div class="summary">
       <div class="line"><span>Games released</span><b>${games.length}</b></div>
@@ -1046,8 +1056,17 @@ function gameOver(state: GameState, ads: MonetizationView, sheet: Extract<Sheet,
       <div class="line"><span>Final cash</span><b>${money(state.cash)}</b></div>
       ${best ? `<div class="line"><span>Best game</span><b>${esc(best.name)} (${best.score.toFixed(1)})</b></div>` : ''}
     </div>
-    ${bankrupt ? '' : careerRecap(state, sheet)}
+    ${bankrupt && !state.endless ? '' : careerRecap(state, sheet)}
+    ${!bankrupt && !state.endless ? keepPlayingOffer() : ''}
     <div class="btn-row"><button class="btn big" data-action="reset">Found a new studio</button></div>`;
+}
+
+/** After the last year: carry on with the same studio, for high scores only. */
+function keepPlayingOffer(): string {
+  return `
+    <div class="options mt">
+      <button class="option" data-action="keep-playing"><span class="emoji">🔁</span><span class="grow"><b>Keep playing for high scores</b><br/><span class="sub">Carry on with this studio past ${LAST_YEAR}. No new platforms or research arrive and the market stays as it is now: it's all about beating the records. Retire from the menu whenever you like.</span></span></button>
+    </div>`;
 }
 
 /** A retired studio's title, highlights and the device's records. */
@@ -1091,6 +1110,7 @@ function careerRecap(state: GameState, sheet: Extract<Sheet, { kind: 'gameOver' 
 
 /** On the new-game sheet: a game that can't come out, or barely sell, before the studio retires. */
 function retirementWarning(state: GameState, devWeeks: number): string {
+  if (state.endless) return '';
   const left = TOTAL_WEEKS - state.week;
   if (devWeeks >= left) return `<p class="error">The studio retires at the end of ${LAST_YEAR}, in ${left} weeks. This game takes ${devWeeks} weeks to make, so it would never come out.</p>`;
   const onSale = left - devWeeks;
