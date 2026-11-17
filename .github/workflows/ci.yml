@@ -195,6 +195,7 @@ jobs:
         env:
           SIGNED: ${{ steps.signing.outputs.signed }}
           ADMOB_APP_ID: ${{ vars.ADMOB_APP_ID }}
+          ADMOB_MEDIATION: ${{ vars.ADMOB_MEDIATION }}
           PLAY_GAMES_RESOURCES: ${{ vars.PLAY_GAMES_RESOURCES }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}

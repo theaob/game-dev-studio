@@ -486,20 +486,21 @@ export function headhuntFee(state: GameState): number {
   return friendly(salaryFor(state, skill, skill) * ROCKSTAR_SALARY_MULT * HEADHUNT_FEE_MONTHS);
 }
 
-export function headhuntBlocker(state: GameState): string | null {
+/** Why the headhunter can't search now, or null. `free`: the fee is waived (a reward video), so cash doesn't matter. */
+export function headhuntBlocker(state: GameState, free = false): string | null {
   if (state.over) return 'The game is over.';
   if (state.headhunt) return 'The headhunter is already searching.';
   if (state.candidates.some((c) => c.rockstar)) return 'Your rockstar applicant is still waiting for an answer.';
   if (state.staff.length >= officeCapacity(state) && !OFFICES[state.officeLevel + 1]) return 'Your office is full, so a rockstar would have no desk.';
-  if (state.cash < headhuntFee(state)) return `The headhunter charges $${headhuntFee(state).toLocaleString('en-US')}.`;
+  if (!free && state.cash < headhuntFee(state)) return `The headhunter charges $${headhuntFee(state).toLocaleString('en-US')}.`;
   return null;
 }
 
-/** Pays a headhunter to find a rockstar developer, who applies after HEADHUNT_WEEKS. */
-export function startHeadhunt(state: GameState): string | null {
-  const err = headhuntBlocker(state);
+/** Pays a headhunter (or not, when `free`) to find a rockstar developer, who applies after HEADHUNT_WEEKS. */
+export function startHeadhunt(state: GameState, free = false): string | null {
+  const err = headhuntBlocker(state, free);
   if (err) return err;
-  state.cash -= headhuntFee(state);
+  if (!free) state.cash -= headhuntFee(state);
   state.headhunt = { weeks: HEADHUNT_WEEKS };
   notify(state, 'A headhunter is searching for a rockstar developer.', 'info');
   return null;

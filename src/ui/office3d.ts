@@ -460,6 +460,8 @@ export class Office3D implements OfficeView {
   private level = 0;
   /** Fish swimming in the aquarium, and textures and materials made for decorations (freed on rebuild). */
   private fish: { mesh: THREE.Mesh; x0: number; range: number; speed: number; phase: number }[] = [];
+  /** The Supporter Pack's disco ball, which spins (null when it isn't placed). */
+  private disco: THREE.Group | null = null;
   private decorDisposables: { dispose(): void }[] = [];
 
   // Cat
@@ -659,6 +661,7 @@ export class Office3D implements OfficeView {
     this.updateCat(tick, time, dt);
     this.updateParticles(dt);
     this.updateFish(time);
+    if (this.disco) this.disco.rotation.y = time * 0.6;
     this.renderer.render(this.scene, this.camera);
     this.updateOverlays(zoners, tick, time);
 
@@ -701,6 +704,7 @@ export class Office3D implements OfficeView {
     for (const t of this.decorDisposables) t.dispose();
     this.decorDisposables = [];
     this.fish = [];
+    this.disco = null;
 
     this.level = state.officeLevel;
     const cols = Math.min(deskCount, MAX_COLS);
@@ -905,6 +909,52 @@ export class Office3D implements OfficeView {
         part(w, 0.03, 0.08, 0.03, '#f2b33d', tx, 2.285, back + 0.11, { geo: CYL, material: gold });
         part(w, 0.11, 0.1, 0.11, '#f2b33d', tx, 2.37, back + 0.11, { geo: CONE, material: gold }).rotation.x = Math.PI;
       }
+    }
+    if (isPlaced(state, 'statue')) {
+      // Supporter Pack: a gold controller on a plinth in the front left corner.
+      const g = group(w, left + 0.6, 0, front - 0.6);
+      g.rotation.y = 0.5;
+      g.scale.setScalar(1.5);
+      part(g, 0.46, 0.5, 0.46, '#ece6da', 0, 0.25, 0, { shadow: true });
+      part(g, 0.52, 0.05, 0.52, '#d9d1c2', 0, 0.525, 0);
+      const gold = mat('#f2b33d', 0.25, '#4a3300', 0.7);
+      const pad = group(g, 0, 0.72, 0);
+      pad.rotation.x = -0.35;
+      part(pad, 0.42, 0.12, 0.2, '#f2b33d', 0, 0, 0, { material: gold, shadow: true });
+      part(pad, 0.16, 0.14, 0.16, '#f2b33d', -0.2, -0.04, 0.04, { geo: SPHERE, material: gold });
+      part(pad, 0.16, 0.14, 0.16, '#f2b33d', 0.2, -0.04, 0.04, { geo: SPHERE, material: gold });
+      part(pad, 0.1, 0.02, 0.03, '#2a2836', -0.11, 0.065, 0);
+      part(pad, 0.03, 0.02, 0.1, '#2a2836', -0.11, 0.065, 0);
+      ['#dc4b2a', '#23877d', '#2f7fc1', '#f2b33d'].forEach((col, i) => {
+        const a = (i * Math.PI) / 2;
+        part(pad, 0.035, 0.02, 0.035, col, 0.11 + Math.cos(a) * 0.035, 0.07, Math.sin(a) * 0.035, { geo: CYL, material: new THREE.MeshBasicMaterial({ color: col }) });
+      });
+      const shine = glowSprite('#ffd25c', 1);
+      (shine.material as THREE.SpriteMaterial).opacity = 0.25;
+      this.decorDisposables.push(shine.material);
+      shine.position.set(0, 0.75, 0);
+      g.add(shine);
+    }
+    if (isPlaced(state, 'disco')) {
+      // Supporter Pack: a mirror ball hanging over the room, throwing coloured spots as it spins.
+      const x = 0.3;
+      const z = back + 1.3;
+      part(w, 0.015, 0.6, 0.015, '#8a8780', x, 2.95, z, { geo: CYL });
+      const ball = group(w, x, 2.35, z);
+      const mirror = new THREE.MeshStandardMaterial({ color: '#d8dce6', roughness: 0.15, metalness: 0.9, emissive: '#3a3f52', flatShading: true });
+      this.decorDisposables.push(mirror);
+      const geo = new THREE.IcosahedronGeometry(0.5, 1);
+      this.decorDisposables.push(geo);
+      part(ball, 0.62, 0.62, 0.62, '#d8dce6', 0, 0, 0, { geo, material: mirror, shadow: true });
+      ['#ff5c9a', '#2ec4d6', '#ffd25c', '#3ddc97', '#9b6bff'].forEach((col, i) => {
+        const spot = glowSprite(col, 0.8);
+        (spot.material as THREE.SpriteMaterial).opacity = 0.7;
+        this.decorDisposables.push(spot.material);
+        const a = (i / 5) * Math.PI * 2;
+        spot.position.set(Math.cos(a) * 0.75, -0.15 + (i % 2) * 0.3, Math.sin(a) * 0.75);
+        ball.add(spot);
+      });
+      this.disco = ball;
     }
     if (isPlaced(state, 'neon')) {
       const c = document.createElement('canvas');

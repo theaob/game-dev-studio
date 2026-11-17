@@ -33,7 +33,7 @@ export const FLOOR_PAINTS: Paint[] = [
   { id: 'navy', name: 'Navy carpet', color: '#2f3b5c' },
 ];
 
-export type DecorId = 'rug' | 'plants' | 'beanbags' | 'bookshelf' | 'trophies' | 'aquarium' | 'arcade' | 'neon';
+export type DecorId = 'rug' | 'plants' | 'beanbags' | 'bookshelf' | 'trophies' | 'aquarium' | 'arcade' | 'neon' | 'statue' | 'disco';
 
 export interface DecorItem {
   id: DecorId;
@@ -42,6 +42,8 @@ export interface DecorItem {
   desc: string;
   /** Price in 1985 dollars; rises with the years like everything else. */
   price: number;
+  /** Part of the Supporter Pack (a Google Play purchase): free, and only for players who bought it. */
+  supporter?: boolean;
 }
 
 export const DECOR: DecorItem[] = [
@@ -53,7 +55,12 @@ export const DECOR: DecorItem[] = [
   { id: 'aquarium', name: 'Aquarium', icon: '🐠', desc: 'A glowing fish tank. The cat approves.', price: 12000 },
   { id: 'arcade', name: 'Arcade Cabinet', icon: '🕹️', desc: 'A blinking arcade machine for "research".', price: 15000 },
   { id: 'neon', name: 'Neon Sign', icon: '💡', desc: "Your studio's name in neon on the back wall.", price: 20000 },
+  { id: 'statue', name: 'Golden Controller', icon: '🎮', desc: 'A gleaming gold game controller on a marble plinth.', price: 0, supporter: true },
+  { id: 'disco', name: 'Disco Ball', icon: '🪩', desc: 'A spinning mirror ball that throws coloured light around the room.', price: 0, supporter: true },
 ];
+
+/** Decorations in the Supporter Pack. */
+export const SUPPORTER_DECOR = DECOR.filter((d) => d.supporter);
 
 /** A repaint costs this much (1985 dollars); going back to the original colours is free. */
 const PAINT_PRICE = 1500;
@@ -79,6 +86,7 @@ export function paintPrice(state: GameState): number {
 }
 
 export function decorPrice(state: GameState, id: DecorId): number {
+  if (decorById(id).supporter) return 0;
   return friendly(decorById(id).price * priceIndex(state.week));
 }
 
@@ -110,10 +118,14 @@ export function repaint(state: GameState, surface: 'wall' | 'floor', id: string)
   return null;
 }
 
-/** Buys a decoration and places it. Returns an error message, or null on success. */
-export function buyDecor(state: GameState, id: DecorId): string | null {
-  decorById(id);
+/**
+ * Buys a decoration and places it. `supporter`: the player owns the Supporter Pack, whose decorations are free.
+ * Returns an error message, or null on success.
+ */
+export function buyDecor(state: GameState, id: DecorId, supporter = false): string | null {
+  const item = decorById(id);
   if (ownsDecor(state, id)) return 'Already owned.';
+  if (item.supporter && !supporter) return 'Part of the Supporter Pack.';
   const price = decorPrice(state, id);
   if (price > state.cash) return 'Not enough cash.';
   state.cash -= price;

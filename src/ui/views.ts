@@ -83,28 +83,34 @@ export function renderNav(tab: Tab, state: GameState, unreadNews: number): strin
 // Studio: an action dock floating over the office
 // ---------------------------------------------------------------------------
 
+/** A reward chip on the studio screen (Android only): which reward, and what the chip says. */
+export interface RewardOffer {
+  id: string;
+  text: string;
+}
+
 /**
- * `cashOffer`: the text of a "watch a video for cash" chip, when the studio is in the red (Android only).
+ * `offer`: a reward that's ready to claim, shown as a chip (Android only).
  * `compact`: shrink the game-in-development card to a two-line summary, so it fits next to the chips.
  */
-export function renderDock(state: GameState, cashOffer = '', compact = false): string {
-  const chips = dockChips(state, cashOffer);
+export function renderDock(state: GameState, offer: RewardOffer | null = null, compact = false): string {
+  const chips = dockChips(state, offer);
   const row = chips.length ? `<div class="dock-chips">${chips.join('')}</div>` : '';
   return `${row}${renderActivity(state, compact)}`;
 }
 
 /** What decides the dock's height, apart from live numbers: re-check whether the full card fits when it changes. */
-export function dockLayoutKey(state: GameState, cashOffer = ''): string {
+export function dockLayoutKey(state: GameState, offer: RewardOffer | null = null): string {
   const a = state.activity;
   const card = !a ? 'idle' : a.kind === 'contract' ? 'contract' : `game:${a.phase >= 3}:${activeBoosts(state) ? 1 : 0}`;
-  return `${card}|${dockChips(state, cashOffer).length}`;
+  return `${card}|${dockChips(state, offer).length}`;
 }
 
-/** Reminders above the activity card, side by side in one row: the cash offer, GameExpo and sales. */
-function dockChips(state: GameState, cashOffer: string): string[] {
+/** Reminders above the activity card, side by side in one row: a reward offer, GameExpo and sales. */
+function dockChips(state: GameState, offer: RewardOffer | null): string[] {
   const selling = state.released.filter((g) => g.weeksOnMarket < SALES_WEEKS);
   const chips: string[] = [];
-  if (cashOffer) chips.push(`<button class="ticker expo" data-action="ad-reward" data-arg="investor">${esc(cashOffer)}</button>`);
+  if (offer) chips.push(`<button class="ticker expo" data-action="ad-reward" data-arg="${esc(offer.id)}">${esc(offer.text)}</button>`);
   const expo = expoChip(state);
   if (expo) chips.push(expo);
   if (selling.length) {
@@ -525,7 +531,8 @@ function researchRow(state: GameState, id: string, icon: string, name: string, d
 // Staff
 // ---------------------------------------------------------------------------
 
-export function renderStaff(state: GameState): string {
+/** `headhunterVideo`: the free-search button for the headhunter (a reward video), or '' when it isn't on offer. */
+export function renderStaff(state: GameState, headhunterVideo = ''): string {
   const office = OFFICES[state.officeLevel];
   const next = OFFICES[state.officeLevel + 1];
   const full = state.staff.length >= officeCapacity(state);
@@ -570,10 +577,10 @@ export function renderStaff(state: GameState): string {
         .join('') || '<div class="empty">No applicants right now. New ones arrive every few months.</div>'
     }
   </div>
-  ${headhuntCard(state)}`;
+  ${headhuntCard(state, headhunterVideo)}`;
 }
 
-function headhuntCard(state: GameState): string {
+function headhuntCard(state: GameState, video: string): string {
   const waiting = state.candidates.some((c) => c.rockstar);
   const blocker = headhuntBlocker(state);
   const status = state.headhunt
@@ -592,7 +599,7 @@ function headhuntCard(state: GameState): string {
         <div class="sub">A headhunter finds a rare developer with top skills and extra speed in ${HEADHUNT_WEEKS} weeks. Rockstars ask for ${Math.round((ROCKSTAR_SALARY_MULT - 1) * 100)}% more pay.</div>
         ${status ? `<div class="sub" style="margin-top:4px"><b>${status}</b></div>` : ''}
       </div>
-      ${state.headhunt || waiting ? '' : `<button class="btn small" data-action="headhunt" ${blocker ? 'disabled' : ''}>${money(headhuntFee(state))}</button>`}
+      ${state.headhunt || waiting ? '' : `<div class="btn-col"><button class="btn small" data-action="headhunt" ${blocker ? 'disabled' : ''}>${money(headhuntFee(state))}</button>${video}</div>`}
     </div>
   </div>`;
 }

@@ -35,7 +35,7 @@ import { WEEKS_PER_MONTH, WEEKS_PER_YEAR, formatShortDate, marketWeek, yearFract
 import { RIVAL_CLASH_MULT, RIVAL_CLASH_WEEKS, rivalClash, trendMult } from '../core/industry';
 import { onSale, paybackWeek, profit, returnMultiple, revenueRank, totalCost, verdict } from '../core/results';
 import { moneyChart, spendBar, weeklyChart } from './charts';
-import { REWARDS, bailoutCash, canBailout, rewardAmount, rewardBlocker, type Reward } from '../core/rewards';
+import { PRESS_TOUR_BOOST, REWARDS, bailoutCash, canBailout, pressTourBlocker, pressTourCopies, rewardAmount, rewardBlocker, type Reward } from '../core/rewards';
 import type { MonetizationView } from './monetization';
 import { RIVALS } from '../core/industry';
 import { VENTURES, VENTURE_OFFICE, licenseCost, phaseWeeks, platformFit, acquirableRivals, acquireBlocker, acquisitionFans, acquisitionPrice, hasVenture, ventureBlocker, venturePrice, type Venture } from '../core/ventures';
@@ -43,7 +43,7 @@ import { BOOTHS, EXPO_BOOKING_WEEKS, MAX_HYPE, PROMOS, SALES_PUSHES, boothById, 
 import type { GameProject, GameSpec, GameState, ReleaseReport } from '../core/types';
 import { esc, money, num, scoreClass } from './format';
 import type { StoreItem } from '../core/data';
-import { DECOR, FLOOR_PAINTS, WALL_PAINTS, decorPrice, isPlaced, ownsDecor, paintPrice, trophyCount } from '../core/decor';
+import { DECOR, FLOOR_PAINTS, SUPPORTER_DECOR, WALL_PAINTS, decorPrice, isPlaced, ownsDecor, paintPrice, trophyCount } from '../core/decor';
 import type { DecorItem, Paint } from '../core/decor';
 import { acclaimTag, polishPicker } from './views';
 import { acclaimOf, beloved, longAwaitedHype, sequelHype } from '../core/acclaim';
@@ -79,11 +79,13 @@ export type Sheet =
   | { kind: 'decision' }
   | { kind: 'achievements' }
   | { kind: 'goals' }
+  /** The one-time Remove ads offer, after a few full-screen ads (Android only). */
+  | { kind: 'supportOffer' }
   /** `records`: the career records on this device; `beaten`: the ones this career just set. */
   | { kind: 'gameOver'; records?: CareerRecords; beaten?: RecordKey[] };
 
 /** The web build: no ads, no purchases. */
-const NO_ADS: MonetizationView = { native: false, rewardedReady: false, adFree: false, privacyOptions: false, busy: false };
+const NO_ADS: MonetizationView = { native: false, rewardedReady: false, adFree: false, supporter: false, privacyOptions: false, busy: false };
 
 export const OUTLETS = ['Game Weekly', 'Pixel Press', 'PlayZone', 'Joystick Journal'];
 
@@ -131,9 +133,9 @@ function stateSheet(state: GameState, sheet: Sheet, ads: MonetizationView, unloc
     case 'devComplete':
       return devComplete(state);
     case 'review':
-      return review(sheet.report, sheet.shown);
+      return review(state, sheet.report, sheet.shown, ads);
     case 'gameDetail':
-      return gameDetail(state, sheet.id);
+      return gameDetail(state, sheet.id, ads);
     case 'menu':
       return menu(state, sheet.saved, ads, unlocked);
     case 'gameOver':
@@ -143,7 +145,9 @@ function stateSheet(state: GameState, sheet: Sheet, ads: MonetizationView, unloc
     case 'store':
       return store(state, ads);
     case 'decor':
-      return decorSheet(state);
+      return decorSheet(state, ads);
+    case 'supportOffer':
+      return supportOffer(ads);
     case 'marketing':
       return marketing(state);
     case 'expo':
@@ -574,7 +578,7 @@ function balanceAdvice(p: GameProject): string {
   return `${genre.name} players like about ${target}% design; this game is ${share}%. Polishing ${more} or reworking the game would help.`;
 }
 
-function review(report: ReleaseReport, shown: number): string {
+function review(state: GameState, report: ReleaseReport, shown: number, ads: MonetizationView): string {
   const g = report.game;
   const done = shown >= g.reviews.length;
   return `
@@ -602,12 +606,13 @@ function review(report: ReleaseReport, shown: number): string {
       </div>
       <h4>What we learned</h4>
       <ul class="insights">${report.insights.map((i) => `<li class="${i.kind}">${esc(i.text)}</li>`).join('')}</ul>
+      ${pressTourOffer(state, g.id, ads)}
       <div class="btn-row"><button class="btn big" data-action="close">Continue</button></div>`
         : '<div class="btn-row"><button class="btn ghost" data-action="skip-reviews">Skip</button></div>'
     }`;
 }
 
-function gameDetail(state: GameState, id: number): string {
+function gameDetail(state: GameState, id: number, ads: MonetizationView = NO_ADS): string {
   const g = state.released.find((x) => x.id === id);
   if (!g) return '';
   const prequel = g.sequelOf !== undefined ? state.released.find((x) => x.id === g.sequelOf) : undefined;
@@ -636,6 +641,7 @@ function gameDetail(state: GameState, id: number): string {
       <div class="stat"><small>Score</small><b>${g.score.toFixed(1)}</b></div>
     </div>
     ${selling ? `<p class="sub mt-s">Still selling: week ${g.weeksOnMarket} of ${SALES_WEEKS}.</p>` : ''}
+    ${selling ? pressTourOffer(state, g.id, ads) : ''}
     <h4>Money made vs cost</h4>
     ${moneyChart(g)}
     ${payText ? `<p class="sub">${payText}</p>` : ''}
@@ -660,10 +666,11 @@ function menu(state: GameState | null, saved: boolean | undefined, ads: Monetiza
     ? `
       ${
         ads.adFree
-          ? '<div class="option"><span class="emoji">💖</span><span class="grow"><b>Ads removed</b><br/><span class="sub">Thanks for supporting the game! Optional videos for rewards stay available.</span></span></div>'
-          : `<button class="option" data-action="remove-ads" ${ads.busy ? 'disabled' : ''}><span class="emoji">🚫</span><span class="grow"><b>Remove ads${ads.removeAdsPrice ? ` · ${esc(ads.removeAdsPrice)}` : ''}</b><br/><span class="sub">One-time purchase. No more full-screen ads; optional reward videos stay.</span></span></button>`
+          ? '<div class="option"><span class="emoji">💖</span><span class="grow"><b>Ads removed</b><br/><span class="sub">Thanks for supporting the game! Rewards are yours without watching a video.</span></span></div>'
+          : removeAdsRow(ads)
       }
-      <button class="option" data-action="restore-purchases"><span class="emoji">♻️</span><span class="grow"><b>Restore purchases</b><br/><span class="sub">Bought "Remove ads" on another phone? Get it back here.</span></span></button>
+      ${supporterRow(ads)}
+      <button class="option" data-action="restore-purchases"><span class="emoji">♻️</span><span class="grow"><b>Restore purchases</b><br/><span class="sub">Bought "Remove ads" or the Supporter Pack on another phone? Get it back here.</span></span></button>
       ${ads.privacyOptions ? '<button class="option" data-action="privacy-options"><span class="emoji">🔒</span><span class="grow"><b>Privacy options</b><br/><span class="sub">Change your ad consent choices.</span></span></button>' : ''}`
     : '';
   return `
@@ -828,15 +835,63 @@ function acquisitions(state: GameState): string {
 
 /** A reward for watching an optional video, with what it gives now or why not. */
 function rewardRow(state: GameState, r: Reward, ads: MonetizationView): string {
-  const blocked = rewardBlocker(state, r.id) ?? (ads.busy ? 'Just a moment…' : !ads.rewardedReady ? 'Loading a video…' : null);
+  const blocked = rewardBlocker(state, r.id) ?? videoWaiting(ads);
   return `
     <div class="option store-item">
       <span class="emoji">${r.icon}</span>
       <span class="grow"><b>${r.name}</b> <span class="tag good">${esc(rewardAmount(state, r.id))}</span><br/><span class="sub">${r.desc}</span>${
         blocked ? `<br/><span class="sub warn">${esc(blocked)}</span>` : ''
       }</span>
-      <button class="btn small" data-action="ad-reward" data-arg="${r.id}" ${blocked ? 'disabled' : ''}>▶ Watch</button>
+      ${videoButton('ad-reward', r.id, !!blocked, ads)}
     </div>`;
+}
+
+/** The button that earns a reward: a video for most players, a plain claim for those who bought a pack. */
+export function videoButton(action: string, arg: string, disabled: boolean, ads: MonetizationView): string {
+  return `<button class="btn small" data-action="${action}" data-arg="${esc(arg)}" ${disabled ? 'disabled' : ''}>${ads.adFree ? '🎁 Claim' : '▶ Watch'}</button>`;
+}
+
+/** Why a reward button is greyed out while the ad itself isn't ready, or null. */
+export function videoWaiting(ads: MonetizationView): string | null {
+  return ads.busy ? 'Just a moment…' : !ads.rewardedReady ? 'Loading a video…' : null;
+}
+
+/** After a release (and on the game's page while it sells): one free press tour for more sales. */
+function pressTourOffer(state: GameState, gameId: number, ads: MonetizationView): string {
+  if (!ads.native || pressTourBlocker(state, gameId)) return '';
+  const copies = pressTourCopies(state, gameId);
+  if (copies <= 0) return '';
+  const waiting = videoWaiting(ads);
+  return `
+    <div class="options mt-s"><div class="option store-item">
+      <span class="emoji">🎤</span>
+      <span class="grow"><b>Press tour</b> <span class="tag good">+${Math.round(PRESS_TOUR_BOOST * 100)}% sales</span><br/><span class="sub">${ads.adFree ? 'On the house for supporters' : 'Watch a video'} and the team tours the magazines: about ${num(copies)} more copies to sell. Once per game.</span>${
+        waiting ? `<br/><span class="sub warn">${waiting}</span>` : ''
+      }</span>
+      ${videoButton('press-tour', String(gameId), !!waiting, ads)}
+    </div></div>`;
+}
+
+function removeAdsRow(ads: MonetizationView): string {
+  return `<button class="option" data-action="remove-ads" ${ads.busy ? 'disabled' : ''}><span class="emoji">🚫</span><span class="grow"><b>Remove ads${ads.removeAdsPrice ? ` · ${esc(ads.removeAdsPrice)}` : ''}</b><br/><span class="sub">One-time purchase. No more full-screen ads, and rewards without watching a video.</span></span></button>`;
+}
+
+/** The Supporter Pack, once Google Play has a price for it (so it stays hidden until it's set up). */
+function supporterRow(ads: MonetizationView): string {
+  if (ads.supporter) return '<div class="option"><span class="emoji">🌟</span><span class="grow"><b>Supporter</b><br/><span class="sub">Thank you! Your exclusive decorations are in the Decorate sheet.</span></span></div>';
+  if (!ads.supporterPrice) return '';
+  const names = SUPPORTER_DECOR.map((d) => `${d.icon} ${d.name}`).join(' and ');
+  return `<button class="option" data-action="buy-supporter" ${ads.busy ? 'disabled' : ''}><span class="emoji">🌟</span><span class="grow"><b>Supporter Pack · ${esc(ads.supporterPrice)}</b><br/><span class="sub">Everything in Remove ads, plus the exclusive ${names} for your studio.</span></span></button>`;
+}
+
+/** The one-time offer after a few full-screen ads. */
+function supportOffer(ads: MonetizationView): string {
+  return `
+    <div class="big-emoji">💖</div>
+    <h3 class="center">Enjoying Game Dev Studio?</h3>
+    <p class="muted center">Ads keep Game Dev Studio free. If you'd rather not see them, a one-time purchase turns them off for good, and rewards come without a video.</p>
+    <div class="options mt">${removeAdsRow(ads)}${supporterRow(ads)}</div>
+    <div class="btn-row"><button class="btn ghost" data-action="close">Maybe later</button></div>`;
 }
 
 function store(state: GameState, ads: MonetizationView): string {
@@ -845,7 +900,7 @@ function store(state: GameState, ads: MonetizationView): string {
   return `
     <h3>Store</h3>
     <p class="muted">Power-ups for your team. Boosts only count down while a game is in development.</p>
-    ${ads.native ? `<h4>Free with a video</h4><div class="options">${REWARDS.map((r) => rewardRow(state, r, ads)).join('')}</div>` : ''}
+    ${ads.native ? `<h4>${ads.adFree ? 'Free for supporters' : 'Free with a video'}</h4><div class="options">${REWARDS.filter((r) => !r.notInStore).map((r) => rewardRow(state, r, ads)).join('')}</div>` : ''}
     <h4>Boosts</h4>
     <div class="options">${boosts.map((x) => storeRow(state, x)).join('')}</div>
     <h4>Studio upgrades</h4>
@@ -874,7 +929,7 @@ function swatches(state: GameState, surface: 'wall' | 'floor', paints: Paint[]):
   return `<div class="swatches">${swatch('', 'Original', null)}${paints.map((p) => swatch(p.id, p.name, p.color)).join('')}</div>`;
 }
 
-function decorRow(state: GameState, item: DecorItem): string {
+function decorRow(state: GameState, item: DecorItem, ads: MonetizationView = NO_ADS): string {
   const owned = ownsDecor(state, item.id);
   const placed = isPlaced(state, item.id);
   const price = decorPrice(state, item.id);
@@ -883,7 +938,11 @@ function decorRow(state: GameState, item: DecorItem): string {
   const extra = item.id === 'trophies' && owned ? ` You have ${trophyCount(state)} so far.` : '';
   const button = owned
     ? `<button class="btn small${placed ? ' ghost' : ''}" data-action="toggle-decor" data-arg="${item.id}">${placed ? 'Put away' : 'Place'}</button>`
-    : `<button class="btn small" data-action="buy-decor" data-arg="${item.id}" ${blocked ? 'disabled' : ''}>Buy · ${money(price)}</button>`;
+    : item.supporter
+      ? ads.supporter
+        ? `<button class="btn small" data-action="buy-decor" data-arg="${item.id}">Add · Free</button>`
+        : '<span class="tag">🌟 Supporter</span>'
+      : `<button class="btn small" data-action="buy-decor" data-arg="${item.id}" ${blocked ? 'disabled' : ''}>Buy · ${money(price)}</button>`;
   return `
     <div class="option store-item">
       <span class="emoji">${item.icon}</span>
@@ -892,7 +951,7 @@ function decorRow(state: GameState, item: DecorItem): string {
     </div>`;
 }
 
-function decorSheet(state: GameState): string {
+function decorSheet(state: GameState, ads: MonetizationView): string {
   const wall = WALL_PAINTS.find((p) => p.id === state.decor?.wall)?.name ?? 'Original';
   const floor = FLOOR_PAINTS.find((p) => p.id === state.decor?.floor)?.name ?? 'Original';
   return `
@@ -905,8 +964,18 @@ function decorSheet(state: GameState): string {
     <p class="sub">A new colour costs ${money(paintPrice(state))}. Going back to the original is free.</p>
     <h4>Decorations</h4>
     <p class="sub">Buy once, then place or put away for free.</p>
-    <div class="options">${DECOR.map((d) => decorRow(state, d)).join('')}</div>
+    <div class="options">${DECOR.filter((d) => !d.supporter).map((d) => decorRow(state, d)).join('')}</div>
+    ${supporterDecor(state, ads)}
     <div class="btn-row"><button class="btn ghost" data-action="store">Back to Store</button><button class="btn ghost" data-action="close">Close</button></div>`;
+}
+
+/** The Supporter Pack's decorations: free for supporters, a peek (and the offer) for everyone else in the app. */
+function supporterDecor(state: GameState, ads: MonetizationView): string {
+  if (!ads.native || (!ads.supporter && !ads.supporterPrice && !SUPPORTER_DECOR.some((d) => ownsDecor(state, d.id)))) return '';
+  return `
+    <h4>🌟 Supporter exclusives</h4>
+    ${ads.supporter ? '<p class="sub">Thanks for your support! These are yours in every studio.</p>' : ''}
+    <div class="options">${SUPPORTER_DECOR.map((d) => decorRow(state, d, ads)).join('')}${ads.supporter ? '' : supporterRow(ads)}</div>`;
 }
 
 /** One buyable marketing option: icon, name, what it does, and a price button (or why not). */
@@ -1056,14 +1125,14 @@ function keynote(state: GameState, k: Keynote): string {
 /** The first bankruptcy in a save can be undone once with a video (Android app only). */
 function bailoutOffer(state: GameState, ads: MonetizationView): string {
   if (!ads.native || !canBailout(state)) return '';
-  const waiting = ads.busy ? 'Just a moment…' : !ads.rewardedReady ? 'Loading a video…' : null;
+  const waiting = videoWaiting(ads);
   return `
     <div class="option store-item">
       <span class="emoji">🏦</span>
-      <span class="grow"><b>Bailout</b> <span class="tag good">+${money(bailoutCash(state))}</span><br/><span class="sub">Watch a video and the bank pays off your debt and gives you three months of running costs. One bailout per studio.</span>${
+      <span class="grow"><b>Bailout</b> <span class="tag good">+${money(bailoutCash(state))}</span><br/><span class="sub">${ads.adFree ? 'As a supporter, no video needed: the bank' : 'Watch a video and the bank'} pays off your debt and gives you three months of running costs. One bailout per studio.</span>${
         waiting ? `<br/><span class="sub warn">${waiting}</span>` : ''
       }</span>
-      <button class="btn small" data-action="bailout" ${waiting ? 'disabled' : ''}>▶ Watch</button>
+      ${videoButton('bailout', '', !!waiting, ads)}
     </div>`;
 }
 
@@ -1092,6 +1161,7 @@ function gameOver(state: GameState, ads: MonetizationView, sheet: Extract<Sheet,
     </div>
     ${bankrupt && !state.endless ? '' : careerRecap(state, sheet)}
     ${!bankrupt && !state.endless ? keepPlayingOffer() : ''}
+    ${ads.native && !ads.adFree ? `<h4>Play the next one ad-free</h4><div class="options">${removeAdsRow(ads)}${supporterRow(ads)}</div>` : ''}
     <div class="btn-row"><button class="btn big" data-action="reset">Found a new studio</button></div>`;
 }
 
