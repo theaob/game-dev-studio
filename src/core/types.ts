@@ -194,6 +194,8 @@ export interface GameState {
   acquired?: string[];
   /** Levels of the never-ending R&D projects (see rnd.ts). */
   rnd?: Partial<Record<string, number>>;
+  /** The guided first game: the cards already dismissed, and whether it's finished or skipped (see guide.ts). */
+  guide?: { seen?: string[]; done?: boolean };
 }
 
 export interface DecorState {
