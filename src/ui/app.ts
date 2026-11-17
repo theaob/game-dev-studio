@@ -7,8 +7,9 @@ import type { BoothId, PromoId, SalesPushId } from '../core/marketing';
 import { normalizeFocus } from '../core/scoring';
 import { sequelName } from '../core/sequels';
 import type { GameSpec, GameState, GenreId, ReleasedGame, MarketingId, NoticeKind, PolishMode, SimEvent, SizeId } from '../core/types';
-import { clearSave, loadAchievements, loadGame, saveAchievements, saveGame, type Unlock } from '../save';
+import { clearSave, loadAchievements, loadGame, loadRecords, saveAchievements, saveGame, saveRecords, type Unlock } from '../save';
 import { newAchievements } from '../core/achievements';
+import { addCareer } from '../core/career';
 import { OfficeScene } from './office';
 import { OfficeLoading, hasWebGL } from './office-loading';
 import { CAT_ID } from './office-common';
@@ -164,10 +165,16 @@ export class App {
       case 'notice':
         this.toast(ev.notice.text, ev.notice.kind);
         break;
-      case 'gameOver':
+      case 'gameOver': {
         this.save();
-        this.open({ kind: 'gameOver' });
+        // A retired studio joins the device's records; a bankrupt one may still be bailed out.
+        if (ev.reason === 'retired') {
+          const { records, beaten } = addCareer(loadRecords(), this.state!);
+          saveRecords(records);
+          this.open({ kind: 'gameOver', records, beaten });
+        } else this.open({ kind: 'gameOver' });
         break;
+      }
       case 'zone':
         this.office.celebrate(ev.staffId);
         this.toast(ev.name === 'You' ? "🔥 You're in the zone!" : `🔥 ${ev.name} is in the zone!`, 'good');
@@ -200,7 +207,7 @@ export class App {
   /** Re-opens prompts that were pending when the game was saved. */
   private resumePrompts() {
     const s = this.state!;
-    if (s.over) this.open({ kind: 'gameOver' });
+    if (s.over) this.open(s.over === 'retired' ? { kind: 'gameOver', records: loadRecords() } : { kind: 'gameOver' });
     else if (s.activity?.kind === 'game' && s.activity.awaitingFocus) {
       this.open({ kind: 'focus', phase: s.activity.phase, values: [50, 50, 50] });
     }

@@ -56,6 +56,8 @@ The UI is laid out like a mobile game, not a web page. The office fills the scre
     - careless solo developers stay small.
 - **🏆 Achievements**: 26 milestones across the whole game, from your first release, rave reviews, a perfect combination, awards and Game of the Year to your first million, hiring a rockstar, moving to the campus, decorating the studio, the big stage at GameExpo, surviving bankruptcy with the bailout and reaching 2025. A toast pops up when one unlocks, and Menu → Achievements lists them all, locked and unlocked. Achievements belong to the device, not the save: starting over keeps them, and each one remembers the year and the studio that earned it.
 
+- **The end of 2025**: the studio retires when 2025 ends. In January 2025 the game says it's the last year, and the new-game screen warns when a game couldn't come out in time or would only have a few weeks on sale. The ending gives the studio a title (from 🌱 Indie Survivor to 👑 Legend), its highlights (awards, Game of the Year wins, hits, best seller, longest series) and the **records** on this device: games released, average score (from 5 games), awards, Game of the Year wins, revenue and fans. Like achievements, records survive starting over, so the next studio has them to beat.
+
 The game autosaves to local storage every in-game month.
 
 ## Development

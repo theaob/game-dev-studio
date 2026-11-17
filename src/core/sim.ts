@@ -47,7 +47,7 @@ import { acclaimFor, longAwaitedHype, sequelHype } from './acclaim';
 import { ESPORTS_FANS, PUBLISHING_SALES, hasVenture, licenseCost, phaseWeeks, platformFit, ventureHypeMult } from './ventures';
 import { expertiseMult, genreLevel, topicLevel } from './expertise';
 import { average, benchmark, clamp, evaluate, normalizeFocus, rollReviews, scoreFactor } from './scoring';
-import { START_YEAR, TOTAL_WEEKS, WEEKS_PER_MONTH, WEEKS_PER_YEAR, yearFraction, yearOf } from './time';
+import { END_YEAR, START_YEAR, TOTAL_WEEKS, WEEKS_PER_MONTH, WEEKS_PER_YEAR, yearFraction, yearOf } from './time';
 import type {
   ContractOffer,
   ExpoReport,
@@ -1165,6 +1165,8 @@ function yearly(state: GameState) {
   const year = yearOf(state.week);
   // Yearly pay review: salaries keep up with the market rate for each person's skills.
   for (const s of state.staff) if (!s.founder) s.salary = Math.max(s.salary, salaryFor(state, s.design, s.tech));
+  // The last year: give the player time to plan a final release.
+  if (year === END_YEAR) notify(state, `${END_YEAR} is ${state.studioName}'s last year: the studio retires in December. Plan a final game that can come out in time.`, 'info');
   // Launches get a keynote (see industry.ts) rather than a toast.
   for (const p of PLATFORMS) {
     if (p.end === year) notify(state, `The ${p.name} has been discontinued.`, 'info');

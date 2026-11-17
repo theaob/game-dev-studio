@@ -49,6 +49,8 @@ import { ACHIEVEMENTS } from '../core/achievements';
 import type { Unlock } from '../save';
 import type { PlayGamesView } from './play-games';
 import type { Keynote } from '../core/keynote';
+import { CAREER_HIT_SCORE, RECORD_KEYS, careerStats, careerTitle, type CareerRecords, type RecordKey } from '../core/career';
+import { END_YEAR as LAST_YEAR, TOTAL_WEEKS } from '../core/time';
 
 export type Sheet =
   | { kind: 'welcome'; name: string }
@@ -68,7 +70,8 @@ export type Sheet =
   | { kind: 'expo' }
   | { kind: 'keynote'; keynote: Keynote }
   | { kind: 'achievements' }
-  | { kind: 'gameOver' };
+  /** `records`: the career records on this device; `beaten`: the ones this career just set. */
+  | { kind: 'gameOver'; records?: CareerRecords; beaten?: RecordKey[] };
 
 /** The web build: no ads, no purchases. */
 const NO_ADS: MonetizationView = { native: false, rewardedReady: false, adFree: false, privacyOptions: false, busy: false };
@@ -113,7 +116,7 @@ export function renderSheet(
     case 'menu':
       return menu(sheet.saved, ads, unlocked);
     case 'gameOver':
-      return gameOver(state, ads);
+      return gameOver(state, ads, sheet);
     case 'contracts':
       return contracts(state);
     case 'store':
@@ -387,6 +390,7 @@ function newGameStep2(state: GameState, d: GameSpec, error?: string): string {
         .join('')}
     </div>
     ${state.staff.length < size.minStaff ? `<p class="error">Your team is small for a ${size.name.toLowerCase()} game. Quality will suffer.</p>` : ''}
+    ${retirementWarning(state, phaseWeeks(state, d.size) * 3)}
     ${
       marketing.length > 1
         ? `<h4>Marketing</h4><div class="options">${marketing
@@ -960,7 +964,7 @@ function bailoutOffer(state: GameState, ads: MonetizationView): string {
     </div>`;
 }
 
-function gameOver(state: GameState, ads: MonetizationView): string {
+function gameOver(state: GameState, ads: MonetizationView, sheet: Extract<Sheet, { kind: 'gameOver' }>): string {
   const games = state.released;
   const avg = games.length ? games.reduce((a, g) => a + g.score, 0) / games.length : 0;
   const best = games.length ? games.reduce((a, g) => (g.score > a.score ? g : a)) : null;
@@ -979,5 +983,54 @@ function gameOver(state: GameState, ads: MonetizationView): string {
       <div class="line"><span>Final cash</span><b>${money(state.cash)}</b></div>
       ${best ? `<div class="line"><span>Best game</span><b>${esc(best.name)} (${best.score.toFixed(1)})</b></div>` : ''}
     </div>
+    ${bankrupt ? '' : careerRecap(state, sheet)}
     <div class="btn-row"><button class="btn big" data-action="reset">Found a new studio</button></div>`;
+}
+
+/** A retired studio's title, highlights and the device's records. */
+function careerRecap(state: GameState, sheet: Extract<Sheet, { kind: 'gameOver' }>): string {
+  const c = careerStats(state);
+  const title = careerTitle(c);
+  const highlights = [
+    c.masterpieces ? `<div class="line"><span>👑 Masterpieces</span><b>${c.masterpieces}${c.perfectTens ? ` (${c.perfectTens} perfect 10${c.perfectTens > 1 ? 's' : ''})` : ''}</b></div>` : '',
+    c.choice ? `<div class="line"><span>🏅 Critics' Choice</span><b>${c.choice}</b></div>` : '',
+    c.gotyYears.length ? `<div class="line"><span>🏆 Game of the Year</span><b>${c.gotyYears.length > 3 ? `${c.gotyYears.length} times` : c.gotyYears.join(', ')}</b></div>` : '',
+    `<div class="line"><span>Hits (${CAREER_HIT_SCORE}+ reviews)</span><b>${c.hits}</b></div>`,
+    c.bestSeller ? `<div class="line"><span>Best seller</span><b>${esc(c.bestSeller.name)} (${num(c.bestSeller.unitsSold)} copies)</b></div>` : '',
+    c.longestSeries >= 2 ? `<div class="line"><span>Longest series</span><b>${c.longestSeries} games</b></div>` : '',
+  ].join('');
+  const records = sheet.records;
+  const beaten = new Set(sheet.beaten ?? []);
+  const show = (key: RecordKey, v: number) => (key === 'revenue' ? money(v) : key === 'fans' ? num(v) : key === 'avgScore' ? v.toFixed(1) : `${v}`);
+  const recordLines = records
+    ? RECORD_KEYS.map(({ key, label }) => {
+        const rec = records.best[key];
+        if (!rec) return '';
+        // A record set just now, or one this studio already holds (the ending can be reopened), or someone else's.
+        const holder = beaten.has(key) ? ' <span class="tag good">🥇 New record</span>' : rec.studio === state.studioName ? ' <span class="tag good">🥇 Record</span>' : ` <span class="sub">${esc(rec.studio)}, ${rec.year}</span>`;
+        return `<div class="line"><span>${label}</span><b>${show(key, rec.value)}${holder}</b></div>`;
+      }).join('')
+    : '';
+  const recordNote = !records
+    ? ''
+    : records.careers <= 1
+      ? '<p class="sub">Your first finished career on this device. These are the records your next studio has to beat.</p>'
+      : `<p class="sub">Best of ${records.careers} finished careers on this device.${beaten.size ? ` This one set ${beaten.size} new record${beaten.size > 1 ? 's' : ''}!` : ''}</p>`;
+  return `
+    <div class="career-title">
+      <span class="emoji">${title.icon}</span>
+      <span><b>${title.name}</b><br/><span class="sub">${title.desc}</span></span>
+    </div>
+    <h4>Highlights</h4>
+    <div class="summary">${highlights}</div>
+    ${recordLines ? `<h4>Records</h4>${recordNote}<div class="summary">${recordLines}</div>` : ''}`;
+}
+
+/** On the new-game sheet: a game that can't come out, or barely sell, before the studio retires. */
+function retirementWarning(state: GameState, devWeeks: number): string {
+  const left = TOTAL_WEEKS - state.week;
+  if (devWeeks >= left) return `<p class="error">The studio retires at the end of ${LAST_YEAR}, in ${left} weeks. This game takes ${devWeeks} weeks to make, so it would never come out.</p>`;
+  const onSale = left - devWeeks;
+  if (onSale < SALES_WEEKS) return `<p class="sub warn">The studio retires at the end of ${LAST_YEAR}: this game would be on sale for ${onSale} week${onSale === 1 ? '' : 's'} at most, not the usual ${SALES_WEEKS}.</p>`;
+  return '';
 }
