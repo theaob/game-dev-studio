@@ -1,5 +1,6 @@
 import type { Keynote } from './keynote';
 import type { GoalsState } from './goals';
+import type { PendingDecision } from './events';
 
 export type GenreId = 'action' | 'adventure' | 'rpg' | 'simulation' | 'strategy' | 'puzzle' | 'casual' | 'platformer' | 'shooter' | 'rhythm';
 export type SizeId = 'small' | 'medium' | 'large';
@@ -18,6 +19,8 @@ export interface Staff {
   zone?: number;
   /** Found by a headhunter: rare skills, faster, paid a premium. */
   rockstar?: boolean;
+  /** Week a rival last tried to hire them away (see events.ts). */
+  poachedWeek?: number;
 }
 
 export interface GameSpec {
@@ -68,6 +71,8 @@ export interface GameProject extends GameSpec {
   contrib: Record<number, { design: number; tech: number }>;
   /** Upfront money spent (license, size, marketing). */
   cost: number;
+  /** Share of sales a publisher keeps, if one funded the game (see events.ts). */
+  publisherCut?: number;
 }
 
 export interface ContractOffer {
@@ -116,6 +121,8 @@ export interface ReleasedGame extends GameSpec {
   spend?: Spend;
   /** Copies sold and money made in each week on the market. */
   weekly?: { units: number[]; revenue: number[] };
+  /** Share of sales a publisher keeps, if one funded the game (see events.ts). */
+  publisherCut?: number;
 }
 
 export interface Spend {
@@ -202,6 +209,10 @@ export interface GameState {
   rnd?: Partial<Record<string, number>>;
   /** The guided first game: the cards already dismissed, and whether it's finished or skipped (see guide.ts). */
   guide?: { seen?: string[]; done?: boolean };
+  /** A decision event waiting for the player, and the week of the last one (see events.ts). */
+  decision?: PendingDecision;
+  lastDecisionWeek?: number;
+  lastDecisionId?: string;
 }
 
 export interface DecorState {
@@ -273,4 +284,5 @@ export type SimEvent =
   | { type: 'catLap'; staffId: number; name: string }
   | { type: 'catLeft'; staffId: number }
   | { type: 'expo'; report: ExpoReport }
-  | { type: 'keynote'; keynote: Keynote };
+  | { type: 'keynote'; keynote: Keynote }
+  | { type: 'decision'; decision: PendingDecision };

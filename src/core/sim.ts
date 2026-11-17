@@ -47,6 +47,7 @@ import { acclaimFor, longAwaitedHype, sequelHype } from './acclaim';
 import { ESPORTS_FANS, PUBLISHING_SALES, hasVenture, licenseCost, phaseWeeks, platformFit, ventureHypeMult } from './ventures';
 import { expertiseMult, genreLevel, topicLevel } from './expertise';
 import { rndBugMult, rndDesignMult, rndTechMult } from './rnd';
+import { rollDecision } from './events';
 import { average, benchmark, clamp, evaluate, normalizeFocus, rollReviews, scoreFactor } from './scoring';
 import { END_YEAR, START_YEAR, TOTAL_WEEKS, WEEKS_PER_MONTH, WEEKS_PER_YEAR, formatShortDate, marketWeek, yearFraction, yearOf } from './time';
 import type {
@@ -635,6 +636,7 @@ export function releaseGame(state: GameState): ReleaseReport | string {
     acclaim: acclaimFor(score)?.id,
     spend: p.spend ? { ...p.spend } : undefined,
     weekly: { units: [], revenue: [] },
+    ...(p.publisherCut ? { publisherCut: p.publisherCut } : {}),
   };
 
   // Learning: knowledge about combos, area importance and balance.
@@ -802,6 +804,8 @@ export function tick(state: GameState): SimEvent[] {
 
   tickExpo(state, events);
   tickIndustry(state, events);
+  const decision = rollDecision(state);
+  if (decision) events.push({ type: 'decision', decision });
   if (state.week % WEEKS_PER_MONTH === 0) monthly(state);
   if (state.week % WEEKS_PER_YEAR === 0) yearly(state);
 
@@ -1157,7 +1161,8 @@ function tickSales(state: GameState) {
     const units = isLast ? left : Math.round(left * salesShare(g.weeksOnMarket));
     g.weeksOnMarket++;
     g.unitsSold += units;
-    const revenue = Math.round(units * g.unitPrice);
+    // A publisher that funded the game keeps its share; revenue is what the studio gets.
+    const revenue = Math.round(units * g.unitPrice * (1 - (g.publisherCut ?? 0)));
     g.revenue += revenue;
     if (g.weekly) {
       g.weekly.units.push(units);

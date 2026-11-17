@@ -1,3 +1,4 @@
+import { resolveDecision } from '../core/events';
 import { availablePlatforms, createGame, doResearch, fire, hire, startHeadhunt, randomTitle, bookBooth, buyStoreItem, catLeaveLap, pushSales, runPromo, placeCatOnLap, releaseGame, keepPlaying, retireForGood, setPhaseFocus, setPolishMode, startContract, startGame, tick, train, upgradeOffice, validateGame } from '../core/sim';
 import { storeItemById } from '../core/data';
 import { acquireRival, buyVenture, ventureById, type VentureId } from '../core/ventures';
@@ -35,7 +36,7 @@ type StatKey = 'cash' | 'fans' | 'rp';
 const WEEK_MS = 2500;
 
 /** Sheets that must be answered and can't be dismissed by tapping outside. */
-const BLOCKING: Sheet['kind'][] = ['welcome', 'focus', 'review', 'gameOver'];
+const BLOCKING: Sheet['kind'][] = ['welcome', 'focus', 'review', 'gameOver', 'decision'];
 
 /** How long to wait for the 3D office before settling on the 2D one. */
 const OFFICE3D_TIMEOUT_MS = 10_000;
@@ -206,6 +207,10 @@ export class App {
         this.confetti();
         this.vibrate(30);
         break;
+      case 'decision':
+        this.open({ kind: 'decision' });
+        this.vibrate(20);
+        break;
       case 'contractDone':
         this.office.cheer(['💰', 'Paid!', '💵']);
         this.vibrate(15);
@@ -220,6 +225,7 @@ export class App {
     else if (s.activity?.kind === 'game' && s.activity.awaitingFocus) {
       this.open({ kind: 'focus', phase: s.activity.phase, values: [50, 50, 50] });
     }
+    if (!s.over && s.decision) this.open({ kind: 'decision' });
   }
 
   /**
@@ -1149,6 +1155,18 @@ export class App {
       case 'rnd':
         report(doRnd(s, arg as RndId));
         return;
+      case 'decide': {
+        const r = resolveDecision(s, Number(arg));
+        if (!r.ok) {
+          this.toast(r.error, 'bad');
+          return;
+        }
+        this.close();
+        this.toast(r.text, 'info');
+        this.save();
+        this.render();
+        return;
+      }
       case 'hire':
         if (report(hire(s, Number(arg)))) this.office.say(Number(arg), '👋 Hi!', 3);
         return;

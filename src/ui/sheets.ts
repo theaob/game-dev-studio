@@ -1,3 +1,5 @@
+import { reviewQuote } from '../core/quotes';
+import { decisionById, decisionContext, decisionValid } from '../core/events';
 import {
   FIT_LABELS,
   PERFECT_FIT,
@@ -74,6 +76,7 @@ export type Sheet =
   | { kind: 'marketing' }
   | { kind: 'expo' }
   | { kind: 'keynote'; keynote: Keynote }
+  | { kind: 'decision' }
   | { kind: 'achievements' }
   | { kind: 'goals' }
   /** `records`: the career records on this device; `beaten`: the ones this career just set. */
@@ -149,8 +152,39 @@ function stateSheet(state: GameState, sheet: Sheet, ads: MonetizationView, unloc
       return keynote(state, sheet.keynote);
     case 'goals':
       return goalsSheet(state);
+    case 'decision':
+      return decisionSheet(state);
   }
   return '';
+}
+
+/** Something happened to the studio: the player picks what to do about it (see events.ts). */
+function decisionSheet(state: GameState): string {
+  const d = state.decision;
+  if (!d) return '';
+  const def = decisionById(d.id);
+  const c = decisionContext(state, d);
+  if (!decisionValid(state, d)) {
+    return `
+      <div class="big-emoji">${def.icon}</div>
+      <h3 class="center">${esc(def.title)}</h3>
+      <p class="muted center">It sorted itself out.</p>
+      <div class="btn-row"><button class="btn big" data-action="decide" data-arg="0">OK</button></div>`;
+  }
+  return `
+    <div class="big-emoji">${def.icon}</div>
+    <h3 class="center">${esc(def.title)}</h3>
+    <p class="muted center">${esc(def.text(c))}</p>
+    <div class="options mt">
+      ${def.choices
+        .map(
+          (ch, i) => `
+        <button class="option" data-action="decide" data-arg="${i}">
+          <span class="grow"><b>${esc(ch.label)}</b><br/><span class="sub">${esc(ch.hint(c))}</span></span>
+        </button>`,
+        )
+        .join('')}
+    </div>`;
 }
 
 function welcome(name: string): string {
@@ -552,7 +586,7 @@ function review(report: ReleaseReport, shown: number): string {
           (r, i) => `
         <div class="review">
           <div class="outlet">${OUTLETS[i]}</div>
-          ${i < shown ? `<div class="num" style="color:${r >= 8 ? 'var(--good)' : r >= 5 ? '#ffe07d' : 'var(--bad)'}">${r}</div>` : '<div class="num pending">?</div>'}
+          ${i < shown ? `<div class="num" style="color:${r >= 8 ? 'var(--good)' : r >= 5 ? '#ffe07d' : 'var(--bad)'}">${r}</div><div class="quote">“${esc(reviewQuote(g, i))}”</div>` : '<div class="num pending">?</div>'}
         </div>`,
         )
         .join('')}
@@ -609,7 +643,7 @@ function gameDetail(state: GameState, id: number): string {
     ${g.spend ? `<h4>Where the money went · ${money(totalCost(g))}</h4>${spendBar(g)}` : ''}
     <h4>Reviews</h4>
     <div class="reviews">
-      ${g.reviews.map((r, i) => `<div class="review"><div class="outlet">${OUTLETS[i]}</div><div class="num" style="animation:none">${r}</div></div>`).join('')}
+      ${g.reviews.map((r, i) => `<div class="review"><div class="outlet">${OUTLETS[i]}</div><div class="num" style="animation:none">${r}</div><div class="quote">“${esc(reviewQuote(g, i))}”</div></div>`).join('')}
     </div>
     <div class="summary">
       ${g.spend ? '' : `<div class="line"><span>Upfront cost</span><span>${money(g.cost)}</span></div>`}
