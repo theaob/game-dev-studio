@@ -46,6 +46,7 @@ import { hasSequel, sequelSalesMult, seriesNumber } from './sequels';
 import { acclaimFor, longAwaitedHype, sequelHype } from './acclaim';
 import { ESPORTS_FANS, PUBLISHING_SALES, hasVenture, licenseCost, phaseWeeks, platformFit, ventureHypeMult } from './ventures';
 import { expertiseMult, genreLevel, topicLevel } from './expertise';
+import { rndBugMult, rndDesignMult, rndTechMult } from './rnd';
 import { average, benchmark, clamp, evaluate, normalizeFocus, rollReviews, scoreFactor } from './scoring';
 import { END_YEAR, START_YEAR, TOTAL_WEEKS, WEEKS_PER_MONTH, WEEKS_PER_YEAR, yearFraction, yearOf } from './time';
 import type {
@@ -149,7 +150,7 @@ export function techMultiplier(state: GameState): number {
   if (hasResearch(state, 'engine2')) m *= 1.15;
   if (hasResearch(state, 'engine3')) m *= 1.15;
   if (hasResearch(state, 'engine4')) m *= 1.2;
-  return m * storeOutputMultiplier(state);
+  return m * rndTechMult(state) * storeOutputMultiplier(state);
 }
 
 export function designMultiplier(state: GameState): number {
@@ -157,7 +158,7 @@ export function designMultiplier(state: GameState): number {
   if (hasResearch(state, 'design1')) m *= 1.15;
   if (hasResearch(state, 'design2')) m *= 1.15;
   if (hasResearch(state, 'design3')) m *= 1.2;
-  return m * storeOutputMultiplier(state);
+  return m * rndDesignMult(state) * storeOutputMultiplier(state);
 }
 
 export function bugMultiplier(state: GameState): number {
@@ -165,7 +166,7 @@ export function bugMultiplier(state: GameState): number {
   if (hasResearch(state, 'qa1')) m *= 0.7;
   if (hasResearch(state, 'qa2')) m *= 0.7;
   if (hasUpgrade(state, 'tests')) m *= 0.85;
-  return m;
+  return m * rndBugMult(state);
 }
 
 // ---------------------------------------------------------------------------

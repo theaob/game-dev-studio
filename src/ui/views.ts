@@ -26,6 +26,7 @@ import type { GameProject, GameState, PolishMode, ReleasedGame, Staff } from '..
 import { esc, money, num, scoreClass } from './format';
 import { officeCost, officeRent } from '../core/economy';
 import { goalDone, goalProgress, goalsUnlocked } from '../core/goals';
+import { RND, RND_BUGS_PER_LEVEL, RND_POINTS_PER_LEVEL, rndBlocker, rndById, rndCost, rndLevel, type RndId } from '../core/rnd';
 
 export type Tab = 'studio' | 'games' | 'research' | 'staff' | 'news';
 export const SPEEDS = [0, 1, 2, 4];
@@ -62,7 +63,7 @@ function weekDots(week: number): string {
 }
 
 export function renderNav(tab: Tab, state: GameState, unreadNews: number): string {
-  const canResearch = [...RESEARCH.map((r) => r.id), ...TOPICS.map((t) => t.id)].some((id) => !researchBlocker(state, id));
+  const canResearch = [...RESEARCH.map((r) => r.id), ...TOPICS.map((t) => t.id)].some((id) => !researchBlocker(state, id)) || RND.some((r) => !rndBlocker(state, r.id));
   const items: [Tab, string, string, boolean][] = [
     ['studio', '🏠', 'Studio', false],
     ['games', '🏆', 'Games', false],
@@ -472,12 +473,32 @@ export function renderResearch(state: GameState): string {
   const topics = TOPICS.filter((t) => t.cost > 0).map((t) =>
     researchRow(state, t.id, t.icon, t.name, 'New game topic', state.topics.includes(t.id)),
   );
+  // Once a whole line is researched, its R&D project opens and goes to the top: it's where research points go from then on.
+  const rnd = RND.filter((r) => state.researched.includes(r.requires));
   return `
+  ${rnd.length ? `<h2>R&amp;D projects</h2><p class="sub">Research that never runs out. Each level helps forever and costs more than the last.</p><div class="list">${rnd.map((r) => rndRow(state, r.id)).join('')}</div>` : ''}
   ${Object.entries(groups)
     .map(([cat, rows]) => `<h2>${cat}</h2><div class="list">${rows.join('')}</div>`)
     .join('')}
   <h2>Topics</h2>
   <div class="list">${topics.join('')}</div>`;
+}
+
+function rndRow(state: GameState, id: RndId): string {
+  const r = rndById(id);
+  const level = rndLevel(state, id);
+  const blocker = rndBlocker(state, id);
+  const total =
+    id === 'rnd_qa' ? `${Math.round((1 - Math.pow(RND_BUGS_PER_LEVEL, level)) * 100)}% fewer bugs` : `+${Math.round(RND_POINTS_PER_LEVEL * level * 100)}% ${id === 'rnd_engine' ? 'tech' : 'design'} points`;
+  return `
+  <div class="list-item">
+    <div class="emoji">${r.icon}</div>
+    <div class="grow">
+      <div class="name">${esc(r.name)} <span class="tag">Lv ${level}</span></div>
+      <div class="sub">Each level: ${esc(r.perLevel)}${level ? ` · now ${total}` : ''}</div>
+    </div>
+    <button class="btn small ${blocker ? 'ghost' : ''}" data-action="rnd" data-arg="${id}" ${blocker ? 'disabled' : ''}>${rndCost(state, id)} RP</button>
+  </div>`;
 }
 
 function researchRow(state: GameState, id: string, icon: string, name: string, desc: string, done: boolean): string {

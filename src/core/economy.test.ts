@@ -4,6 +4,7 @@ import { priceIndex, reachableUsers } from './economy';
 import { createGame, tick } from './sim';
 import { WEEKS_PER_YEAR } from './time';
 import type { GameState, ReleaseReport } from './types';
+import { RND, doRnd } from './rnd';
 import { VENTURES, acquirableRivals, acquireRival, acquisitionPrice, buyVenture, venturePrice } from './ventures';
 
 /** A tycoon buys every big investment and rival studio once it has twice the price in the bank. */
@@ -71,6 +72,13 @@ describe('money curve', () => {
     expect(casual.every((r) => r.over === 'retired')).toBe(true);
     expect(median(casual.map((r) => r.cash))).toBeGreaterThan(5_000_000);
     expect(median(casual.map((r) => r.cash))).toBeLessThan(60_000_000);
+  });
+
+  it('R&D projects keep a studio growing without breaking the curve', () => {
+    // A studio that puts every spare research point into R&D ends a little richer, not absurdly so.
+    const smart = careers('smart', 4, (s) => RND.forEach((r) => doRnd(s, r.id)));
+    expect(smart.every((r) => r.over === 'retired')).toBe(true);
+    expect(median(smart.map((r) => r.cash))).toBeLessThan(600_000_000);
   });
 
   it('growing fast with careless games ends in bankruptcy', () => {

@@ -2,7 +2,7 @@ import { genreById, platformById, sizeById, topicFit } from './data';
 import { platformFit } from './ventures';
 import { gaussian, type RngHolder } from './rng';
 import { sequelQualityMult } from './sequels';
-import { yearFraction, START_YEAR } from './time';
+import { WEEKS_PER_YEAR, yearFraction, START_YEAR } from './time';
 import type { GameProject, GameState } from './types';
 
 /** Quality multiplier per topic/genre fit: bad, okay, good, great, perfect. */
@@ -31,10 +31,31 @@ export function phaseAlignment(genreImportance: number[], phase: number, rawFocu
   return Math.max(0, Math.min(1, align));
 }
 
-/** The market's expectation of points-per-week: rises over time and with your own best work. */
-export function benchmark(state: Pick<GameState, 'week' | 'bestPPW'>): number {
+/** How much of a past release's points-per-week players still hold the studio to, per year once the grace years are over. */
+export const BAR_MEMORY = 0.9;
+/** Players hold the studio to a game's full points-per-week for this many years before they start to forget. */
+export const BAR_GRACE_YEARS = 2;
+
+/**
+ * The best points-per-week players remember from the studio. A game counts in full
+ * for BAR_GRACE_YEARS, then players remember it a little less each year (BAR_MEMORY),
+ * so one lucky peak doesn't set a bar for the rest of the career that a full, fully
+ * trained team can never reach again. Studios that release often barely notice: a
+ * recent game usually sets the bar. Without the released games (old callers), the
+ * all-time best.
+ */
+export function rememberedBest(state: Pick<GameState, 'week' | 'bestPPW'> & { released?: { ppw: number; releaseWeek: number }[] }): number {
+  const games = state.released;
+  if (!games?.length) return state.bestPPW;
+  let best = 0;
+  for (const g of games) best = Math.max(best, (g.ppw || 0) * Math.pow(BAR_MEMORY, Math.max(0, (state.week - g.releaseWeek) / WEEKS_PER_YEAR - BAR_GRACE_YEARS)));
+  return best;
+}
+
+/** The market's expectation of points-per-week: rises over time and with your own recent best work. */
+export function benchmark(state: Pick<GameState, 'week' | 'bestPPW'> & { released?: { ppw: number; releaseWeek: number }[] }): number {
   const years = yearFraction(state.week) - START_YEAR;
-  return Math.max(3 * Math.pow(1.07, years), state.bestPPW * 0.9);
+  return Math.max(3 * Math.pow(1.07, years), rememberedBest(state) * 0.9);
 }
 
 export interface Evaluation {
