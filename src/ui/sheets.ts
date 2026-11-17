@@ -148,7 +148,7 @@ function help(): string {
       <p><b>Choose a platform.</b> Platforms come and go over the decades. Bigger audiences sell more, and some platforms suit some genres better. Consoles need a one-time dev kit license. Each new one launches with a keynote that shows what it's good for.</p>
       <p><b>Set the focus.</b> Development has 3 phases with 3 areas each. Put your team's effort where the genre needs it. Reviews reveal what matters.</p>
       <p><b>Design vs Tech.</b> Every genre has a sweet spot between creative (design) and technical (tech) points.</p>
-      <p><b>Polish.</b> After development you can keep polishing before you release: fix bugs (they hurt reviews), or add more design or tech points to fix the game's balance. Design and tech polishing gives less each week.</p>
+      <p><b>Polish.</b> After development you can keep polishing before you release: fix bugs (they hurt reviews), or add more design or tech points to fix the game's balance. Design and tech polishing gives less each week. Rework moves points from one side to the other until the split suits the genre, losing a quarter of what it moves.</p>
       <p><b>Marketing.</b> Pick an ad budget when you start a game. Tap 📣 Promote while making it to build hype with previews and trailers, and book a booth at the yearly GameExpo. A game with good points builds hype on its own by word of mouth. Hype sells more copies of a good game, but a hyped flop gets a backlash. After launch, 📣 Push sales runs ads or a discount sale. Research the Marketing Department to add press tours, TV commercials and TV ad blitzes.</p>
       <p><b>Read the news.</b> Each year has a trending genre and topic (marked 🔥 when you start a game) that sell better. Rival studios release games too: right after a rival's hit, the same topic and genre sells less for a while. The News tab also shows which platforms are growing or on their way out.</p>
       <p><b>The cat.</b> Sometimes the studio cat curls up on a developer's lap, and they work 30% faster while it stays. You can carry the cat over and drop it on someone too, but it needs some alone time between laps.</p>
@@ -359,6 +359,9 @@ function newGameStep2(state: GameState, d: GameSpec, error?: string): string {
           const fit = platformFit(state, p, d.genre);
           const license = licenseCost(state, p);
           const owned = state.licenses.includes(p.id);
+          // A game that launches after the platform is gone has nobody to sell to.
+          const launch = yearFraction(state.week + size.phaseWeeks * 3);
+          const endTag = p.end === undefined ? '' : launch >= p.end ? '<span class="tag bad">Gone before launch</span>' : p.end - launch < 1 ? `<span class="tag mid">Discontinued in ${p.end}</span>` : '';
           const fitTag = fit > 1.05 ? `<span class="tag good">Loves ${genreById(d.genre).name}</span>` : fit < 0.95 ? `<span class="tag bad">Weak for ${genreById(d.genre).name}</span>` : '';
           return `
         <button class="option ${d.platform === p.id ? 'on' : ''}" data-action="pick-platform" data-arg="${p.id}">
@@ -366,7 +369,7 @@ function newGameStep2(state: GameState, d: GameSpec, error?: string): string {
           <span class="grow">
             <b>${p.name}</b> <span class="sub">${p.kind}</span><br/>
             <span class="sub">${num(platformUsers(p, year) * 1e6)} users · ${owned ? 'Licensed' : license ? `License ${money(license)}` : 'Free dev kit'}${p.priceMult < 1 ? ' · low prices' : ''}</span>
-            ${fitTag ? `<br/>${fitTag}` : ''}
+            ${fitTag || endTag ? `<br/>${fitTag}${fitTag && endTag ? ' ' : ''}${endTag}` : ''}
           </span>
         </button>`;
         })
@@ -503,7 +506,7 @@ function balanceAdvice(p: GameProject): string {
   const target = Math.round(genre.designTarget * 100);
   if (Math.abs(share - target) <= 5) return `The design/tech balance (${share}% design) suits ${genre.name} players.`;
   const more = share < target ? 'design' : 'tech';
-  return `${genre.name} players like about ${target}% design; this game is ${share}%. Polishing ${more} would help.`;
+  return `${genre.name} players like about ${target}% design; this game is ${share}%. Polishing ${more} or reworking the game would help.`;
 }
 
 function review(report: ReleaseReport, shown: number): string {

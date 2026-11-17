@@ -770,7 +770,8 @@ export function tick(state: GameState): SimEvent[] {
   }
 
   state.week++;
-  const noticeStart = state.notices.length;
+  // The log is capped, so remember the newest notice instead of an index into it.
+  const lastNotice = state.notices[state.notices.length - 1];
 
   if (act?.kind === 'game') {
     tickProject(state, act, events);
@@ -804,7 +805,7 @@ export function tick(state: GameState): SimEvent[] {
     notify(state, 'After 41 years, it is time to retire. What a journey!', 'good');
   }
 
-  for (const n of state.notices.slice(noticeStart)) events.push({ type: 'notice', notice: n });
+  for (const n of state.notices.slice(state.notices.lastIndexOf(lastNotice) + 1)) events.push({ type: 'notice', notice: n });
   if (state.over) events.push({ type: 'gameOver', reason: state.over });
   return events;
 }
@@ -822,12 +823,15 @@ function tickProject(state: GameState, p: GameProject, events: SimEvent[]) {
 
   if (p.phase >= 3) {
     p.polishWeeks++;
+    if (p.polishMode === 'rework' && !reworkNeed(p)) p.polishMode = 'bugs';
     if ((p.polishMode ?? 'bugs') === 'bugs') {
       // The team squashes bugs, one whole bug at a time, at least one per week.
       const fixPower = state.staff.reduce((a, s) => a + s.tech * s.speed * catBoost(state, s.id), 0) * (hasResearch(state, 'qa2') ? 0.75 : 0.5);
       const fixed = Math.min(p.bugs, Math.max(1, Math.round(fixPower * range(state, 0.8, 1.2))));
       p.bugs -= fixed;
       events.push({ type: 'points', design: 0, tech: 0, bugs: -fixed });
+    } else if (p.polishMode === 'rework') {
+      reworkPoints(state, p, events);
     } else {
       polishPoints(state, p, p.polishMode as 'design' | 'tech', events);
     }
@@ -926,10 +930,64 @@ function polishPoints(state: GameState, p: GameProject, kind: 'design' | 'tech',
   events.push({ type: 'points', design: kind === 'design' ? gain : 0, tech: kind === 'tech' ? gain : 0, bugs });
 }
 
+/** Share of a normal development week's output that a rework week moves from one kind of points to the other. */
+export const REWORK_RATE = 0.5;
+/** Share of the reworked points that survive the move; the rest is thrown-away work. */
+export const REWORK_KEEP = 0.75;
+/** How close (as a share of all points) the split must get to the genre's ideal for rework to stop. */
+export const REWORK_DONE = 0.02;
+
+/**
+ * Which way a rework would move points, and how many points it would take from the
+ * surplus side to land exactly on the genre's ideal split. Null when the split is
+ * already close enough.
+ */
+export function reworkNeed(p: GameProject): { from: 'design' | 'tech'; to: 'design' | 'tech'; points: number } | null {
+  const target = genreById(p.genre).designTarget;
+  const total = p.design + p.tech;
+  if (total <= 0) return null;
+  const share = p.design / total;
+  if (Math.abs(share - target) <= REWORK_DONE) return null;
+  // Taking x from one side adds REWORK_KEEP * x to the other; solve for the ideal share.
+  if (share > target) return { from: 'design', to: 'tech', points: (p.design - target * total) / (1 - target * (1 - REWORK_KEEP)) };
+  return { from: 'tech', to: 'design', points: (target * total - p.design) / (REWORK_KEEP + target * (1 - REWORK_KEEP)) };
+}
+
+/**
+ * Reworking: the team rewrites parts of the game to move points from the side the
+ * genre's players care less about to the side they care more about. Some of the work
+ * is lost in the move and changes bring a few bugs. Stops (back to bug fixing) once
+ * the split is close to the ideal.
+ */
+function reworkPoints(state: GameState, p: GameProject, events: SimEvent[]) {
+  const need = reworkNeed(p)!;
+  let raw = 0;
+  for (const s of state.staff) raw += (s.design * designMultiplier(state) + s.tech * techMultiplier(state)) * 0.5 * s.speed * catBoost(state, s.id);
+  raw *= REWORK_RATE * (hasUpgrade(state, 'playtest') ? 1.25 : 1) * range(state, 0.85, 1.15);
+  const taken = Math.min(p[need.from], Math.max(1, Math.round(Math.min(raw, need.points))));
+  const added = Math.round(taken * REWORK_KEEP);
+  p[need.from] -= taken;
+  p[need.to] += added;
+  const bugs = wholeNumber(state, taken * 0.04 * bugMultiplier(state) * range(state, 0.6, 1.4));
+  p.bugs += bugs;
+  const share = 1 / state.staff.length;
+  for (const s of state.staff) {
+    const c = (p.contrib[s.id] ??= { design: 0, tech: 0 });
+    c[need.from] = Math.max(0, c[need.from] - taken * share);
+    c[need.to] += added * share;
+  }
+  events.push({ type: 'points', design: need.to === 'design' ? added : -taken, tech: need.to === 'tech' ? added : -taken, bugs });
+  if (!reworkNeed(p)) {
+    p.polishMode = 'bugs';
+    notify(state, `${p.name} now has the ${genreById(p.genre).name} balance players like. The team is back to fixing bugs.`, 'good');
+  }
+}
+
 /** Chooses what the team polishes once development is complete. */
 export function setPolishMode(state: GameState, mode: PolishMode): string | null {
   const p = state.activity;
   if (!p || p.kind !== 'game' || p.phase < 3) return 'Nothing to polish.';
+  if (mode === 'rework' && !reworkNeed(p)) return `The design/tech balance already suits ${genreById(p.genre).name} players.`;
   p.polishMode = mode;
   return null;
 }
@@ -939,8 +997,13 @@ export function polishYield(p: GameProject): number {
   return Math.pow(POLISH_DECAY, p.pointPolishWeeks ?? 0);
 }
 
-function salesWeight(week: number): number {
-  return ((1 - SALES_DECAY) * Math.pow(SALES_DECAY, week)) / (1 - Math.pow(SALES_DECAY, SALES_WEEKS));
+/**
+ * Share of the copies a game still has to sell that go in this week on the market.
+ * Working from what is left (not the lifetime target) spreads anything that raises the
+ * target mid-run, a sales push or Game of the Year, over the remaining weeks.
+ */
+function salesShare(week: number): number {
+  return (1 - SALES_DECAY) / (1 - Math.pow(SALES_DECAY, SALES_WEEKS - week));
 }
 
 // ---------------------------------------------------------------------------
@@ -1057,7 +1120,8 @@ function tickSales(state: GameState) {
   for (const g of state.released) {
     if (g.weeksOnMarket >= SALES_WEEKS) continue;
     const isLast = g.weeksOnMarket === SALES_WEEKS - 1;
-    const units = isLast ? g.targetUnits - g.unitsSold : Math.round(g.targetUnits * salesWeight(g.weeksOnMarket));
+    const left = Math.max(0, g.targetUnits - g.unitsSold);
+    const units = isLast ? left : Math.round(left * salesShare(g.weeksOnMarket));
     g.weeksOnMarket++;
     g.unitsSold += units;
     const revenue = Math.round(units * g.unitPrice);

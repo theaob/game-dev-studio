@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { GENRES, GENRE_TITLES, PERFECT_FIT, PLATFORMS, TOPICS, TOPIC_TITLE_WORDS, platformUsers } from './data';
+import { GENRES, GENRE_TITLES, genreById, PERFECT_FIT, PLATFORMS, TOPICS, TOPIC_TITLE_WORDS, platformUsers } from './data';
 import { expertiseLevel, expertiseMult, EXPERTISE_MIN_SCORE } from './expertise';
 import { playThrough } from './bot';
 import { BALANCE_BEST, BALANCE_WORST, balanceMultiplier, benchmark, evaluate, normalizeFocus, phaseAlignment, repeatMultiplier } from './scoring';
@@ -21,6 +21,8 @@ import {
   staffWeeklyPoints,
   randomTitle,
   setPolishMode,
+  reworkNeed,
+  REWORK_DONE,
   boostWeeks,
   buyStoreItem,
   storePrice,
@@ -570,6 +572,46 @@ describe('whole-number points and polishing', () => {
     }
   });
 
+  it('rework moves points towards the genre balance, losing some, and stops once balanced', () => {
+    const { s, p } = finishDev(31);
+    const target = genreById(p.genre).designTarget;
+    // Lopsided towards tech: an RPG wants mostly design.
+    p.tech += p.design;
+    const startTotal = p.design + p.tech;
+    const gap = () => Math.abs(p.design / (p.design + p.tech) - target);
+    const startGap = gap();
+    expect(reworkNeed(p)?.from).toBe('tech');
+    expect(setPolishMode(s, 'rework')).toBeNull();
+    let weeks = 0;
+    while (p.polishMode === 'rework' && weeks < 40) {
+      const before = gap();
+      const bugs = p.bugs;
+      tick(s);
+      weeks++;
+      expect([p.design, p.tech].every(Number.isInteger)).toBe(true);
+      expect(gap()).toBeLessThanOrEqual(before);
+      expect(p.bugs).toBeGreaterThanOrEqual(bugs);
+    }
+    expect(weeks).toBeGreaterThan(1);
+    expect(p.polishMode).toBe('bugs');
+    expect(gap()).toBeLessThan(Math.min(startGap, REWORK_DONE + 0.01));
+    // Moved points are partly lost, so the game doesn't get bigger.
+    expect(p.design + p.tech).toBeLessThan(startTotal);
+    expect(p.design + p.tech).toBeGreaterThan(startTotal * 0.7);
+    // Already balanced: nothing to rework.
+    expect(reworkNeed(p)).toBeNull();
+    expect(setPolishMode(s, 'rework')).not.toBeNull();
+  });
+
+  it('rework improves the review balance multiplier', () => {
+    const { s, p } = finishDev(37);
+    p.design += p.tech * 2;
+    const before = evaluate(s, p).balanceMult;
+    expect(setPolishMode(s, 'rework')).toBeNull();
+    for (let w = 0; w < 30 && p.polishMode === 'rework'; w++) tick(s);
+    expect(evaluate(s, p).balanceMult).toBeGreaterThan(before);
+  });
+
   it('only allows choosing a polish focus once development is done', () => {
     const s = createGame('Early', 5);
     startGame(s, spec, [33, 33, 33]);
@@ -1052,5 +1094,46 @@ describe('ad rewards', () => {
     const s = createGame('Ads', 115);
     expect(canBailout(s)).toBe(false);
     expect(claimBailout(s)).toMatch(/not bankrupt/);
+  });
+});
+
+describe('review fixes', () => {
+  function ship(s: ReturnType<typeof createGame>) {
+    expect(startGame(s, spec, [50, 50, 50])).toBeNull();
+    while (s.activity?.kind === 'game' && s.activity.phase < 3) {
+      if (s.activity.awaitingFocus) setPhaseFocus(s, [50, 50, 50]);
+      tick(s);
+    }
+    const r = releaseGame(s);
+    if (typeof r === 'string') throw new Error(r);
+    return r.game;
+  }
+
+  it('keeps reporting new notices once the studio log is full', () => {
+    const s = createGame('Test', 5);
+    s.cash = 1e9;
+    for (let i = 0; i < 60; i++) s.notices.push({ week: 0, text: `old ${i}`, kind: 'info' });
+    s.notices.splice(0, s.notices.length - 40);
+    expect(startContract(s, s.contractOffers[0].id)).toBeNull();
+    const texts: string[] = [];
+    for (let i = 0; i < 8 && s.activity; i++) for (const e of tick(s)) if (e.type === 'notice') texts.push(e.notice.text);
+    expect(texts.some((t) => t.startsWith('Contract'))).toBe(true);
+    expect(texts.some((t) => t.startsWith('old'))).toBe(false);
+  });
+
+  it('spreads a sales push over the weeks left instead of dumping it on the last one', () => {
+    const s = createGame('Test', 2);
+    s.cash = 1e9;
+    s.fans = 50_000;
+    const g = ship(s);
+    tick(s);
+    tick(s);
+    expect(pushSales(s, g.id, 'sale')).toBeNull();
+    while (g.weeksOnMarket < SALES_WEEKS) tick(s);
+    const units = g.weekly!.units;
+    expect(units.reduce((a, b) => a + b, 0)).toBe(g.targetUnits);
+    expect(g.unitsSold).toBe(g.targetUnits);
+    // After the push, every week sells less than the one before, to the very end.
+    for (let w = 3; w < SALES_WEEKS; w++) expect(units[w]).toBeLessThanOrEqual(units[w - 1]);
   });
 });

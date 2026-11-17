@@ -601,8 +601,8 @@ export class App {
     if (counters.length !== 3) return;
     const items: [number, string, string][] = [
       // All points are whole numbers: shown as e.g. "+12", "+2 🐛" or "−3 🐛".
-      [design, `+${design}`, 'var(--design)'],
-      [tech, `+${tech}`, 'var(--tech)'],
+      [design, design < 0 ? `−${-design}` : `+${design}`, 'var(--design)'],
+      [tech, tech < 0 ? `−${-tech}` : `+${tech}`, 'var(--tech)'],
       [bugs, bugs < 0 ? `−${-bugs} 🐛` : `+${bugs} 🐛`, bugs < 0 ? 'var(--good)' : 'var(--bugs)'],
     ];
     items.forEach(([v, label, color], i) => {
@@ -644,6 +644,9 @@ export class App {
       sheet.values[Number(el.dataset.focus)] = Number(el.value);
       this.updateFocusLabels(sheet);
     }
+    // What was typed is already on screen: keep the cached markup in step, so a re-render
+    // from elsewhere (an ad finished loading, say) doesn't rebuild the sheet and drop the keyboard.
+    if (el.dataset.bind) this.html.sheet = renderSheet(this.state, sheet, this.ads.view(), this.unlocked, this.playGames.view());
   }
 
   /** Updates slider labels in place so dragging stays smooth. */

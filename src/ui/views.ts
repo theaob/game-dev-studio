@@ -14,6 +14,7 @@ import {
   monthlyCosts,
   officeCapacity,
   polishYield,
+  reworkNeed,
   staffSalary,
   researchBlocker,
   researchCost,
@@ -302,24 +303,41 @@ function activeBoosts(state: GameState): string {
   return chips.length ? `<div class="boost-chips">${chips.join('')}</div>` : '';
 }
 
-/** What to polish: squash bugs, or add more design or tech points (with shrinking returns). */
+/**
+ * What to polish: squash bugs, add more design or tech points (with shrinking returns),
+ * or rework the game to shift points towards the genre's ideal design/tech split.
+ */
 export function polishPicker(p: GameProject): string {
   const mode = p.polishMode ?? 'bugs';
   const yieldPct = Math.round(polishYield(p) * 100);
+  const need = reworkNeed(p);
   const options: [PolishMode, string, string][] = [
     ['bugs', '🐛', 'Bugs'],
     ['design', '🎨', 'Design'],
     ['tech', '⚙️', 'Tech'],
+    ['rework', '🔁', 'Rework'],
   ];
+  const total = p.design + p.tech;
+  const share = total ? Math.round((p.design / total) * 100) : 50;
+  const target = Math.round(genreById(p.genre).designTarget * 100);
   const hint =
     mode === 'bugs'
       ? 'Squashing bugs every week.'
-      : yieldPct < 10
-        ? `Hardly adding any ${mode} now. Time to fix bugs or release.`
-        : `Adding ${mode} points at ${yieldPct}% strength · drops each week · new bugs slip in.`;
+      : mode === 'rework'
+        ? need
+          ? `Reworking ${need.from} into ${need.to}: ${share}% → ${target}% design · a quarter of moved points is lost · a few new bugs.`
+          : `Balance already suits ${genreById(p.genre).name} players.`
+        : yieldPct < 10
+          ? `Hardly adding any ${mode} now. Time to fix bugs or release.`
+          : `Adding ${mode} points at ${yieldPct}% strength · drops each week · new bugs slip in.`;
   return `
     <div class="polish-modes" role="radiogroup" aria-label="What to polish">
-      ${options.map(([id, icon, label]) => `<button class="polish-mode ${mode === id ? 'on' : ''}" role="radio" aria-checked="${mode === id}" data-action="polish-mode" data-arg="${id}"><span>${icon}</span>${label}</button>`).join('')}
+      ${options
+        .map(([id, icon, label]) => {
+          const off = id === 'rework' && !need && mode !== 'rework';
+          return `<button class="polish-mode ${mode === id ? 'on' : ''}" role="radio" aria-checked="${mode === id}" data-action="polish-mode" data-arg="${id}"${off ? ' disabled title="The design/tech balance already suits this genre"' : ''}><span>${icon}</span>${label}</button>`;
+        })
+        .join('')}
     </div>
     <div class="sub polish-hint">${hint}</div>`;
 }
