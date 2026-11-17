@@ -25,6 +25,7 @@ import { EXPO_BOOKING_WEEKS, weeksToExpo } from '../core/marketing';
 import type { GameProject, GameState, PolishMode, ReleasedGame, Staff } from '../core/types';
 import { esc, money, num, scoreClass } from './format';
 import { officeCost, officeRent } from '../core/economy';
+import { goalDone, goalProgress, goalsUnlocked } from '../core/goals';
 
 export type Tab = 'studio' | 'games' | 'research' | 'staff' | 'news';
 export const SPEEDS = [0, 1, 2, 4];
@@ -111,7 +112,21 @@ function dockChips(state: GameState, cashOffer: string): string[] {
     // Just the money when it shares the row with another chip, so both fit on a small phone.
     chips.push(`<button class="ticker" data-action="tab" data-arg="games" title="${full}">📈 ${chips.length ? earned : full}</button>`);
   }
+  const goals = goalsChip(state, chips.length);
+  if (goals) chips.push(goals);
   return chips;
+}
+
+/** Studio goals: how close the nearest one is, or just the icon when the row is full. */
+function goalsChip(state: GameState, others: number): string {
+  const active = state.goals?.active ?? [];
+  if (!goalsUnlocked(state) || !active.length) return '';
+  const near = Math.max(...active.filter((g) => !goalDone(state, g)).map((g) => {
+    const p = goalProgress(state, g);
+    return p.target ? p.value / p.target : 0;
+  }), 0);
+  const label = others >= 2 ? '🎯' : others === 1 || near < 0.05 ? '🎯 Goals' : `🎯 Goals · ${Math.floor(near * 100)}%`;
+  return `<button class="ticker goals-chip" data-action="goals" aria-label="Studio goals">${label}</button>`;
 }
 
 /** While GameExpo booking is open: a reminder that opens the Marketing sheet. */

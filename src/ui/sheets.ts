@@ -28,7 +28,7 @@ import {
   salesPushBlocker,
 } from '../core/sim';
 import { SEQUEL_TOO_SOON_WEEKS, sequelCandidates, sequelSalesMult, seriesNumber, seriesTitle } from '../core/sequels';
-import { END_YEAR, WEEKS_PER_YEAR, formatShortDate, yearFraction, yearOf } from '../core/time';
+import { END_YEAR, WEEKS_PER_MONTH, WEEKS_PER_YEAR, formatShortDate, yearFraction, yearOf } from '../core/time';
 import { RIVAL_CLASH_MULT, RIVAL_CLASH_WEEKS, rivalClash, trendMult } from '../core/industry';
 import { onSale, paybackWeek, profit, returnMultiple, revenueRank, totalCost, verdict } from '../core/results';
 import { moneyChart, spendBar, weeklyChart } from './charts';
@@ -51,6 +51,7 @@ import type { PlayGamesView } from './play-games';
 import type { Keynote } from '../core/keynote';
 import { CAREER_HIT_SCORE, RECORD_KEYS, careerStats, careerTitle, type CareerRecords, type RecordKey } from '../core/career';
 import { END_YEAR as LAST_YEAR, TOTAL_WEEKS } from '../core/time';
+import { goalIcon, goalProgress, goalText, rewardText, swapCooldown, type Goal } from '../core/goals';
 
 export type Sheet =
   | { kind: 'welcome'; name: string }
@@ -71,6 +72,7 @@ export type Sheet =
   | { kind: 'expo' }
   | { kind: 'keynote'; keynote: Keynote }
   | { kind: 'achievements' }
+  | { kind: 'goals' }
   /** `records`: the career records on this device; `beaten`: the ones this career just set. */
   | { kind: 'gameOver'; records?: CareerRecords; beaten?: RecordKey[] };
 
@@ -130,6 +132,8 @@ export function renderSheet(
       return expoResults(state);
     case 'keynote':
       return keynote(state, sheet.keynote);
+    case 'goals':
+      return goalsSheet(state);
   }
 }
 
@@ -158,6 +162,7 @@ function help(): string {
       <p><b>The cat.</b> Sometimes the studio cat curls up on a developer's lap, and they work 30% faster while it stays. You can carry the cat over and drop it on someone too, but it needs some alone time between laps.</p>
       <p><b>Store.</b> Spend cash on power-ups: boosts like an espresso bar or pizza night last a few weeks of development, and studio upgrades help forever. Once you're on the Campus it also sells big investments and rival studios to buy out. Find it next to Contracts, or tap ⚡ Boost while making a game.</p>
       <p><b>Awards.</b> A game that reviews 9.0 or better is a 🏅 Critics' Choice, and 9.5 or better a 👑 Masterpiece. A perfect 10 is an 💎 Instant Classic. Its sequel starts development with hype already built: the better the original and the longer fans have waited, the more. Those fans never get bored: the hype doesn't fade, and they don't tire of a long series. Each new year, the best-reviewed game of the last one, yours or a rival's, is named 🏆 Game of the Year: winning brings fans, more sales if it's still selling, and extra hype for its sequel.</p>
+      <p><b>Studio goals.</b> After your first release, tap 🎯 Goals above the studio for three goals at a time, like a hit in a new genre, a new platform or more fans. Each one pays cash, research points or fans, and a new one takes its place. Goals have a deadline, and you can swap one you don't fancy every six months.</p>
       <p><b>Track your results.</b> Tap any game to see what it cost, what it made each week, when it paid for itself and whether it was a hit or a flop. The Games tab charts the profit of every release.</p>
       <p><b>Free with a video.</b> In the Android app, the Store has rewards for watching an optional video: an investor's cash, a free Espresso Bar or a research grant. Each one can be claimed again after a few weeks.</p>
       <p><b>Raise the bar.</b> Players expect each game to beat your last one, and the industry keeps moving. Grow your team, train them and research better tech.</p>
@@ -650,6 +655,43 @@ function achievements(unlocked: Record<string, Unlock>, play: PlayGamesView): st
     <div class="bar mt"><i style="width:${Math.round((done / ACHIEVEMENTS.length) * 100)}%"></i></div>
     <div class="options mt">${rows}</div>
     <div class="btn-row"><button class="btn ghost" data-action="close">Close</button></div>`;
+}
+
+function goalsSheet(state: GameState): string {
+  const gs = state.goals;
+  const wait = swapCooldown(state);
+  const rows = (gs?.active ?? [])
+    .map((g) => {
+      const p = goalProgress(state, g);
+      const pct = p.target ? Math.min(100, (p.value / p.target) * 100) : 0;
+      const counted = p.target > 1 ? `<span class="sub">${goalAmount(g, p.value)} / ${goalAmount(g, p.target)}</span>` : '';
+      const left = Math.max(0, g.until - state.week);
+      const months = Math.max(1, Math.ceil(left / WEEKS_PER_MONTH));
+      const time = left < WEEKS_PER_MONTH * 3 ? `<span class="tag bad">${months} mo left</span>` : `<span class="sub">${months} months left</span>`;
+      return `
+      <div class="option goal">
+        <span class="emoji">${goalIcon(g)}</span>
+        <span class="grow">
+          <b>${esc(goalText(g))}</b>
+          <span class="goal-meta"><span class="tag good">${esc(rewardText(g.reward))}</span>${time}</span>
+          ${p.target > 1 ? `<span class="bar goal-bar"><i style="width:${pct}%"></i></span>${counted}` : ''}
+        </span>
+        <button class="btn small ghost" data-action="goal-swap" data-arg="${g.id}" ${wait ? 'disabled' : ''} aria-label="Swap this goal" title="Swap for a different goal">↻</button>
+      </div>`;
+    })
+    .join('');
+  const done = gs?.done ?? 0;
+  return `
+    <h3>🎯 Studio goals</h3>
+    <p class="muted">Finish a goal to collect its reward, and a new one takes its place. Only what you do after a goal is set counts.</p>
+    <div class="options mt">${rows || '<p class="muted center">Release your first game to get goals.</p>'}</div>
+    <p class="muted mt goal-foot">${wait ? `You can swap a goal for another one in ${wait} week${wait === 1 ? '' : 's'}.` : 'Not keen on one? Tap ↻ to swap it (once every six months).'}${done ? ` Goals done: <b>${done}</b>.` : ''}</p>
+    <div class="btn-row"><button class="btn ghost" data-action="close">Close</button></div>`;
+}
+
+/** A goal's numbers in its own unit: money for cash goals, plain numbers otherwise. */
+function goalAmount(g: Goal, v: number): string {
+  return g.kind === 'cash' ? money(v) : num(v);
 }
 
 function contracts(state: GameState): string {

@@ -1,4 +1,5 @@
 import type { Keynote } from './keynote';
+import type { GoalsState } from './goals';
 
 export type GenreId = 'action' | 'adventure' | 'rpg' | 'simulation' | 'strategy' | 'puzzle' | 'casual' | 'platformer' | 'shooter' | 'rhythm';
 export type SizeId = 'small' | 'medium' | 'large';
@@ -179,6 +180,8 @@ export interface GameState {
   industry?: IndustryState;
   /** A headhunter's search for a rockstar developer, with the weeks it has left. */
   headhunt?: { weeks: number };
+  /** Studio goals: the three on the board, and how many are done (see goals.ts). */
+  goals?: GoalsState;
   /** Week each ad reward was last claimed (Android app only). */
   adRewards?: Partial<Record<string, number>>;
   /** The one-time bankruptcy bailout (watched a video to escape the first bankruptcy). */

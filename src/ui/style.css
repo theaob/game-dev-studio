@@ -3441,3 +3441,38 @@ canvas.office {
   font-weight: 400;
   margin-left: 4px;
 }
+
+/* ---------- Studio goals ---------- */
+
+.option.goal .grow {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.goal-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.goal-bar {
+  display: block;
+  height: 8px;
+}
+
+.option.goal .btn.small {
+  flex: none;
+  min-width: 40px;
+  font-size: 18px;
+}
+
+.goal-foot {
+  font-size: 13px;
+}
+
+.ticker.goals-chip {
+  background: #d9f2d0;
+}

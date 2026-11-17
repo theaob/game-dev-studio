@@ -9,6 +9,7 @@ import { sequelName } from '../core/sequels';
 import type { GameSpec, GameState, GenreId, ReleasedGame, MarketingId, NoticeKind, PolishMode, SimEvent, SizeId } from '../core/types';
 import { clearSave, loadAchievements, loadGame, loadRecords, saveAchievements, saveGame, saveRecords, type Unlock } from '../save';
 import { newAchievements } from '../core/achievements';
+import { goalText, rewardText, swapGoal, updateGoals } from '../core/goals';
 import { addCareer } from '../core/career';
 import { OfficeScene } from './office';
 import { OfficeLoading, hasWebGL } from './office-loading';
@@ -474,6 +475,7 @@ export class App {
   private render() {
     const s = this.state;
     if (s) {
+      this.checkGoals(s);
       this.set('top', renderTopbar(s, this.speed, this.lastSpeed));
       this.updateStats(0);
       if (this.tab === 'news') this.markNewsRead();
@@ -592,6 +594,19 @@ export class App {
     else for (const a of earned) this.toast(`🏆 Achievement: ${a.icon} ${a.name}`, 'achievement');
     this.vibrate(20);
     if (this.sheet?.kind === 'menu' || this.sheet?.kind === 'achievements') this.renderSheet();
+  }
+
+  /** Pays out finished studio goals and deals new ones (render() then redraws an open goals sheet). */
+  private checkGoals(s: GameState) {
+    // Like achievements: a score goal waits until the reviews have been read.
+    if (this.sheet?.kind === 'review') return;
+    const done = updateGoals(s);
+    for (const g of done) this.toast(`🎯 Goal done: ${goalText(g)}. ${rewardText(g.reward)}`, 'achievement');
+    if (done.length) {
+      this.office.cheer(['🎯', 'Goal!', '🙌', '✨']);
+      this.vibrate(20);
+      this.save();
+    }
   }
 
   private toast(text: string, kind: NoticeKind | 'achievement' = 'info') {
@@ -811,6 +826,12 @@ export class App {
       }
       case 'contracts':
         this.open({ kind: 'contracts' });
+        return;
+      case 'goals':
+        this.open({ kind: 'goals' });
+        return;
+      case 'goal-swap':
+        if (report(swapGoal(s, Number(arg)))) this.save();
         return;
       case 'store':
         if (sheet?.kind === 'decor') this.replace({ kind: 'store' });
