@@ -1,5 +1,5 @@
 import { OFFICES, PHASES, PLATFORMS, RESEARCH, STORE, TOPICS, genreById, platformById, platformUsers, sizeById, topicById } from '../core/data';
-import { TREND_GENRE_BONUS, TREND_TOPIC_BONUS } from '../core/industry';
+import { TREND_GENRE_BONUS, TREND_TOPIC_BONUS, announcedName, isPlatformAnnounced } from '../core/industry';
 import { profit, verdict } from '../core/results';
 import { GOTY_ICON, acclaimOf } from '../core/acclaim';
 import { profitChart, sparkline } from './charts';
@@ -165,12 +165,12 @@ export function renderNews(state: GameState): string {
       ${dir}
     </div>`;
   });
-  const coming = PLATFORMS.filter((p) => p.start === year + 1);
+  const coming = PLATFORMS.filter((p) => isPlatformAnnounced(p, state.week)).sort((a, b) => a.start - b.start);
   const comingRows = coming.map(
     (p) => `
     <div class="list-item">
       <div class="emoji">${p.icon}</div>
-      <div class="grow"><div class="name">${esc(p.name)}</div><div class="sub">${p.kind} · arrives in ${p.start}</div></div>
+      <div class="grow"><div class="name">${esc(announcedName(p, state.week))}</div><div class="sub">${p.kind}${p.maker ? ` · ${esc(p.maker)}` : ''} · arrives in ${p.start}</div></div>
       <span class="tag">Coming soon</span>
     </div>`,
   );

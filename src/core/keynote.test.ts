@@ -31,6 +31,6 @@ describe('console launch keynotes', () => {
         }
       }
     }
-    expect(seen).toEqual(['1989 Zephyr Drive', '1990 Pocket Pal', '1995 Spectra']);
+    expect(seen).toEqual(['1989 Zephyr Drive', '1990 Pocket Pal', '1991 Super Nova', '1993 Arcadium Cheetah', '1995 Spectra', '1995 Zephyr Orbit']);
   });
 });
