@@ -30,7 +30,8 @@ function careers(style: BotStyle, n: number, extra?: (s: GameState) => void) {
 }
 const median = (v: number[]) => [...v].sort((a, b) => a - b)[Math.floor(v.length / 2)];
 
-describe('money curve', () => {
+// Whole bot careers: slower on CI runners, where they share the CPU with the balance playthroughs.
+describe('money curve', { timeout: 30_000 }, () => {
   it('prices rise every year and markets get more crowded', () => {
     expect(priceIndex(0)).toBe(1);
     expect(priceIndex(WEEKS_PER_YEAR * 20)).toBeCloseTo(2, 5);
