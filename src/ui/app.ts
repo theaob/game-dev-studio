@@ -7,7 +7,9 @@ import type { BoothId, PromoId, SalesPushId } from '../core/marketing';
 import { normalizeFocus } from '../core/scoring';
 import { sequelName } from '../core/sequels';
 import type { GameSpec, GameState, GenreId, ReleasedGame, MarketingId, NoticeKind, PolishMode, SimEvent, SizeId } from '../core/types';
-import { clearSave, loadAchievements, loadGame, loadRecords, saveAchievements, saveGame, saveRecords, type Unlock } from '../save';
+import { clearSave, loadAchievements, loadGame, loadGuideDone, loadRecords, saveAchievements, saveGame, saveGuideDone, saveRecords, type Unlock } from '../save';
+import { guideStep, markGuideSeen, skipGuide, startGuide, type GuideStep } from '../core/guide';
+import { coachCard } from './guide';
 import { newAchievements } from '../core/achievements';
 import { addCareer } from '../core/career';
 import { OfficeScene } from './office';
@@ -461,14 +463,17 @@ export class App {
    */
   private renderDockFitted(s: GameState) {
     const offer = this.cashOffer(s);
-    const key = `${dockLayoutKey(s, offer)}|${window.innerWidth}x${window.innerHeight}`;
+    // The guided first game's coach card sits on top of the dock.
+    const step = guideStep(s, { sheet: null, tab: this.tab });
+    const coach = step ? coachCard(s, step) : '';
+    const key = `${dockLayoutKey(s, offer)}|${step ?? ''}|${window.innerWidth}x${window.innerHeight}`;
     const measured = this.dockFit?.key === key;
-    this.set('dock', renderDock(s, offer, this.dockCompact ?? (measured && this.dockFit!.compact)));
+    this.set('dock', coach + renderDock(s, offer, this.dockCompact ?? (measured && this.dockFit!.compact)));
     if (this.dockCompact !== null || measured || s.activity?.kind !== 'game') return;
     const room = this.els.dock.getBoundingClientRect().top - this.els.top.getBoundingClientRect().bottom;
     const compact = room < MIN_OFFICE_VIEW;
     this.dockFit = { key, compact };
-    if (compact) this.set('dock', renderDock(s, offer, true));
+    if (compact) this.set('dock', coach + renderDock(s, offer, true));
   }
 
   private render() {
@@ -782,10 +787,11 @@ export class App {
       case 'start-studio': {
         const name = sheet?.kind === 'welcome' ? sheet.name : '';
         this.state = createGame(name);
+        startGuide(this.state, loadGuideDone());
         this.markNewsRead();
         this.save();
         this.close();
-        this.toast('Tip: start with a small game, or take a contract for quick cash.', 'info');
+        if (!this.state.guide) this.toast('Tip: start with a small game, or take a contract for quick cash.', 'info');
         return;
       }
     }
@@ -793,6 +799,21 @@ export class App {
     if (!s) return;
 
     switch (name) {
+      // The guided first game
+      case 'guide-next':
+        markGuideSeen(s, arg as GuideStep);
+        if (s.guide?.done) saveGuideDone();
+        this.save();
+        this.render();
+        return;
+      case 'guide-skip':
+        skipGuide(s);
+        saveGuideDone();
+        this.save();
+        this.toast('Tutorial skipped. "How to play" in the menu has the rules.', 'info');
+        this.render();
+        return;
+
       // Studio
       case 'new-game': {
         const draft: GameSpec = { name: '', topic: '', genre: '' as GenreId, platform: 'pc', size: 'small', marketing: 'none' };
@@ -1051,6 +1072,8 @@ export class App {
             sheet.error = err;
             this.renderSheet();
           } else {
+            // The guide explains the later phases once.
+            if (!sheet.spec && s.guide) markGuideSeen(s, 'phase');
             this.close();
           }
         }

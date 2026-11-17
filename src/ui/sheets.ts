@@ -51,6 +51,8 @@ import type { PlayGamesView } from './play-games';
 import type { Keynote } from '../core/keynote';
 import { CAREER_HIT_SCORE, RECORD_KEYS, careerStats, careerTitle, type CareerRecords, type RecordKey } from '../core/career';
 import { END_YEAR as LAST_YEAR, TOTAL_WEEKS } from '../core/time';
+import { guideStep } from '../core/guide';
+import { coachCard } from './guide';
 
 export type Sheet =
   | { kind: 'welcome'; name: string }
@@ -102,6 +104,18 @@ export function renderSheet(
         </div>`;
   }
   if (!state) return '';
+  return sheetCoach(state, sheet) + stateSheet(state, sheet, ads, unlocked);
+}
+
+/** The guided first game's coach card, at the top of the sheet it explains. */
+function sheetCoach(state: GameState, sheet: Sheet): string {
+  const step = guideStep(state, { sheet: { kind: sheet.kind, step: sheet.kind === 'newGame' ? sheet.step : undefined, spec: sheet.kind === 'focus' && !!sheet.spec }, tab: 'studio' });
+  if (!step) return '';
+  const draft = sheet.kind === 'newGame' ? sheet.draft : sheet.kind === 'focus' ? sheet.spec : undefined;
+  return coachCard(state, step, draft);
+}
+
+function stateSheet(state: GameState, sheet: Sheet, ads: MonetizationView, unlocked: Record<string, Unlock>): string {
   switch (sheet.kind) {
     case 'newGame':
       return sheet.step === 1 ? newGameStep1(state, sheet.draft, sheet.error) : newGameStep2(state, sheet.draft, sheet.error);
@@ -130,6 +144,7 @@ export function renderSheet(
     case 'keynote':
       return keynote(state, sheet.keynote);
   }
+  return '';
 }
 
 function welcome(name: string): string {

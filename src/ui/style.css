@@ -3431,3 +3431,64 @@ canvas.office {
   font-weight: 400;
   margin-left: 4px;
 }
+
+/* The guided first game: a sticky-note coach card on the dock or at the top of a sheet. */
+.coach {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  background: #fff1b8;
+  border: 2px solid var(--ink);
+  border-radius: 18px;
+  padding: 10px 12px;
+  box-shadow: var(--pop);
+  margin-bottom: 12px;
+  text-align: left;
+}
+
+.dock > .coach {
+  margin-bottom: 0;
+}
+
+.coach-face {
+  font-size: 26px;
+  line-height: 1;
+}
+
+.coach-title {
+  display: block;
+  font-size: 14.5px;
+}
+
+.coach-body {
+  font-size: 13px;
+  line-height: 1.4;
+  margin-top: 2px;
+}
+
+.coach-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.coach-actions:empty {
+  display: none;
+}
+
+.coach-actions .btn.small {
+  margin-left: auto;
+}
+
+.coach-skip {
+  background: none;
+  border: 0;
+  padding: 6px 0;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--muted);
+  text-decoration: underline;
+  cursor: pointer;
+}

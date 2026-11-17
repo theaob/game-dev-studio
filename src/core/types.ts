@@ -187,6 +187,8 @@ export interface GameState {
   ventures?: string[];
   /** Rival studios bought out. */
   acquired?: string[];
+  /** The guided first game: the cards already dismissed, and whether it's finished or skipped (see guide.ts). */
+  guide?: { seen?: string[]; done?: boolean };
 }
 
 export interface DecorState {
