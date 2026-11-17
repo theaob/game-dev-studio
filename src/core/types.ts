@@ -165,6 +165,12 @@ export interface GameState {
   totalRevenue: number;
   debtStrikes: number;
   over: null | 'bankrupt' | 'retired';
+  /**
+   * Kept playing past the last year, for high scores only: no new platforms or research
+   * arrive, the market stays as it was when the timeline ended, and the studio retires
+   * whenever the player says (or goes bankrupt).
+   */
+  endless?: boolean;
   /** Active store boosts and the game-development weeks they have left. */
   boosts?: Partial<Record<string, number>>;
   /** Permanent store upgrades bought. */

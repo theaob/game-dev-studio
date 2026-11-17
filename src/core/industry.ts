@@ -7,7 +7,7 @@ import { GENRES, PLATFORMS, TOPICS, genreById, topicById } from './data';
 import { pick, random, range } from './rng';
 import { SALES_WEEKS, notify, randomTitle } from './sim';
 import { GOTY_ICON, GOTY_SALES_BOOST, gotyFans } from './acclaim';
-import { WEEKS_PER_YEAR, yearOf } from './time';
+import { WEEKS_PER_YEAR, marketWeek, yearOf } from './time';
 import { platformKeynote } from './keynote';
 import type { GameState, GenreId, IndustryState, NoticeKind, SimEvent } from './types';
 
@@ -87,7 +87,7 @@ export function rivalClash(state: GameState, genre: string, topic: string) {
 
 function rivalRelease(state: GameState) {
   const ind = industry(state);
-  const year = yearOf(state.week);
+  const year = yearOf(marketWeek(state.week));
   const rivals = activeRivals(year).filter((r) => !state.acquired?.includes(r.name));
   if (!rivals.length) return;
   const rival = pick(state, rivals);

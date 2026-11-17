@@ -2,7 +2,7 @@ import { genreById, platformById, sizeById, topicFit } from './data';
 import { platformFit } from './ventures';
 import { gaussian, type RngHolder } from './rng';
 import { sequelQualityMult } from './sequels';
-import { yearFraction, START_YEAR } from './time';
+import { marketWeek, yearFraction, START_YEAR } from './time';
 import type { GameProject, GameState } from './types';
 
 /** Quality multiplier per topic/genre fit: bad, okay, good, great, perfect. */
@@ -33,7 +33,7 @@ export function phaseAlignment(genreImportance: number[], phase: number, rawFocu
 
 /** The market's expectation of points-per-week: rises over time and with your own best work. */
 export function benchmark(state: Pick<GameState, 'week' | 'bestPPW'>): number {
-  const years = yearFraction(state.week) - START_YEAR;
+  const years = yearFraction(marketWeek(state.week)) - START_YEAR;
   return Math.max(3 * Math.pow(1.07, years), state.bestPPW * 0.9);
 }
 

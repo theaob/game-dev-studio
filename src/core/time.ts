@@ -25,3 +25,12 @@ export function formatShortDate(week: number): string {
   const month = Math.floor((week % WEEKS_PER_YEAR) / WEEKS_PER_MONTH);
   return `${MONTHS[month]} ${yearOf(week)}`;
 }
+
+/**
+ * The week the market is at. After the last year (a studio that keeps playing for high
+ * scores) nothing moves on: no new platforms, prices or expectations, just as they were
+ * when the timeline ended.
+ */
+export function marketWeek(week: number): number {
+  return Math.min(week, TOTAL_WEEKS);
+}

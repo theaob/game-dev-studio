@@ -1,4 +1,4 @@
-import { availablePlatforms, createGame, doResearch, fire, hire, startHeadhunt, randomTitle, bookBooth, buyStoreItem, catLeaveLap, pushSales, runPromo, placeCatOnLap, releaseGame, setPhaseFocus, setPolishMode, startContract, startGame, tick, train, upgradeOffice, validateGame } from '../core/sim';
+import { availablePlatforms, createGame, doResearch, fire, hire, startHeadhunt, randomTitle, bookBooth, buyStoreItem, catLeaveLap, pushSales, runPromo, placeCatOnLap, releaseGame, keepPlaying, retireForGood, setPhaseFocus, setPolishMode, startContract, startGame, tick, train, upgradeOffice, validateGame } from '../core/sim';
 import { storeItemById } from '../core/data';
 import { acquireRival, buyVenture, ventureById, type VentureId } from '../core/ventures';
 import { App as NativeApp } from '@capacitor/app';
@@ -9,7 +9,8 @@ import { sequelName } from '../core/sequels';
 import type { GameSpec, GameState, GenreId, ReleasedGame, MarketingId, NoticeKind, PolishMode, SimEvent, SizeId } from '../core/types';
 import { clearSave, loadAchievements, loadGame, loadRecords, saveAchievements, saveGame, saveRecords, type Unlock } from '../save';
 import { newAchievements } from '../core/achievements';
-import { addCareer } from '../core/career';
+import { RECORD_KEYS, addCareer } from '../core/career';
+import { WEEKS_PER_YEAR } from '../core/time';
 import { OfficeScene } from './office';
 import { OfficeLoading, hasWebGL } from './office-loading';
 import { CAT_ID } from './office-common';
@@ -147,6 +148,8 @@ export class App {
     const events = tick(s);
     for (const ev of events) this.handle(ev);
     this.celebrateGoty(goty);
+    // Past the last year it's all about high scores: each New Year raises the records this studio beat.
+    if (s.endless && !s.over && s.week % WEEKS_PER_YEAR === 0) this.raiseRecords();
     if (s.week % 4 === 0) this.save();
     this.render();
   }
@@ -168,8 +171,10 @@ export class App {
       case 'gameOver': {
         this.save();
         // A retired studio joins the device's records; a bankrupt one may still be bailed out.
-        if (ev.reason === 'retired') {
-          const { records, beaten } = addCareer(loadRecords(), this.state!);
+        // One that kept playing past the last year is already counted, and only raises them.
+        const endless = !!this.state!.endless;
+        if (ev.reason === 'retired' || endless) {
+          const { records, beaten } = addCareer(loadRecords(), this.state!, !endless);
           saveRecords(records);
           this.open({ kind: 'gameOver', records, beaten });
         } else this.open({ kind: 'gameOver' });
@@ -207,7 +212,7 @@ export class App {
   /** Re-opens prompts that were pending when the game was saved. */
   private resumePrompts() {
     const s = this.state!;
-    if (s.over) this.open(s.over === 'retired' ? { kind: 'gameOver', records: loadRecords() } : { kind: 'gameOver' });
+    if (s.over) this.open(s.over === 'retired' || s.endless ? { kind: 'gameOver', records: loadRecords() } : { kind: 'gameOver' });
     else if (s.activity?.kind === 'game' && s.activity.awaitingFocus) {
       this.open({ kind: 'focus', phase: s.activity.phase, values: [50, 50, 50] });
     }
@@ -281,6 +286,16 @@ export class App {
   }
 
   /** A studio game just won Game of the Year: throw it a party. */
+  /** A studio playing past the last year raises the device's records it beats, and says so. */
+  private raiseRecords() {
+    const { records, beaten } = addCareer(loadRecords(), this.state!, false);
+    if (!beaten.length) return;
+    saveRecords(records);
+    const labels = beaten.map((k) => RECORD_KEYS.find((r) => r.key === k)!.label.toLowerCase());
+    this.toast(`🥇 New record${beaten.length > 1 ? 's' : ''}: ${labels.join(', ')}!`, 'good');
+    this.office.cheer(['🥇', 'Record!', '📈']);
+  }
+
   private celebrateGoty(before: number) {
     const s = this.state!;
     const winners = s.released.filter((g) => g.goty !== undefined);
@@ -874,6 +889,24 @@ export class App {
         });
         return;
       }
+      case 'keep-playing':
+        if (report(keepPlaying(s))) {
+          this.save();
+          this.close();
+          this.office.cheer(['🔁', 'One more year!', '🥇']);
+        }
+        return;
+      case 'ask-retire':
+        this.replace({ kind: 'confirm', text: 'Retire the studio now? The career ends here and its records are saved.', action: 'retire', confirmLabel: 'Retire' });
+        return;
+      case 'retire':
+        if (report(retireForGood(s))) {
+          // Straight from the confirmation to the ending.
+          this.sheet = null;
+          this.els.sheet.dataset.kind = '';
+          this.handle({ type: 'gameOver', reason: 'retired' });
+        }
+        return;
       case 'bailout':
         void this.ads.showRewarded().then((watched) => {
           if (!watched) {

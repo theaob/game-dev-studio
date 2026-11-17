@@ -5,7 +5,7 @@
  * Tuned with scripts/balance.test.ts and checked by src/core/economy.test.ts.
  */
 import { MARKETING, OFFICES, SIZES } from './data';
-import { START_YEAR, yearFraction } from './time';
+import { START_YEAR, marketWeek, yearFraction } from './time';
 import type { GameState, MarketingId, SizeId } from './types';
 
 /** Yearly growth of prices: salaries, rent, budgets, marketing, store items. */
@@ -19,7 +19,7 @@ export const STARTING_CASH = 60000;
 
 /** Price level relative to 1985 (1.0), rising every year. */
 export function priceIndex(week: number): number {
-  return 1 + INFLATION * Math.max(0, yearFraction(week) - START_YEAR);
+  return 1 + INFLATION * Math.max(0, yearFraction(marketWeek(week)) - START_YEAR);
 }
 
 /** Rounds money to a friendly amount ($100s below $10K, $1,000s above). */

@@ -109,18 +109,21 @@ export function recordValues(c: CareerStats): Partial<Record<RecordKey, number>>
 /**
  * Adds a finished career to the records. Returns the new records and the ones
  * this career set (a tie doesn't take a record, and a zero never sets one).
+ * A studio that keeps playing past the last year was counted when it first retired:
+ * later calls pass `count: false` and only raise the records it beats.
  */
-export function addCareer(records: CareerRecords, state: GameState): { records: CareerRecords; beaten: RecordKey[] } {
+export function addCareer(records: CareerRecords, state: GameState, count = true): { records: CareerRecords; beaten: RecordKey[] } {
   const values = recordValues(careerStats(state));
   const best = { ...records.best };
   const beaten: RecordKey[] = [];
   for (const { key } of RECORD_KEYS) {
     const v = values[key];
     if (v === undefined || v <= 0 || v <= (best[key]?.value ?? 0)) continue;
-    best[key] = { value: v, studio: state.studioName, year: yearOf(state.week) - 1 };
+    // The year just played: a career that ends at New Year finished the year before.
+    best[key] = { value: v, studio: state.studioName, year: yearOf(Math.max(0, state.week - 1)) };
     beaten.push(key);
   }
-  return { records: { careers: records.careers + 1, best }, beaten };
+  return { records: { careers: records.careers + (count ? 1 : 0), best }, beaten };
 }
 
 export const NO_RECORDS: CareerRecords = { careers: 0, best: {} };
