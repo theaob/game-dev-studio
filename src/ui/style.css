@@ -3403,3 +3403,31 @@ canvas.office {
     opacity: 1;
   }
 }
+
+/* Ending screen: what the industry remembers the studio as. */
+.career-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+  padding: 12px 14px;
+  background: var(--card2);
+  border: 2px solid var(--ink);
+  border-radius: 14px;
+  box-shadow: var(--pop);
+}
+
+.career-title .emoji {
+  font-size: 34px;
+  line-height: 1;
+}
+
+.career-title b {
+  font-family: var(--display);
+  font-size: 18px;
+}
+
+.summary .line b .sub {
+  font-weight: 400;
+  margin-left: 4px;
+}
