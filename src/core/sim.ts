@@ -770,7 +770,8 @@ export function tick(state: GameState): SimEvent[] {
   }
 
   state.week++;
-  const noticeStart = state.notices.length;
+  // The log is capped, so remember the newest notice instead of an index into it.
+  const lastNotice = state.notices[state.notices.length - 1];
 
   if (act?.kind === 'game') {
     tickProject(state, act, events);
@@ -804,7 +805,7 @@ export function tick(state: GameState): SimEvent[] {
     notify(state, 'After 41 years, it is time to retire. What a journey!', 'good');
   }
 
-  for (const n of state.notices.slice(noticeStart)) events.push({ type: 'notice', notice: n });
+  for (const n of state.notices.slice(state.notices.lastIndexOf(lastNotice) + 1)) events.push({ type: 'notice', notice: n });
   if (state.over) events.push({ type: 'gameOver', reason: state.over });
   return events;
 }
@@ -996,8 +997,13 @@ export function polishYield(p: GameProject): number {
   return Math.pow(POLISH_DECAY, p.pointPolishWeeks ?? 0);
 }
 
-function salesWeight(week: number): number {
-  return ((1 - SALES_DECAY) * Math.pow(SALES_DECAY, week)) / (1 - Math.pow(SALES_DECAY, SALES_WEEKS));
+/**
+ * Share of the copies a game still has to sell that go in this week on the market.
+ * Working from what is left (not the lifetime target) spreads anything that raises the
+ * target mid-run, a sales push or Game of the Year, over the remaining weeks.
+ */
+function salesShare(week: number): number {
+  return (1 - SALES_DECAY) / (1 - Math.pow(SALES_DECAY, SALES_WEEKS - week));
 }
 
 // ---------------------------------------------------------------------------
@@ -1114,7 +1120,8 @@ function tickSales(state: GameState) {
   for (const g of state.released) {
     if (g.weeksOnMarket >= SALES_WEEKS) continue;
     const isLast = g.weeksOnMarket === SALES_WEEKS - 1;
-    const units = isLast ? g.targetUnits - g.unitsSold : Math.round(g.targetUnits * salesWeight(g.weeksOnMarket));
+    const left = Math.max(0, g.targetUnits - g.unitsSold);
+    const units = isLast ? left : Math.round(left * salesShare(g.weeksOnMarket));
     g.weeksOnMarket++;
     g.unitsSold += units;
     const revenue = Math.round(units * g.unitPrice);

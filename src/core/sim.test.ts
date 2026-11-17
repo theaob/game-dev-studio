@@ -1096,3 +1096,44 @@ describe('ad rewards', () => {
     expect(claimBailout(s)).toMatch(/not bankrupt/);
   });
 });
+
+describe('review fixes', () => {
+  function ship(s: ReturnType<typeof createGame>) {
+    expect(startGame(s, spec, [50, 50, 50])).toBeNull();
+    while (s.activity?.kind === 'game' && s.activity.phase < 3) {
+      if (s.activity.awaitingFocus) setPhaseFocus(s, [50, 50, 50]);
+      tick(s);
+    }
+    const r = releaseGame(s);
+    if (typeof r === 'string') throw new Error(r);
+    return r.game;
+  }
+
+  it('keeps reporting new notices once the studio log is full', () => {
+    const s = createGame('Test', 5);
+    s.cash = 1e9;
+    for (let i = 0; i < 60; i++) s.notices.push({ week: 0, text: `old ${i}`, kind: 'info' });
+    s.notices.splice(0, s.notices.length - 40);
+    expect(startContract(s, s.contractOffers[0].id)).toBeNull();
+    const texts: string[] = [];
+    for (let i = 0; i < 8 && s.activity; i++) for (const e of tick(s)) if (e.type === 'notice') texts.push(e.notice.text);
+    expect(texts.some((t) => t.startsWith('Contract'))).toBe(true);
+    expect(texts.some((t) => t.startsWith('old'))).toBe(false);
+  });
+
+  it('spreads a sales push over the weeks left instead of dumping it on the last one', () => {
+    const s = createGame('Test', 2);
+    s.cash = 1e9;
+    s.fans = 50_000;
+    const g = ship(s);
+    tick(s);
+    tick(s);
+    expect(pushSales(s, g.id, 'sale')).toBeNull();
+    while (g.weeksOnMarket < SALES_WEEKS) tick(s);
+    const units = g.weekly!.units;
+    expect(units.reduce((a, b) => a + b, 0)).toBe(g.targetUnits);
+    expect(g.unitsSold).toBe(g.targetUnits);
+    // After the push, every week sells less than the one before, to the very end.
+    for (let w = 3; w < SALES_WEEKS; w++) expect(units[w]).toBeLessThanOrEqual(units[w - 1]);
+  });
+});

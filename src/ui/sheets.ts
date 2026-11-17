@@ -353,6 +353,9 @@ function newGameStep2(state: GameState, d: GameSpec, error?: string): string {
         .map((p) => {
           const fit = platformGenreFit(p, d.genre);
           const owned = state.licenses.includes(p.id);
+          // A game that launches after the platform is gone has nobody to sell to.
+          const launch = yearFraction(state.week + size.phaseWeeks * 3);
+          const endTag = p.end === undefined ? '' : launch >= p.end ? '<span class="tag bad">Gone before launch</span>' : p.end - launch < 1 ? `<span class="tag mid">Discontinued in ${p.end}</span>` : '';
           const fitTag = fit > 1.05 ? `<span class="tag good">Loves ${genreById(d.genre).name}</span>` : fit < 0.95 ? `<span class="tag bad">Weak for ${genreById(d.genre).name}</span>` : '';
           return `
         <button class="option ${d.platform === p.id ? 'on' : ''}" data-action="pick-platform" data-arg="${p.id}">
@@ -360,7 +363,7 @@ function newGameStep2(state: GameState, d: GameSpec, error?: string): string {
           <span class="grow">
             <b>${p.name}</b> <span class="sub">${p.kind}</span><br/>
             <span class="sub">${num(platformUsers(p, year) * 1e6)} users · ${owned ? 'Licensed' : `License ${money(p.license)}`}${p.priceMult < 1 ? ' · low prices' : ''}</span>
-            ${fitTag ? `<br/>${fitTag}` : ''}
+            ${fitTag || endTag ? `<br/>${fitTag}${fitTag && endTag ? ' ' : ''}${endTag}` : ''}
           </span>
         </button>`;
         })

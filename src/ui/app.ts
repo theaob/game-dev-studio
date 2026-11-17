@@ -614,6 +614,9 @@ export class App {
       sheet.values[Number(el.dataset.focus)] = Number(el.value);
       this.updateFocusLabels(sheet);
     }
+    // What was typed is already on screen: keep the cached markup in step, so a re-render
+    // from elsewhere (an ad finished loading, say) doesn't rebuild the sheet and drop the keyboard.
+    if (el.dataset.bind) this.html.sheet = renderSheet(this.state, sheet, this.ads.view(), this.unlocked, this.playGames.view());
   }
 
   /** Updates slider labels in place so dragging stays smooth. */
