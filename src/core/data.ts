@@ -195,6 +195,20 @@ export function platformUsers(p: Platform, year: number): number {
   return pts[pts.length - 1][1];
 }
 
+/** How long after a platform is discontinued its last owners keep buying games, in years. */
+export const PLATFORM_TAIL_YEARS = 1;
+
+/**
+ * The players a game released now can sell to. While the platform is on sale that is its
+ * users; once it's discontinued, the owners it had at the end drift away over
+ * PLATFORM_TAIL_YEARS instead of vanishing overnight.
+ */
+export function platformBuyers(p: Platform, year: number): number {
+  if (p.end === undefined || year < p.end) return platformUsers(p, year);
+  const last = p.users[p.users.length - 1][1];
+  return last * Math.max(0, 1 - (year - p.end) / PLATFORM_TAIL_YEARS);
+}
+
 export function isPlatformAvailable(p: Platform, year: number): boolean {
   return year >= p.start && (p.end === undefined || year < p.end);
 }

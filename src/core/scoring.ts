@@ -80,7 +80,8 @@ export function evaluate(state: GameState, project: GameProject): Evaluation {
   const original = project.sequelOf !== undefined ? state.released.find((g) => g.id === project.sequelOf) : undefined;
   const repeatMult = original ? sequelQualityMult(state.week, original) : repeatMultiplier(state.released, project.topic, project.genre);
 
-  const staffMult = state.staff.length < size.minStaff ? 0.9 - 0.05 * (size.minStaff - state.staff.length) : 1;
+  const team = developmentTeam(state, project);
+  const staffMult = team < size.minStaff ? 0.9 - 0.05 * (size.minStaff - team) : 1;
   const platformMult = Math.sqrt(platformFit(state, platformById(project.platform), project.genre));
 
   const quality = pointsRatio * fitMult * alignMult * balanceMult * bugMult * repeatMult * Math.max(0.6, staffMult) * platformMult;
@@ -104,6 +105,17 @@ export function evaluate(state: GameState, project: GameProject): Evaluation {
     quality,
     score,
   };
+}
+
+/**
+ * The team size a game is judged on: the average over its development weeks, so hiring
+ * on release day doesn't make up for building it short-handed. Saves from before this
+ * was tracked (and games that haven't had a week yet) use today's team.
+ */
+export function developmentTeam(state: Pick<GameState, 'staff'>, project: Pick<GameProject, 'teamWeeks' | 'phase' | 'phaseWeeks' | 'weekInPhase'>): number {
+  const weeks = Math.min(project.phase, 3) * project.phaseWeeks + (project.phase < 3 ? project.weekInPhase : 0);
+  if (!project.teamWeeks || weeks <= 0) return state.staff.length;
+  return Math.round(project.teamWeeks / weeks);
 }
 
 /** Best and worst raw design/tech balance multipliers. */

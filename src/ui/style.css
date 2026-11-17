@@ -715,6 +715,12 @@ h2 {
   text-overflow: ellipsis;
 }
 
+/* Game rows: a long title wraps, so its award badges stay in view on a narrow phone. */
+.list-item .name.wrap {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
 .empty {
   color: var(--muted);
   text-align: center;
@@ -2572,6 +2578,10 @@ nav.tabs .dot {
 .toasts {
   top: calc(var(--hud-h) + 2px);
   align-items: center;
+}
+
+.toasts.over-sheet {
+  top: calc(var(--safe-top) + 4px);
 }
 
 .toast {

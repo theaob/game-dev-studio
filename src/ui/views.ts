@@ -365,7 +365,7 @@ function gameRow(g: ReleasedGame, detail: string, aside = ''): string {
   <button class="list-item" data-action="game-detail" data-arg="${g.id}">
     <div class="score ${scoreClass(g.score)}">${g.score.toFixed(1)}</div>
     <div class="grow">
-      <div class="name">${esc(g.name)}${(g.series ?? 1) > 1 ? ` <span class="tag">Part ${g.series}</span>` : ''}${acclaimTag(g)}</div>
+      <div class="name wrap">${esc(g.name)}${(g.series ?? 1) > 1 ? ` <span class="tag">Part ${g.series}</span>` : ''}${acclaimTag(g)}</div>
       <div class="sub">${topicById(g.topic).name} ${genreById(g.genre).name} · ${platformById(g.platform).name}</div>
       <div class="sub">${detail}</div>
     </div>
@@ -526,6 +526,7 @@ export function renderStaff(state: GameState): string {
           <div class="name">${esc(c.name)}${c.rockstar ? ' <span class="tag good">Rockstar</span>' : ''}</div>
           <div class="sub">${money(c.salary)}/mo · speed ${c.speed.toFixed(1)}x</div>
           ${skillBars(c)}
+          <div class="sub${!full && state.cash < c.salary ? ' warn' : ''}" style="margin-top:4px">${!full && state.cash < c.salary ? `You need ${money(c.salary)} for the hiring fee.` : `Hiring fee: ${money(c.salary)} (one month's pay).`}</div>
         </div>
         <button class="btn small" data-action="hire" data-arg="${c.id}" ${full || state.cash < c.salary ? 'disabled' : ''}>Hire</button>
       </div>`,
@@ -538,11 +539,14 @@ export function renderStaff(state: GameState): string {
 
 function headhuntCard(state: GameState): string {
   const waiting = state.candidates.some((c) => c.rockstar);
+  const blocker = headhuntBlocker(state);
   const status = state.headhunt
     ? `Searching… ${state.headhunt.weeks} week${state.headhunt.weeks === 1 ? '' : 's'} left.`
     : waiting
       ? 'Your rockstar is waiting above.'
-      : '';
+      : blocker && !blocker.startsWith('The headhunter charges')
+        ? blocker
+        : '';
   return `
   <div class="list mt">
     <div class="list-item" style="align-items:flex-start">
@@ -552,7 +556,7 @@ function headhuntCard(state: GameState): string {
         <div class="sub">A headhunter finds a rare developer with top skills and extra speed in ${HEADHUNT_WEEKS} weeks. Rockstars ask for ${Math.round((ROCKSTAR_SALARY_MULT - 1) * 100)}% more pay.</div>
         ${status ? `<div class="sub" style="margin-top:4px"><b>${status}</b></div>` : ''}
       </div>
-      ${state.headhunt || waiting ? '' : `<button class="btn small" data-action="headhunt" ${headhuntBlocker(state) ? 'disabled' : ''}>${money(headhuntFee(state))}</button>`}
+      ${state.headhunt || waiting ? '' : `<button class="btn small" data-action="headhunt" ${blocker ? 'disabled' : ''}>${money(headhuntFee(state))}</button>`}
     </div>
   </div>`;
 }

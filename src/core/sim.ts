@@ -18,7 +18,7 @@ import {
   isPlatformAvailable,
   marketingById,
   platformById,
-  platformUsers,
+  platformBuyers,
   sizeById,
   topicById,
 } from './data';
@@ -488,6 +488,7 @@ export function headhuntBlocker(state: GameState): string | null {
   if (state.over) return 'The game is over.';
   if (state.headhunt) return 'The headhunter is already searching.';
   if (state.candidates.some((c) => c.rockstar)) return 'Your rockstar applicant is still waiting for an answer.';
+  if (state.staff.length >= officeCapacity(state) && !OFFICES[state.officeLevel + 1]) return 'Your office is full, so a rockstar would have no desk.';
   if (state.cash < headhuntFee(state)) return `The headhunter charges $${headhuntFee(state).toLocaleString('en-US')}.`;
   return null;
 }
@@ -585,7 +586,9 @@ export function releaseGame(state: GameState): ReleaseReport | string {
   const year = yearFraction(state.week);
   const years = year - START_YEAR;
 
-  const users = platformUsers(platform, year);
+  // A platform discontinued during development still has owners, but they are drifting away.
+  const users = platformBuyers(platform, year);
+  const discontinued = platform.end !== undefined && year >= platform.end;
   const sf = scoreFactor(score);
   const original = p.sequelOf !== undefined ? state.released.find((g) => g.id === p.sequelOf) : undefined;
   // A sequel sells to the original's fans (or suffers from its reputation).
@@ -701,6 +704,7 @@ export function releaseGame(state: GameState): ReleaseReport | string {
   if (trend > 1) insights.push({ text: `Riding this year's trend: +${Math.round((trend - 1) * 100)}% sales.`, kind: 'good' });
   if (clash) insights.push({ text: `${clash.studio}'s ${clash.name} got there first: ${Math.round((clashMult - 1) * 100)}% sales.`, kind: 'bad' });
   if (ev.staffMult < 1) insights.push({ text: `A ${size.name.toLowerCase()} game really needs a team of ${size.minStaff}+.`, kind: 'bad' });
+  if (discontinued) insights.push({ text: `The ${platform.name} was discontinued before launch, and its owners were already moving on.`, kind: 'bad' });
   const pFit = platformFit(state, platform, p.genre);
   if (pFit > 1.05) insights.push({ text: `${platform.name} owners love ${genre.name} games.`, kind: 'good' });
   else if (pFit < 0.95) insights.push({ text: `${genre.name} games are a hard sell on ${platform.name}.`, kind: 'bad' });
@@ -837,6 +841,9 @@ function tickProject(state: GameState, p: GameProject, events: SimEvent[]) {
     }
     return;
   }
+
+  // The team's size is judged over the whole of development, not on release day.
+  p.teamWeeks = (p.teamWeeks ?? 0) + state.staff.length;
 
   let design = 0;
   let tech = 0;

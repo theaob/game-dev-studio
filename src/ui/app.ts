@@ -501,6 +501,8 @@ export class App {
 
   private renderSheet() {
     const host = this.els.sheet;
+    // With a sheet open, toasts move up over the dimmed HUD so they don't cover the sheet's title.
+    this.els.toasts.classList.toggle('over-sheet', !!this.sheet);
     if (!this.sheet) {
       host.innerHTML = '';
       this.html.sheet = '';
@@ -960,6 +962,12 @@ export class App {
         if (sheet?.kind === 'newGame') {
           if (sheet.draft.genre) sheet.draft.name = randomTitle(sheet.draft.genre, sheet.draft.name, sheet.draft.topic || undefined);
           sheet.nameEdited = false;
+          this.renderSheet();
+        }
+        return;
+      case 'more-sequels':
+        if (sheet?.kind === 'newGame') {
+          sheet.allSequels = true;
           this.renderSheet();
         }
         return;
