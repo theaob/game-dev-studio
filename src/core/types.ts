@@ -45,6 +45,8 @@ export interface GameProject extends GameSpec {
   focus: number[][];
   awaitingFocus: boolean;
   polishWeeks: number;
+  /** Team size added up over each development week, for the average (absent on older saves). */
+  teamWeeks?: number;
   /** What the team works on while polishing (default: fixing bugs). */
   polishMode?: PolishMode;
   /** Weeks spent polishing design or tech; each one yields less than the last. */

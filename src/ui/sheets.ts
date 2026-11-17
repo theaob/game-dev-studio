@@ -27,8 +27,8 @@ import {
   promoBlocker,
   salesPushBlocker,
 } from '../core/sim';
-import { SEQUEL_TOO_SOON_WEEKS, sequelCandidates, sequelSalesMult, seriesNumber } from '../core/sequels';
-import { WEEKS_PER_YEAR, formatShortDate, yearFraction, yearOf } from '../core/time';
+import { SEQUEL_TOO_SOON_WEEKS, sequelCandidates, sequelSalesMult, seriesNumber, seriesTitle } from '../core/sequels';
+import { END_YEAR, WEEKS_PER_YEAR, formatShortDate, yearFraction, yearOf } from '../core/time';
 import { RIVAL_CLASH_MULT, RIVAL_CLASH_WEEKS, rivalClash, trendMult } from '../core/industry';
 import { onSale, paybackWeek, profit, returnMultiple, revenueRank, totalCost, verdict } from '../core/results';
 import { moneyChart, spendBar, weeklyChart } from './charts';
@@ -55,7 +55,8 @@ import { END_YEAR as LAST_YEAR, TOTAL_WEEKS } from '../core/time';
 export type Sheet =
   | { kind: 'welcome'; name: string }
   /** `nameEdited`: the player typed their own title, so picking a genre won't replace it. */
-  | { kind: 'newGame'; step: 1 | 2; draft: GameSpec; error?: string; nameEdited?: boolean }
+  /** `allSequels`: the sequel picker lists every game that can get one, not just the best few. */
+  | { kind: 'newGame'; step: 1 | 2; draft: GameSpec; error?: string; nameEdited?: boolean; allSequels?: boolean }
   | { kind: 'focus'; phase: number; values: number[]; spec?: GameSpec; error?: string }
   | { kind: 'devComplete' }
   | { kind: 'review'; report: ReleaseReport; shown: number }
@@ -104,7 +105,7 @@ export function renderSheet(
   if (!state) return '';
   switch (sheet.kind) {
     case 'newGame':
-      return sheet.step === 1 ? newGameStep1(state, sheet.draft, sheet.error) : newGameStep2(state, sheet.draft, sheet.error);
+      return sheet.step === 1 ? newGameStep1(state, sheet.draft, sheet.error, sheet.allSequels) : newGameStep2(state, sheet.draft, sheet.error);
     case 'focus':
       return focusSheet(state, sheet);
     case 'devComplete':
@@ -249,20 +250,25 @@ function newsNotes(state: GameState, genre: string, topic: string): string[] {
 }
 
 /** The "New game or sequel?" picker and, for a sequel, what to expect. */
-function sequelPicker(state: GameState, d: GameSpec): string {
+/** How many sequel candidates show before "More". */
+const SEQUEL_CHIPS = 8;
+
+function sequelPicker(state: GameState, d: GameSpec, all = false): string {
   const candidates = sequelCandidates(state);
   if (!candidates.length) return '';
   const original = d.sequelOf !== undefined ? state.released.find((g) => g.id === d.sequelOf) : undefined;
+  const shown = all ? [...candidates] : candidates.filter((g, i) => i < SEQUEL_CHIPS || g.id === original?.id);
+  const hidden = candidates.length - shown.length;
   const chips = [
     `<button class="chip ${original ? '' : 'on'}" data-action="pick-sequel" data-arg="none">✨ New game</button>`,
-    // The 8 best-reviewed candidates, listed in release order.
-    ...candidates
-      .slice(0, 8)
+    // The best-reviewed candidates (plus the one picked), or all of them, listed in release order.
+    ...shown
       .sort((a, b) => a.releaseWeek - b.releaseWeek || a.id - b.id)
       .map(
         (g) =>
           `<button class="chip ${original?.id === g.id ? 'on' : ''}" data-action="pick-sequel" data-arg="${g.id}">🔁 ${esc(g.name)}${acclaimOf(g) ? ` ${acclaimOf(g)!.icon}` : ''}${g.goty !== undefined ? ' 🏆' : ''} <small class="muted">${yearOf(g.releaseWeek)}</small> <span class="tag ${g.score >= 7.5 ? 'good' : g.score >= 5 ? 'mid' : 'bad'}">${g.score.toFixed(1)}</span></button>`,
       ),
+    ...(hidden > 0 ? [`<button class="chip" data-action="more-sequels">＋ ${hidden} more</button>`] : []),
   ].join('');
   let info = '';
   if (original) {
@@ -285,7 +291,7 @@ function sequelPicker(state: GameState, d: GameSpec): string {
     if (part >= 4) notes.push(beloved(original) ? `<li>❤️ Part ${part}, but fans of an award winner never tire of the series.</li>` : `<li>🥱 Part ${part} of a long series: players are starting to tire of it.</li>`);
     info = `
       <div class="sequel-card mt">
-        <div class="row"><b class="grow">Part ${part} of the ${esc(original.name.replace(/\s+\d+$/, ''))} series</b><span class="tag">${topicById(original.topic).icon} ${topicById(original.topic).name} ${genreById(original.genre).name}</span></div>
+        <div class="row"><b class="grow">Part ${part} of the ${esc(seriesTitle(original))} series</b><span class="tag">${topicById(original.topic).icon} ${topicById(original.topic).name} ${genreById(original.genre).name}</span></div>
         <ul class="reception-notes">${notes.join('')}</ul>
       </div>`;
   }
@@ -295,12 +301,12 @@ function sequelPicker(state: GameState, d: GameSpec): string {
     ${info}`;
 }
 
-function newGameStep1(state: GameState, d: GameSpec, error?: string): string {
+function newGameStep1(state: GameState, d: GameSpec, error?: string, allSequels = false): string {
   const sequel = d.sequelOf !== undefined;
   return `
     <h3>New game</h3>
     <p class="muted">Step 1 of 3 · Concept</p>
-    ${sequelPicker(state, d)}
+    ${sequelPicker(state, d, allSequels)}
     ${
       sequel
         ? '<p class="sub mt">A sequel keeps the original\'s topic and genre.</p>'
@@ -363,8 +369,8 @@ function newGameStep2(state: GameState, d: GameSpec, error?: string): string {
           const license = licenseCost(state, p);
           const owned = state.licenses.includes(p.id);
           // A game that launches after the platform is gone has nobody to sell to.
-          const launch = yearFraction(state.week + size.phaseWeeks * 3);
-          const endTag = p.end === undefined ? '' : launch >= p.end ? '<span class="tag bad">Gone before launch</span>' : p.end - launch < 1 ? `<span class="tag mid">Discontinued in ${p.end}</span>` : '';
+          const launch = yearFraction(state.week + phaseWeeks(state, d.size) * 3);
+          const endTag = p.end === undefined ? '' : launch >= p.end ? '<span class="tag bad">Discontinued before launch</span>' : p.end - launch < 1 ? `<span class="tag mid">Discontinued in ${p.end}</span>` : '';
           const fitTag = fit > 1.05 ? `<span class="tag good">Loves ${genreById(d.genre).name}</span>` : fit < 0.95 ? `<span class="tag bad">Weak for ${genreById(d.genre).name}</span>` : '';
           return `
         <button class="option ${d.platform === p.id ? 'on' : ''}" data-action="pick-platform" data-arg="${p.id}">
@@ -973,7 +979,7 @@ function gameOver(state: GameState, ads: MonetizationView, sheet: Extract<Sheet,
   return `
     <div class="big-emoji">${bankrupt ? '💸' : '🏆'}</div>
     <h3 class="center">${bankrupt ? 'Bankrupt!' : 'A legendary career'}</h3>
-    <p class="muted center">${bankrupt ? (bailout ? 'The money ran out. But the bank is willing to give you one more chance.' : 'The money ran out. Every great studio has a failure or two. Try again!') : `${esc(state.studioName)} has reached ${formatShortDate(state.week)}. Time to retire.`}</p>
+    <p class="muted center">${bankrupt ? (bailout ? 'The money ran out. But the bank is willing to give you one more chance.' : 'The money ran out. Every great studio has a failure or two. Try again!') : `${esc(state.studioName)} has made it to the end of ${END_YEAR}. Time to retire.`}</p>
     ${bailout ? `<div class="options">${bailout}</div>` : ''}
     <div class="summary">
       <div class="line"><span>Games released</span><b>${games.length}</b></div>
