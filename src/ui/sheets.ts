@@ -359,6 +359,18 @@ function sequelPicker(state: GameState, d: GameSpec, all = false): string {
     ${info}`;
 }
 
+/**
+ * A genre or topic tile for the concept step: icon over name, in an even grid so a long
+ * list stays compact. `corner` (expertise level, or what's known about the combination)
+ * sits top left, and 🔥 marks this year's trend top right.
+ */
+function pickTile(action: string, id: string, icon: string, name: string, on: boolean, hot: boolean, corner: string): string {
+  return `<button class="pick-tile ${on ? 'on' : ''}" data-action="${action}" data-arg="${id}" aria-pressed="${on}" title="${esc(name)}">
+    ${corner ? `<span class="pt-corner">${corner}</span>` : ''}${hot ? '<span class="pt-hot" title="Trending this year">🔥</span>' : ''}
+    <span class="pt-icon">${icon}</span><span class="pt-name${name.split(/[\s-]/).some((w) => w.length > 10) ? ' long' : ''}">${esc(name)}</span>
+  </button>`;
+}
+
 function newGameStep1(state: GameState, d: GameSpec, error?: string, allSequels = false): string {
   const sequel = d.sequelOf !== undefined;
   return `
@@ -370,23 +382,23 @@ function newGameStep1(state: GameState, d: GameSpec, error?: string, allSequels 
         ? '<p class="sub mt">A sequel keeps the original\'s topic and genre.</p>'
         : `
     <h4>Genre</h4>
-    <div class="chips">
+    <div class="pick-grid">
       ${availableGenres(state)
         .map((g) => {
           const level = expertiseLevel(genreHits(state.released, g.id));
-          const lv = level > 1 ? ` <small class="lv">Lv ${level}</small>` : '';
-          return `<button class="chip ${d.genre === g.id ? 'on' : ''}" data-action="pick-genre" data-arg="${g.id}">${g.icon} ${g.name}${lv}${state.industry?.trend?.genre === g.id ? ' 🔥' : ''}</button>`;
+          const lv = level > 1 ? `<small class="lv">Lv ${level}</small>` : '';
+          return pickTile('pick-genre', g.id, g.icon, g.name, d.genre === g.id, state.industry?.trend?.genre === g.id, lv);
         })
         .join('')}
     </div>
     <h4>Topic</h4>
-    <div class="chips">
+    <div class="pick-grid">
       ${state.topics
         .map((id) => {
           const t = topicById(id);
           const known = d.genre ? state.knowledge.combos[`${id}|${d.genre}`] : undefined;
-          const dot = known === PERFECT_FIT ? ' 💞' : known !== undefined ? `<i class="fit fit-${known}" title="${FIT_LABELS[known]}"></i>` : '';
-          return `<button class="chip ${d.topic === id ? 'on' : ''}" data-action="pick-topic" data-arg="${id}">${t.icon} ${t.name}${state.industry?.trend?.topic === id ? ' 🔥' : ''}${dot}</button>`;
+          const dot = known === PERFECT_FIT ? '<span class="perfect" title="Perfect combination">💞</span>' : known !== undefined ? `<i class="fit fit-${known}" title="${FIT_LABELS[known]}"></i>` : '';
+          return pickTile('pick-topic', id, t.icon, t.name, d.topic === id, state.industry?.trend?.topic === id, dot);
         })
         .join('')}
     </div>`
@@ -403,7 +415,7 @@ function newGameStep1(state: GameState, d: GameSpec, error?: string, allSequels 
         : ''
     }
     ${error ? `<div class="error">${esc(error)}</div>` : ''}
-    <div class="btn-row">
+    <div class="btn-row sheet-foot">
       <button class="btn ghost" data-action="close">Cancel</button>
       <button class="btn" data-action="ng-next" ${d.topic && d.genre ? '' : 'disabled'}>Next →</button>
     </div>`;
