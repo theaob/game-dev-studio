@@ -1328,7 +1328,7 @@ nav.tabs .dot {
   background: var(--accent2);
 }
 
-/* ---------- Sheets (modal bottom sheets) ---------- */
+/* ---------- Sheets (full-screen modal pages) ---------- */
 
 .overlay {
   position: fixed;
@@ -1336,32 +1336,40 @@ nav.tabs .dot {
   background: rgba(43, 38, 34, 0.45);
   z-index: 50;
   display: flex;
-  align-items: flex-end;
+  align-items: stretch;
   justify-content: center;
   animation: fade 0.2s;
 }
 
+/* Every sheet fills the screen (the app's column on wide screens): the content
+   scrolls in .sheet-body and the closing button row is pinned to the bottom. */
 .sheet {
   width: 100%;
   max-width: 520px;
-  max-height: 92vh;
-  max-height: 92dvh;
-  overflow-y: auto;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
   background: var(--bg2);
-  border-radius: 22px 22px 0 0;
-  padding: 10px 18px calc(var(--safe-bottom) + 18px);
   animation: slide 0.25s ease-out;
-  overscroll-behavior: contain;
 }
 
-.sheet::before {
+.sheet-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: calc(var(--safe-top) + 18px) 18px 18px;
+}
+
+.sheet-body::after {
   content: '';
-  display: block;
-  width: 40px;
-  height: 5px;
-  border-radius: 3px;
-  background: var(--line);
-  margin: 0 auto 12px;
+  display: table;
+}
+
+.btn-row.sheet-foot {
+  flex-shrink: 0;
+  margin: 0;
+  padding: 12px 18px calc(var(--safe-bottom) + 18px);
 }
 
 .sheet h3 {
@@ -2562,20 +2570,17 @@ nav.tabs .dot {
   box-shadow: 0 0 0 2px var(--card);
 }
 
-/* Sheets feel native: rounder, with a swipe-down grabber */
+/* Sheets share the page's paper colour; on screens wider than the app's
+   column they get side rules so the page edge reads clearly. */
 .sheet {
   background: var(--bg);
-  border: 2px solid var(--ink);
-  border-bottom: 0;
-  border-radius: 28px 28px 0 0;
-  transition: transform 0.2s ease-out;
 }
 
-.sheet::before {
-  width: 44px;
-  height: 5px;
-  margin-bottom: 14px;
-  background: rgba(43, 38, 34, 0.25);
+@media (min-width: 521px) {
+  .sheet {
+    border-left: 2px solid var(--ink);
+    border-right: 2px solid var(--ink);
+  }
 }
 
 .option.contract {
@@ -2641,7 +2646,8 @@ nav.tabs {
   padding-right: var(--gutter);
 }
 
-.sheet {
+.sheet-body,
+.btn-row.sheet-foot {
   padding-left: calc(var(--gutter) - 2px);
   padding-right: calc(var(--gutter) - 2px);
 }
@@ -3152,32 +3158,30 @@ canvas.office {
 
 #sheet-root[data-kind='keynote'] .overlay {
   background: rgba(8, 7, 14, 0.82);
-  align-items: center;
   animation: fade 0.6s;
 }
 
 #sheet-root[data-kind='keynote'] .sheet {
   position: relative;
-  max-width: 440px;
-  margin: 0 12px;
-  padding: 0;
-  border: 2px solid #000;
-  border-radius: 28px;
+  border: 0;
   background: radial-gradient(120% 70% at 50% 0%, #2a2350 0%, #120f1f 55%, #07060c 100%);
   color: #f6f1ff;
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06), 0 30px 80px rgba(0, 0, 0, 0.6);
   animation: kn-open 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.2);
 }
 
-#sheet-root[data-kind='keynote'] .sheet::before {
-  display: none;
+#sheet-root[data-kind='keynote'] .sheet-body {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 0;
 }
 
 .keynote {
   position: relative;
   overflow: hidden;
   text-align: center;
-  padding: 26px 20px calc(var(--safe-bottom) + 20px);
+  padding: calc(var(--safe-top) + 26px) 20px calc(var(--safe-bottom) + 20px);
   cursor: default;
 }
 
