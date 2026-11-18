@@ -684,7 +684,7 @@ export function releaseGame(state: GameState): ReleaseReport | string {
 
   if (ev.align >= 0.7) insights.push({ text: 'Your focus during development was spot on.', kind: 'good' });
   else if (ev.align < 0.4) insights.push({ text: 'The team spent time on the wrong things for this genre.', kind: 'bad' });
-  if (ev.bugRatio > 0.06) insights.push({ text: 'Reviewers complained about bugs. Polish longer next time.', kind: 'bad' });
+  if (ev.bugRatio > BUGGY_RATIO) insights.push({ text: 'Reviewers complained about bugs. Polish longer next time.', kind: 'bad' });
   if (original) {
     const pct = Math.round((sequelMult - 1) * 100);
     if (pct > 0) insights.push({ text: `Fans of ${original.name} lined up for the sequel: +${pct}% sales.`, kind: 'good' });
@@ -1029,6 +1029,20 @@ export function setPolishMode(state: GameState, mode: PolishMode): string | null
   if (mode === 'rework' && !reworkNeed(p)) return `The design/tech balance already suits ${genreById(p.genre).name} players.`;
   p.polishMode = mode;
   return null;
+}
+
+/** Bugs as a share of the game's points. Above BUGGY_RATIO reviewers complain. */
+export function bugRatio(p: GameProject): number {
+  const total = p.design + p.tech;
+  return total > 0 ? Math.round(p.bugs) / total : 0;
+}
+
+/** Bug share above which reviewers call the game out (and the release asks first). */
+export const BUGGY_RATIO = 0.06;
+
+/** True when releasing now would get the game marked down for bugs. */
+export function tooBuggy(p: GameProject): boolean {
+  return bugRatio(p) > BUGGY_RATIO;
 }
 
 /** How much a design/tech polishing week adds right now, relative to the first one (1 → 0). */

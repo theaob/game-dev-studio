@@ -8,6 +8,7 @@ import { GOTY_SEQUEL_HYPE, LONG_AWAITED_MAX_HYPE, acclaimFor, acclaimOf, gotyFan
 import { gameOfTheYear } from './industry';
 import {
   createGame,
+  tooBuggy,
   doResearch,
   gameCost,
   hire,
@@ -1135,5 +1136,14 @@ describe('review fixes', () => {
     expect(g.unitsSold).toBe(g.targetUnits);
     // After the push, every week sells less than the one before, to the very end.
     for (let w = 3; w < SALES_WEEKS; w++) expect(units[w]).toBeLessThanOrEqual(units[w - 1]);
+  });
+});
+
+describe('release with bugs', () => {
+  it('flags a game as too buggy above the share reviewers complain about', () => {
+    const p = { design: 12, tech: 18, bugs: 5 } as Parameters<typeof tooBuggy>[0];
+    expect(tooBuggy(p)).toBe(true); // the screenshot case: 5 bugs on 30 points
+    expect(tooBuggy({ ...p, bugs: 1 })).toBe(false); // ~3%: a light ding, no question asked
+    expect(tooBuggy({ ...p, bugs: 0 })).toBe(false);
   });
 });

@@ -55,7 +55,7 @@ function coachText(state: GameState, step: GuideStep, draft?: GameSpec): { title
     case 'polish':
       return {
         title: 'Feature complete!',
-        body: 'Bugs hurt reviews. Pick <b>🐛 Bugs</b> to polish for a few weeks and watch the counter drop, then release. Or release right away if it looks clean.',
+        body: 'Bugs hurt reviews. Tap <b>🧹 Keep polishing</b> and the team fixes bugs for a few weeks. Watch the counter drop, then release from the studio screen.',
       };
     case 'release':
       return {

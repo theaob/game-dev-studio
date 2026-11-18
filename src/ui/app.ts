@@ -1,6 +1,6 @@
 import { rollCover } from './cover';
 import { resolveDecision } from '../core/events';
-import { availablePlatforms, createGame, doResearch, fire, hire, startHeadhunt, randomTitle, bookBooth, buyStoreItem, catLeaveLap, pushSales, runPromo, placeCatOnLap, releaseGame, keepPlaying, retireForGood, setPhaseFocus, setPolishMode, startContract, startGame, tick, train, upgradeOffice, validateGame } from '../core/sim';
+import { availablePlatforms, createGame, doResearch, fire, hire, startHeadhunt, randomTitle, bookBooth, buyStoreItem, catLeaveLap, pushSales, runPromo, placeCatOnLap, releaseGame, keepPlaying, retireForGood, setPhaseFocus, setPolishMode, startContract, tooBuggy, startGame, tick, train, upgradeOffice, validateGame } from '../core/sim';
 import { storeItemById } from '../core/data';
 import { acquireRival, buyVenture, ventureById, type VentureId } from '../core/ventures';
 import { App as NativeApp } from '@capacitor/app';
@@ -40,6 +40,24 @@ const WEEK_MS = 2500;
 /** How long the Game of the Year party runs before the game may show an ad. */
 const GOTY_PARTY_MS = 6000;
 const BLOCKING: Sheet['kind'][] = ['welcome', 'focus', 'review', 'gameOver', 'decision'];
+
+/**
+ * Sheets are full-screen pages: the content scrolls in a body, and a closing
+ * button row at the end of the content is lifted into a footer pinned to the
+ * bottom of the screen, so Close/Continue is always in reach.
+ */
+function fillSheet(sheet: HTMLElement, inner: string) {
+  const body = document.createElement('div');
+  body.className = 'sheet-body';
+  body.innerHTML = inner;
+  const last = body.lastElementChild;
+  const nodes: Node[] = [body];
+  if (last?.classList.contains('btn-row')) {
+    last.classList.add('sheet-foot');
+    nodes.push(last);
+  }
+  sheet.replaceChildren(...nodes);
+}
 
 /** How long to wait for the 3D office before settling on the 2D one. */
 const OFFICE3D_TIMEOUT_MS = 10_000;
@@ -88,7 +106,6 @@ export class App {
     root.innerHTML = `<div id="scene" class="stage"></div><div id="top" class="hud"></div><div id="dock" class="dock"></div><div id="scroll" class="panel scroll"><main id="main"></main></div><div id="nav"></div><div id="sheet-root"></div><div id="fx"></div><div class="toasts" id="toasts"></div>`;
     const $ = (id: string) => root.querySelector<HTMLElement>(`#${id}`)!;
     this.els = { top: $('top'), scroll: $('scroll'), scene: $('scene'), dock: $('dock'), main: $('main'), nav: $('nav'), sheet: $('sheet-root'), fx: $('fx'), toasts: $('toasts') };
-    this.enableSwipeToClose();
 
     this.els.scene.appendChild(this.office.el);
     this.wireOffice(this.office);
@@ -345,48 +362,6 @@ export class App {
     window.setTimeout(() => layer.remove(), 4000);
   }
 
-  /** Drag a sheet down to dismiss it, like a native bottom sheet. */
-  private enableSwipeToClose() {
-    let startY = 0;
-    let dy = 0;
-    let sheetEl: HTMLElement | null = null;
-    const host = this.els.sheet;
-    host.addEventListener(
-      'touchstart',
-      (e) => {
-        const el = (e.target as HTMLElement).closest<HTMLElement>('.sheet');
-        if (!el || el.scrollTop > 0 || !this.sheet || BLOCKING.includes(this.sheet.kind)) return;
-        if ((e.target as HTMLElement).closest('input, textarea')) return;
-        sheetEl = el;
-        startY = e.touches[0].clientY;
-        dy = 0;
-      },
-      { passive: true },
-    );
-    host.addEventListener(
-      'touchmove',
-      (e) => {
-        if (!sheetEl) return;
-        dy = Math.max(0, e.touches[0].clientY - startY);
-        if (sheetEl.scrollTop > 0) dy = 0;
-        sheetEl.style.transition = 'none';
-        sheetEl.style.transform = `translateY(${dy}px)`;
-      },
-      { passive: true },
-    );
-    host.addEventListener('touchend', () => {
-      if (!sheetEl) return;
-      const el = sheetEl;
-      sheetEl = null;
-      el.style.transition = '';
-      if (dy > 110) {
-        this.close();
-      } else {
-        el.style.transform = '';
-      }
-    });
-  }
-
   /**
    * Loads the three.js office while a loading card shows. The 2D office is only a
    * fallback (no WebGL, download failed or too slow), and once it's on screen it
@@ -583,11 +558,12 @@ export class App {
     const existing = host.querySelector<HTMLElement>('.sheet');
     if (existing && host.dataset.kind === this.sheet.kind) {
       if (this.html.sheet !== inner) {
-        existing.innerHTML = inner;
+        fillSheet(existing, inner);
         this.tooltip.refresh();
       }
     } else {
-      host.innerHTML = `<div class="overlay" data-overlay><div class="sheet" role="dialog" aria-modal="true">${inner}</div></div>`;
+      host.innerHTML = `<div class="overlay" data-overlay><div class="sheet" role="dialog" aria-modal="true"></div></div>`;
+      fillSheet(host.querySelector<HTMLElement>('.sheet')!, inner);
       host.dataset.kind = this.sheet.kind;
       host.querySelector<HTMLInputElement>('input.text-input')?.focus({ preventScroll: true });
     }
@@ -1065,8 +1041,25 @@ export class App {
         if (sheet?.kind === 'devComplete') this.close();
         report(setPolishMode(s, arg as PolishMode));
         return;
-      case 'release': {
-        if (sheet?.kind === 'devComplete') this.sheet = null;
+      case 'polish-start':
+        if (sheet?.kind === 'devComplete') this.close();
+        return;
+      case 'release':
+      case 'release-yes': {
+        // A buggy game gets marked down, so ask once before shipping it.
+        const p = s.activity;
+        if (name === 'release' && p?.kind === 'game' && tooBuggy(p)) {
+          const bugs = Math.round(p.bugs);
+          this.replace({
+            kind: 'confirm',
+            text: `${p.name} still has ${bugs} bug${bugs === 1 ? '' : 's'}. Reviewers will mark it down. A few more weeks of fixing bugs would help.`,
+            action: 'release-yes',
+            confirmLabel: `🚀 Release with ${bugs} bug${bugs === 1 ? '' : 's'}`,
+            keepLabel: '🐛 Keep fixing bugs',
+          });
+          return;
+        }
+        if (sheet?.kind === 'devComplete' || sheet?.kind === 'confirm') this.sheet = null;
         const r = releaseGame(s);
         if (typeof r === 'string') {
           report(r);
