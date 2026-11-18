@@ -21,7 +21,7 @@ import { OfficeLoading, hasWebGL } from './office-loading';
 import { CAT_ID } from './office-common';
 import type { OfficeView } from './office-view';
 import { money, num } from './format';
-import { focusLean, renderSheet, type Sheet } from './sheets';
+import { focusLean, newGameReachable, renderSheet, type Sheet } from './sheets';
 import { ChartTooltip } from './tooltip';
 import { gotyCelebration, releaseCelebration, throwParty } from './celebration';
 import { Monetization, REMOVE_ADS_PRODUCT, SUPPORTER_PRODUCT } from './monetization';
@@ -1168,6 +1168,17 @@ export class App {
             if (!availablePlatforms(s).some((p) => p.id === d.platform)) d.platform = 'pc';
           }
           this.replace(sheet);
+        }
+        return;
+      case 'ng-goto':
+        if (sheet?.kind === 'newGame') {
+          const n = Number(arg);
+          if (n >= 1 && n <= 4 && n !== sheet.step && newGameReachable(sheet.draft, n)) {
+            sheet.step = n as 1 | 2 | 3 | 4;
+            sheet.error = undefined;
+            if (!availablePlatforms(s).some((p) => p.id === sheet.draft.platform)) sheet.draft.platform = 'pc';
+            this.replace(sheet);
+          }
         }
         return;
       case 'ng-back':

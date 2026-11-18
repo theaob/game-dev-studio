@@ -2,6 +2,7 @@ import { reviewQuote } from '../core/quotes';
 import { decisionById, decisionContext, decisionValid } from '../core/events';
 import {
   FIT_LABELS,
+  GENRES,
   PERFECT_FIT,
   PHASES,
   STORE,
@@ -374,56 +375,109 @@ function pickTile(action: string, id: string, icon: string, name: string, on: bo
 /** The new game wizard: genre, topic, platform, size and marketing, then the first focus. */
 export const NEW_GAME_STEPS = 5;
 
-/** Title, a progress bar and what's been picked so far. */
-function newGameHead(step: number, label: string, d: GameSpec): string {
-  const picks = [
-    step > 1 && d.genre ? `${genreById(d.genre).icon} ${genreById(d.genre).name}` : '',
-    step > 2 && d.topic ? `${topicById(d.topic).icon} ${esc(topicById(d.topic).name)}` : '',
-    step > 3 ? `${platformById(d.platform).icon} ${esc(platformById(d.platform).name)}` : '',
-    d.sequelOf !== undefined && step > 1 ? 'Sequel' : '',
-  ].filter(Boolean);
-  const bar = Array.from({ length: NEW_GAME_STEPS }, (_, i) => `<span class="${i < step ? 'done' : ''}"></span>`).join('');
-  return `
-    <h3>${step > 2 && d.name.trim() ? esc(d.name) : 'New game'}</h3>
-    <div class="ng-steps" role="progressbar" aria-valuemin="1" aria-valuemax="${NEW_GAME_STEPS}" aria-valuenow="${step}" aria-label="Step ${step} of ${NEW_GAME_STEPS}">${bar}</div>
-    <p class="muted">Step ${step} of ${NEW_GAME_STEPS} · <b>${label}</b>${picks.length ? ` · ${picks.join(' · ')}` : ''}</p>`;
+/** The wizard's steps before the focus sheet, and what each one picks. */
+const WIZARD = [{ label: 'Genre' }, { label: 'Topic' }, { label: 'Platform' }, { label: 'Budget' }];
+
+/** Whether the player can jump to `step` with what's picked so far. */
+export function newGameReachable(d: GameSpec, step: number): boolean {
+  if (step <= 1) return true;
+  if (!d.genre) return false;
+  if (step === 2) return true;
+  return !!d.topic && !!d.name.trim();
 }
 
-/** Back (or Cancel on the first step) and Next, pinned to the bottom of the sheet. */
-function newGameFoot(step: number, canNext: boolean, error?: string, next = 'ng-next'): string {
+/** A colour for the box art, so each genre has its own look. */
+function boxHue(genre: string): number {
+  const i = GENRES.findIndex((g) => g.id === genre);
+  return i < 0 ? 35 : (i * 37 + 8) % 360;
+}
+
+/** How players should take the genre + topic pair, as far as the studio knows: a short badge. */
+function fitBadge(state: GameState, d: GameSpec): string {
+  if (!d.genre || !d.topic) return '';
+  const known = state.knowledge.combos[`${d.topic}|${d.genre}`];
+  if (known === undefined) return '<span class="box-fit">❓ Untested pair</span>';
+  if (known === PERFECT_FIT) return '<span class="box-fit perfect">💞 Perfect match</span>';
+  return `<span class="box-fit"><i class="fit fit-${known}"></i>${FIT_LABELS[known]} match</span>`;
+}
+
+/**
+ * The game box: a cover that fills in as the player picks genre, topic, platform and size,
+ * with the title editable right on it. Each slot jumps back to the step that sets it.
+ */
+function gameBox(state: GameState, d: GameSpec, step: number): string {
+  const genre = d.genre ? genreById(d.genre) : undefined;
+  const topic = d.topic ? topicById(d.topic) : undefined;
+  const platform = step > 3 || (step === 3 && d.platform) ? platformById(d.platform) : undefined;
+  const slot = (n: number, filled: string | undefined, empty: string) =>
+    `<button class="box-slot ${filled ? 'filled' : ''} ${step === n ? 'here' : ''}" data-action="ng-goto" data-arg="${n}" ${newGameReachable(d, n) ? '' : 'disabled'}>${filled ?? empty}</button>`;
   return `
-    ${error ? `<div class="error">${esc(error)}</div>` : ''}
-    <div class="btn-row sheet-foot">
-      ${step === 1 ? '<button class="btn ghost" data-action="close">Cancel</button>' : '<button class="btn ghost" data-action="ng-back">← Back</button>'}
-      <button class="btn" data-action="${next}" ${canNext ? '' : 'disabled'}>Next →</button>
+    <div class="game-box" style="--hue:${boxHue(d.genre)}">
+      <div class="box-art" aria-hidden="true">
+        <span class="bi-genre">${genre?.icon ?? '🎮'}</span>
+        ${topic ? `<span class="bi-topic">${topic.icon}</span>` : ''}
+        ${d.sequelOf !== undefined ? '<span class="box-ribbon">Sequel</span>' : ''}
+      </div>
+      <div class="box-info">
+        <div class="box-title">
+          <input class="box-name" data-bind="name" maxlength="32" value="${esc(d.name)}" placeholder="${genre ? 'Name your game' : 'Untitled game'}" autocomplete="off" aria-label="Game title" ${genre ? '' : 'disabled'} />
+          <button class="box-dice" data-action="random-name" aria-label="Suggest another title" ${genre ? '' : 'disabled'}>🎲</button>
+        </div>
+        ${fitBadge(state, d)}
+        <div class="box-slots">
+          ${slot(1, genre && `${genre.icon} ${genre.name}`, 'Genre')}
+          ${slot(2, topic && `${topic.icon} ${esc(topic.name)}`, 'Topic')}
+          ${slot(3, platform && `${platform.icon} ${esc(platform.name)}`, 'Platform')}
+          ${slot(4, step > 3 ? `📦 ${sizeById(d.size).name}` : undefined, 'Size')}
+        </div>
+      </div>
     </div>`;
 }
 
+/** The step tabs: done steps get a tick, and any step you can reach is a button. */
+function wizardTabs(d: GameSpec, step: number): string {
+  return `<nav class="wz-tabs" aria-label="Steps">${WIZARD.map((w, i) => {
+    const n = i + 1;
+    const state = n === step ? 'here' : n < step ? 'done' : '';
+    return `<button class="wz-tab ${state}" data-action="ng-goto" data-arg="${n}" ${newGameReachable(d, n) ? '' : 'disabled'} ${n === step ? 'aria-current="step"' : ''}><span class="wz-num">${n < step ? '✓' : n}</span>${w.label}</button>`;
+  }).join('')}</nav>`;
+}
+
 export function newGameStep(state: GameState, sheet: { step: number; draft: GameSpec; error?: string; allSequels?: boolean }): string {
-  const { draft: d, error } = sheet;
-  switch (sheet.step) {
-    case 1:
-      return newGameGenre(state, d, error, sheet.allSequels);
-    case 2:
-      return newGameTopic(state, d, error);
-    case 3:
-      return newGamePlatform(state, d, error);
-    default:
-      return newGameScope(state, d, error);
-  }
+  const { draft: d, error, step } = sheet;
+  const cost = gameCost(state, d);
+  const body = step === 1 ? newGameGenre(state, d, sheet.allSequels) : step === 2 ? newGameTopic(state, d) : step === 3 ? newGamePlatform(state, d) : newGameScope(state, d);
+  const canNext = step === 1 ? !!d.genre : step === 2 ? !!d.topic : step === 3 ? true : cost.total <= state.cash;
+  const next = step < 4 ? `Next: ${WIZARD[step].label} →` : 'Next: Focus →';
+  return `
+    <div class="wz">
+      <div class="wz-top">
+        <div class="wz-head"><h3>New game</h3><button class="wz-close" data-action="close" aria-label="Cancel">✕</button></div>
+        ${wizardTabs(d, step)}
+        ${gameBox(state, d, step)}
+      </div>
+      <div class="wz-body">${body}</div>
+      <div class="wz-foot">
+        ${error ? `<div class="error">${esc(error)}</div>` : ''}
+        ${step === 4 ? `<div class="wz-cost"><span>Upfront <b>${money(cost.total)}</b></span><span class="${cost.total > state.cash ? 'bad' : ''}">Cash after <b>${money(state.cash - cost.total)}</b></span></div>` : ''}
+        <div class="btn-row">
+          ${step === 1 ? '<button class="btn ghost" data-action="close">Cancel</button>' : '<button class="btn ghost" data-action="ng-back">← Back</button>'}
+          <button class="btn" data-action="${step < 4 ? 'ng-next' : 'ng-focus'}" ${canNext ? '' : 'disabled'}>${next}</button>
+        </div>
+      </div>
+    </div>`;
 }
 
 /** Step 1: a sequel, or a genre. */
-function newGameGenre(state: GameState, d: GameSpec, error?: string, allSequels = false): string {
+function newGameGenre(state: GameState, d: GameSpec, allSequels = false): string {
   const sequel = d.sequelOf !== undefined;
   return `
-    ${newGameHead(1, 'Genre', d)}
     ${sequelPicker(state, d, allSequels)}
     ${
       sequel
-        ? '<p class="sub mt">A sequel keeps the original\'s topic and genre. Tap <b>Next</b> to name it.</p>'
+        ? '<p class="sub mt">A sequel keeps the original\'s topic and genre. Give it a title on the box above.</p>'
         : `
-    <h4>Genre</h4>
+    <h4>What kind of game?</h4>
     <div class="pick-grid">
       ${availableGenres(state)
         .map((g) => {
@@ -434,20 +488,18 @@ function newGameGenre(state: GameState, d: GameSpec, error?: string, allSequels 
         .join('')}
     </div>
     <p class="sub mt">Some genres suit some topics much better than others. You pick the topic next.</p>`
-    }
-    ${newGameFoot(1, !!d.genre, error)}`;
+    }`;
 }
 
 /** Step 2: a topic to go with the genre, and the title. */
-function newGameTopic(state: GameState, d: GameSpec, error?: string): string {
+function newGameTopic(state: GameState, d: GameSpec): string {
   const sequel = d.sequelOf !== undefined;
   return `
-    ${newGameHead(2, sequel ? 'Title' : 'Topic', d)}
     ${
       sequel
         ? `<p class="sub">A sequel keeps the original's topic: <b>${topicById(d.topic).icon} ${esc(topicById(d.topic).name)}</b>.</p>`
         : `
-    <h4>Topic</h4>
+    <h4>What's it about?</h4>
     <div class="pick-grid">
       ${state.topics
         .map((id) => {
@@ -460,25 +512,14 @@ function newGameTopic(state: GameState, d: GameSpec, error?: string): string {
     </div>`
     }
     ${d.topic ? receptionPreview(state, d) : '<p class="sub mt">Coloured dots show combinations you have already discovered, and 💞 a perfect one.</p>'}
-    ${
-      d.topic
-        ? `
-    <h4>Title</h4>
-    <div class="row">
-      <input class="text-input grow" data-bind="name" maxlength="32" value="${esc(d.name)}" placeholder="Game title" autocomplete="off" />
-      <button class="icon-btn" data-action="random-name" aria-label="Suggest another ${genreById(d.genre).name} title">🎲</button>
-    </div>`
-        : ''
-    }
-    ${newGameFoot(2, !!d.topic, error)}`;
+`;
 }
 
 /** Step 3: where it comes out. */
-function newGamePlatform(state: GameState, d: GameSpec, error?: string): string {
+function newGamePlatform(state: GameState, d: GameSpec): string {
   const year = yearFraction(marketWeek(state.week));
   return `
-    ${newGameHead(3, 'Platform', d)}
-    <h4>Platform</h4>
+    <h4>Where will it come out?</h4>
     <div class="options">
       ${availablePlatforms(state)
         .map((p) => {
@@ -501,19 +542,17 @@ function newGamePlatform(state: GameState, d: GameSpec, error?: string): string 
         })
         .join('')}
     </div>
-    ${receptionPreview(state, d, d.platform)}
-    ${newGameFoot(3, true, error)}`;
+    ${receptionPreview(state, d, d.platform)}`;
 }
 
 /** Step 4: how big, how loud, and what it costs. */
-function newGameScope(state: GameState, d: GameSpec, error?: string): string {
+function newGameScope(state: GameState, d: GameSpec): string {
   const cost = gameCost(state, d);
   const size = sizeById(d.size);
   const sizes = availableSizes(state);
   const marketing = availableMarketing(state);
   return `
-    ${newGameHead(4, 'Size & marketing', d)}
-    <h4>Size</h4>
+    <h4>How big?</h4>
     <div class="options">
       ${sizes
         .map(
@@ -528,7 +567,7 @@ function newGameScope(state: GameState, d: GameSpec, error?: string): string {
     ${retirementWarning(state, phaseWeeks(state, d.size) * 3)}
     ${
       marketing.length > 1
-        ? `<h4>Marketing</h4><div class="options">${marketing
+        ? `<h4>How much marketing?</h4><div class="options">${marketing
             .map(
               (m) => `
         <button class="option ${d.marketing === m.id ? 'on' : ''}" data-action="pick-marketing" data-arg="${m.id}">
@@ -538,14 +577,12 @@ function newGameScope(state: GameState, d: GameSpec, error?: string): string {
             .join('')}</div>`
         : ''
     }
+    <h4>Budget</h4>
     <div class="summary">
       ${cost.license ? `<div class="line"><span>Dev kit license</span><span>${money(cost.license)}</span></div>` : ''}
       ${cost.size ? `<div class="line"><span>Production budget</span><span>${money(cost.size)}</span></div>` : ''}
       ${cost.marketing ? `<div class="line"><span>Marketing</span><span>${money(cost.marketing)}</span></div>` : ''}
-      <div class="line total"><span>Upfront cost</span><span>${money(cost.total)}</span></div>
-      <div class="line sub"><span>Cash after</span><span>${money(state.cash - cost.total)}</span></div>
-    </div>
-    ${newGameFoot(4, cost.total <= state.cash, error, 'ng-focus')}`;
+    </div>`;
 }
 
 function importanceTag(state: GameState, genre: string, areaIndex: number): string {

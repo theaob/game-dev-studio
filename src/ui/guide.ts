@@ -21,7 +21,7 @@ function coachText(state: GameState, step: GuideStep, draft?: GameSpec): { title
       if (draft?.topic)
         return {
           title: 'Give it a name',
-          body: 'The card under the topics shows how players might take this pair. You only learn for sure by releasing it. Keep the suggested title or type your own, then tap <b>Next</b>.',
+          body: 'The card under the topics shows how players might take this pair. You only learn for sure by releasing it. Keep the suggested title on the box or type your own, then tap <b>Next</b>.',
         };
       return {
         title: 'Now a topic',
