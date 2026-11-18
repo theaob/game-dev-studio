@@ -499,7 +499,7 @@ function shortMoney(v: number): string {
 
 /** Small box art for a table row. */
 function coverThumb(g: ReleasedGame): string {
-  return `<div class="coll-cover" aria-hidden="true">${topicById(g.topic).icon}</div>`;
+  return coverArt(g, 'xs');
 }
 
 /** "Newest" flips to "Oldest", "A–Z" to "Z–A"; number columns show an arrow. */
