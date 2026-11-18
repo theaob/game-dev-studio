@@ -28,7 +28,7 @@ import { Monetization, REMOVE_ADS_PRODUCT, SUPPORTER_PRODUCT } from './monetizat
 import { PlayGames } from './play-games';
 import { claimBailout, claimPressTour, claimReward, investorCash, pressTourBlocker, researchGrant, rewardBlocker, type RewardId } from '../core/rewards';
 import { buyDecor, decorById, repaint, toggleDecor, type DecorId } from '../core/decor';
-import { SPEEDS, dockLayoutKey, renderDock, renderGames, renderNav, renderNews, renderResearch, renderStaff, renderTopbar, type RewardOffer, type Tab } from './views';
+import { DEFAULT_COLLECTION_SORT, SPEEDS, collectionDefaultDesc, dockLayoutKey, renderDock, renderGames, type CollectionKey, type CollectionSort, renderNav, renderNews, renderResearch, renderStaff, renderTopbar, type RewardOffer, type Tab } from './views';
 
 type StatKey = 'cash' | 'fans' | 'rp';
 
@@ -48,6 +48,8 @@ const MIN_OFFICE_VIEW = 160;
 export class App {
   private state: GameState | null;
   private tab: Tab = 'studio';
+  /** How the Games tab's collection table is sorted (kept for the session, not saved). */
+  private collectionSort: CollectionSort = DEFAULT_COLLECTION_SORT;
   private speed = 1;
   private sheet: Sheet | null = null;
   private queue: Sheet[] = [];
@@ -552,7 +554,7 @@ export class App {
         };
         const tab = this.tab as Exclude<Tab, 'studio'>;
         const [title, extra] = titles[tab];
-        const view = { games: renderGames, research: renderResearch, staff: (st: GameState) => renderStaff(st, this.headhunterVideo(st)), news: renderNews }[tab];
+        const view = { games: (st: GameState) => renderGames(st, this.collectionSort), research: renderResearch, staff: (st: GameState) => renderStaff(st, this.headhunterVideo(st)), news: renderNews }[tab];
         this.set('main', `<header class="panel-head"><h1>${title}</h1>${extra ? `<span class="panel-chip">${extra}</span>` : ''}</header>${view(s)}`);
       }
       this.set('nav', renderNav(this.tab, s, this.unreadNews()));
@@ -1096,6 +1098,14 @@ export class App {
           this.onReviewsShown(sheet.report.game);
         }
         return;
+      case 'collection-sort': {
+        const key = arg as CollectionKey;
+        const cur = this.collectionSort;
+        this.collectionSort = cur.key === key ? { key, desc: !cur.desc } : { key, desc: collectionDefaultDesc(key) };
+        this.vibrate(6);
+        this.render();
+        return;
+      }
       case 'game-detail':
         this.open({ kind: 'gameDetail', id: Number(arg) });
         return;
