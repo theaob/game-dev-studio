@@ -802,7 +802,6 @@ export class App {
         this.open({ kind: 'menu' });
         return;
       case 'help':
-        if (sheet?.kind === 'welcome') this.queue.unshift(sheet);
         this.replace({ kind: 'help' });
         return;
       case 'close': {
