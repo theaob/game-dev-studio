@@ -4184,6 +4184,157 @@ canvas.office {
   align-items: stretch;
 }
 
+/* ---------- Games collection table ---------- */
+
+.coll-card {
+  padding: 0;
+  overflow-x: auto;
+}
+
+.coll {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.coll th,
+.coll td {
+  padding: 8px 5px;
+  border-top: 1px solid var(--line);
+  vertical-align: middle;
+  text-align: left;
+}
+
+.coll th:first-child,
+.coll td:first-child {
+  padding-left: 10px;
+}
+
+.coll th:last-child,
+.coll td:last-child {
+  padding-right: 10px;
+}
+
+.coll thead th {
+  border-top: 0;
+  position: sticky;
+  top: 0;
+  background: var(--card2);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.coll thead th.on {
+  color: var(--ink);
+}
+
+.coll .num {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.coll .sub {
+  font-size: 11px;
+  line-height: 1.25;
+}
+
+.coll tbody tr {
+  cursor: pointer;
+}
+
+.coll tbody tr:active {
+  background: var(--card2);
+}
+
+.coll tbody tr.selling .c-cover {
+  box-shadow: inset 3px 0 0 var(--teal);
+}
+
+.coll .c-cover {
+  width: 50px;
+}
+
+.coll .c-name {
+  min-width: 0;
+}
+
+.coll-title {
+  font-weight: 700;
+  overflow-wrap: anywhere;
+  line-height: 1.25;
+}
+
+.coll-score {
+  display: inline-block;
+  min-width: 34px;
+  text-align: center;
+  font-weight: 800;
+  border-radius: 8px;
+  padding: 3px 4px;
+  background: var(--card2);
+}
+
+.coll-score.s-high {
+  background: #cfe9d6;
+  color: #1d6b3e;
+}
+
+.coll-score.s-mid {
+  background: #fbe4a4;
+  color: #7a5608;
+}
+
+.coll-score.s-low {
+  background: #f7d3c9;
+  color: #a8331a;
+}
+
+.coll .pos {
+  color: var(--good);
+  font-weight: 700;
+}
+
+.coll .neg {
+  color: var(--bad);
+  font-weight: 700;
+}
+
+.coll .pos .sub,
+.coll .neg .sub {
+  font-weight: 400;
+}
+
+.coll tfoot td {
+  background: var(--card2);
+  border-top: 2px solid var(--line);
+}
+
+.coll-sort {
+  gap: 6px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+}
+
+.coll-sort .chip {
+  min-height: 34px;
+  padding: 0 9px;
+  font-size: 12.5px;
+  font-weight: 700;
+  white-space: nowrap;
+  flex: none;
+}
+
+/* Narrow phones: the verdict shows as its icon only. */
+@media (max-width: 380px) {
+  .coll .wide-only {
+    display: none;
+  }
+}
+
 /* The dock's Release button while the game is still too buggy: full width, but quiet (no pulse). */
 .btn.release-buggy {
   width: 100%;

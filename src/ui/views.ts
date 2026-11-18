@@ -1,7 +1,7 @@
 import { coverArt } from './cover';
 import { OFFICES, PHASES, PLATFORMS, RESEARCH, STORE, TOPICS, genreById, platformById, platformUsers, sizeById, topicById } from '../core/data';
 import { TREND_GENRE_BONUS, TREND_TOPIC_BONUS, announcedName, isPlatformAnnounced } from '../core/industry';
-import { profit, verdict } from '../core/results';
+import { onSale, profit, verdict } from '../core/results';
 import { GOTY_ICON, acclaimOf } from '../core/acclaim';
 import { profitChart, sparkline } from './charts';
 import {
@@ -408,7 +408,7 @@ function gameRow(g: ReleasedGame, detail: string, aside = ''): string {
 // Games
 // ---------------------------------------------------------------------------
 
-export function renderGames(state: GameState): string {
+export function renderGames(state: GameState, sort: CollectionSort = DEFAULT_COLLECTION_SORT): string {
   const games = state.released;
   if (!games.length) {
     return `<h2>Your games</h2><div class="card empty">You haven't released any games yet.<br/>Head to the Studio tab to start one!</div>`;
@@ -446,33 +446,128 @@ export function renderGames(state: GameState): string {
     <div class="sub mt">Best seller</div>
     <div class="row"><div class="grow"><b>${esc(top.name)}</b></div><span class="tag">${money(top.revenue)}</span></div>
   </div>
-  ${releasesByYear(games)}`;
+  ${collectionTable(games, sort)}`;
 }
 
-/** "Mar 1997 · 💸 Flop · -$12.0K" or "⭐ Hit · +$1.20M" for a game list row. */
-function resultLine(g: ReleasedGame): string {
-  const vd = verdict(g);
-  const p = profit(g);
-  return `${formatShortDate(g.releaseWeek)} · ${vd.icon} ${vd.label} · ${p >= 0 ? '+' : '-'}${money(Math.abs(p))}`;
+// ---------------------------------------------------------------------------
+// Collection: every release in one sortable table
+// ---------------------------------------------------------------------------
+
+export type CollectionKey = 'name' | 'year' | 'score' | 'sold' | 'profit';
+export interface CollectionSort {
+  key: CollectionKey;
+  desc: boolean;
+}
+export const DEFAULT_COLLECTION_SORT: CollectionSort = { key: 'year', desc: true };
+
+/** The direction a column starts in when first tapped: names A to Z, numbers biggest first. */
+export function collectionDefaultDesc(key: CollectionKey): boolean {
+  return key !== 'name';
 }
 
-/** Every release in order, oldest first, grouped by year. */
-function releasesByYear(games: ReleasedGame[]): string {
-  const years = new Map<number, ReleasedGame[]>();
-  for (const g of [...games].sort((a, b) => a.releaseWeek - b.releaseWeek || a.id - b.id)) {
-    const y = yearOf(g.releaseWeek);
-    if (!years.has(y)) years.set(y, []);
-    years.get(y)!.push(g);
-  }
-  return [...years]
-    .map(
-      ([y, list]) => `
-  <h2>${y}</h2>
-  <div class="list">
-    ${list.map((g) => gameRow(g, resultLine(g))).join('')}
-  </div>`,
-    )
+const COLLECTION_SORTS: [CollectionKey, string][] = [
+  ['year', 'Newest'],
+  ['score', 'Score'],
+  ['sold', 'Sold'],
+  ['profit', 'Profit'],
+  ['name', 'A–Z'],
+];
+
+const COLLECTION_VALUE: Record<CollectionKey, (g: ReleasedGame) => number | string> = {
+  name: (g) => g.name.toLocaleLowerCase(),
+  year: (g) => g.releaseWeek,
+  score: (g) => g.score,
+  sold: (g) => g.unitsSold,
+  profit: (g) => profit(g),
+};
+
+export function sortCollection(games: ReleasedGame[], sort: CollectionSort): ReleasedGame[] {
+  const value = COLLECTION_VALUE[sort.key];
+  const dir = sort.desc ? -1 : 1;
+  return [...games].sort((a, b) => {
+    const va = value(a);
+    const vb = value(b);
+    const c = typeof va === 'string' ? va.localeCompare(vb as string) : va - (vb as number);
+    // Ties fall back to release order, so the table never shuffles between renders.
+    return c !== 0 ? c * dir : (a.releaseWeek - b.releaseWeek || a.id - b.id) * dir;
+  });
+}
+
+/** "$719K", "$1.33M", "-$12.0K": three figures, so the profit column stays narrow on a phone. */
+function shortMoney(v: number): string {
+  const a = Math.abs(v);
+  const sign = v < 0 ? '-' : '';
+  const fig = (x: number) => (x >= 100 ? x.toFixed(0) : x >= 10 ? x.toFixed(1) : x.toFixed(2));
+  if (a >= 1e9) return `${sign}$${fig(a / 1e9)}B`;
+  if (a >= 1e6) return `${sign}$${fig(a / 1e6)}M`;
+  if (a >= 1e3) return `${sign}$${fig(a / 1e3)}K`;
+  return `${sign}$${Math.round(a)}`;
+}
+
+/** Small box art for a table row. */
+function coverThumb(g: ReleasedGame): string {
+  return coverArt(g, 'xs');
+}
+
+/** "Newest" flips to "Oldest", "A–Z" to "Z–A"; number columns show an arrow. */
+function chipLabel(key: CollectionKey, label: string, sort: CollectionSort): string {
+  if (sort.key !== key) return label;
+  if (key === 'year') return sort.desc ? 'Newest' : 'Oldest';
+  if (key === 'name') return sort.desc ? 'Z–A' : 'A–Z';
+  return `${label} ${sort.desc ? '▼' : '▲'}`;
+}
+
+function collectionHead(key: CollectionKey, label: string, sort: CollectionSort, cls = ''): string {
+  const on = sort.key === key;
+  return `<th class="${cls}${on ? ' on' : ''}" aria-sort="${on ? (sort.desc ? 'descending' : 'ascending') : 'none'}">${label}${on ? (sort.desc ? ' ▼' : ' ▲') : ''}</th>`;
+}
+
+function collectionTable(games: ReleasedGame[], sort: CollectionSort): string {
+  const rows = sortCollection(games, sort)
+    .map((g) => {
+      const p = profit(g);
+      const vd = verdict(g);
+      const part = (g.series ?? 1) > 1 ? ` <span class="tag">${g.series}</span>` : '';
+      const award = g.goty !== undefined ? ` ${GOTY_ICON}` : acclaimOf(g) ? ` ${acclaimOf(g)!.icon}` : '';
+      return `
+      <tr data-action="game-detail" data-arg="${g.id}"${onSale(g) ? ' class="selling"' : ''}>
+        <td class="c-cover">${coverThumb(g)}</td>
+        <td class="c-name">
+          <div class="coll-title">${esc(g.name)}${part}${award}</div>
+          <div class="sub">${yearOf(g.releaseWeek)} · ${topicById(g.topic).name} ${genreById(g.genre).name}<span class="wide-only"> · ${platformById(g.platform).name}</span></div>
+        </td>
+        <td class="num"><span class="coll-score ${scoreClass(g.score)}">${g.score.toFixed(1)}</span></td>
+        <td class="num">${num(g.unitsSold)}${onSale(g) ? '<div class="sub">on sale</div>' : ''}</td>
+        <td class="num ${p >= 0 ? 'pos' : 'neg'}">${shortMoney(p)}<div class="sub">${vd.icon}<span class="wide-only"> ${vd.label}</span></div></td>
+      </tr>`;
+    })
     .join('');
+  const avg = games.reduce((a, g) => a + g.score, 0) / games.length;
+  const sold = games.reduce((a, g) => a + g.unitsSold, 0);
+  const total = games.reduce((a, g) => a + profit(g), 0);
+  return `
+  <h2>Collection</h2>
+  <p class="sub">Every game your studio released. Tap a game for its full story.</p>
+  <div class="chips coll-sort">${COLLECTION_SORTS.map(([key, label]) => `<button class="chip${sort.key === key ? ' on' : ''}" data-action="collection-sort" data-arg="${key}">${chipLabel(key, label, sort)}</button>`).join('')}</div>
+  <div class="card coll-card mt-s">
+    <table class="coll">
+      <thead><tr>
+        <th class="c-cover"></th>
+        <th class="c-name">Game</th>
+        ${collectionHead('score', 'Score', sort, 'num')}
+        ${collectionHead('sold', 'Sold', sort, 'num')}
+        ${collectionHead('profit', 'Profit', sort, 'num')}
+      </tr></thead>
+      <tbody>${rows}</tbody>
+      <tfoot><tr>
+        <td></td>
+        <td class="c-name"><b>${games.length} game${games.length === 1 ? '' : 's'}</b></td>
+        <td class="num"><b>${avg.toFixed(1)}</b><div class="sub">avg</div></td>
+        <td class="num"><b>${num(sold)}</b></td>
+        <td class="num ${total >= 0 ? 'pos' : 'neg'}"><b>${shortMoney(total)}</b></td>
+      </tr></tfoot>
+    </table>
+  </div>`;
 }
 
 // ---------------------------------------------------------------------------
