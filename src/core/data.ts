@@ -152,27 +152,70 @@ export interface Platform {
   maker?: string;
   /** The line the keynote ends its reveal on. */
   tagline?: string;
+  /**
+   * The year the maker announces it at the summer show, when that's earlier than
+   * the usual rumour the January before launch.
+   */
+  announced?: number;
+  /** What it's called until the maker reveals the real name, the January before launch. */
+  codename?: string;
 }
 
 export const PLATFORMS: Platform[] = [
   { id: 'pc', name: 'PC', icon: '🖥️', kind: 'Computer', start: 1985, users: [[1985, 3], [1995, 40], [2005, 150], [2015, 220], [2026, 260]], license: 0, priceMult: 1, genreFit: { strategy: 1.25, simulation: 1.2, casual: 0.85, shooter: 1.15, rhythm: 0.85 } },
   { id: 'nova8', name: 'Nova 8', icon: '🕹️', kind: 'Console', start: 1985, end: 1994, users: [[1985, 2], [1989, 28], [1994, 6]], license: 20000, priceMult: 1, genreFit: { action: 1.2, adventure: 1.1, simulation: 0.8, strategy: 0.7, platformer: 1.25 }, maker: 'Novaworks', tagline: 'Arcade fun, right in your living room.' },
-  { id: 'zephyr', name: 'Zephyr Drive', icon: '🎮', kind: 'Console', start: 1989, end: 1998, users: [[1989, 2], [1993, 22], [1998, 4]], license: 35000, priceMult: 1, genreFit: { action: 1.25, puzzle: 0.9, strategy: 0.8, platformer: 1.3 }, maker: 'Zephyr Corp', tagline: '16 bits. Twice the speed. Zero patience.' },
+  { id: 'zephyr', name: 'Zephyr Drive', icon: '🎮', kind: 'Console', start: 1989, end: 1998, users: [[1989, 2], [1993, 22], [1998, 4]], license: 35000, priceMult: 1, genreFit: { action: 1.25, puzzle: 0.9, strategy: 0.8, platformer: 1.3 }, maker: 'Zephyr Corp', tagline: '16 bits. Twice the speed. Zero patience.', announced: 1988 },
   { id: 'pocketpal', name: 'Pocket Pal', icon: '📟', kind: 'Handheld', start: 1990, end: 2003, users: [[1990, 3], [1996, 45], [2003, 10]], license: 25000, priceMult: 0.8, genreFit: { puzzle: 1.3, casual: 1.2, rpg: 1.1, strategy: 0.8, simulation: 0.8, platformer: 1.2, rhythm: 1.1 }, maker: 'Novaworks', tagline: 'The whole arcade, in your pocket.' },
-  { id: 'spectra', name: 'Spectra', icon: '💿', kind: 'Console', start: 1995, end: 2006, users: [[1995, 3], [1999, 60], [2006, 12]], license: 80000, priceMult: 1, genreFit: { rpg: 1.2, action: 1.1, strategy: 0.85, rhythm: 1.25, platformer: 1.1 }, maker: 'Spectra Entertainment', tagline: 'Games on disc. Worlds in 3D.' },
-  { id: 'hyperion', name: 'Hyperion 64', icon: '🎮', kind: 'Console', start: 1996, end: 2003, users: [[1996, 3], [1999, 26], [2003, 5]], license: 70000, priceMult: 1, genreFit: { action: 1.2, adventure: 1.15, casual: 1.1, rpg: 0.9, platformer: 1.3, shooter: 1.1 }, maker: 'Novaworks', tagline: 'Sixty-four bits of pure play.' },
-  { id: 'spectra2', name: 'Spectra 2', icon: '💿', kind: 'Console', start: 2000, end: 2013, users: [[2000, 5], [2005, 120], [2013, 25]], license: 150000, priceMult: 1, genreFit: { rpg: 1.15, action: 1.15, strategy: 0.85, rhythm: 1.2, shooter: 1.05 }, maker: 'Spectra Entertainment', tagline: 'It plays games. It plays movies. It plays everything.' },
-  { id: 'monolith', name: 'Monolith X', icon: '⬛', kind: 'Console', start: 2002, end: 2010, users: [[2002, 3], [2006, 25], [2010, 8]], license: 150000, priceMult: 1, genreFit: { action: 1.25, strategy: 0.9, casual: 0.85, shooter: 1.35 }, maker: 'Vantage Systems', tagline: 'Built like a server. Plays like a dream.' },
+  { id: 'supernova', name: 'Super Nova', icon: '🎮', kind: 'Console', start: 1991, end: 2000, users: [[1991, 3], [1995, 40], [2000, 6]], license: 40000, priceMult: 1, genreFit: { rpg: 1.25, platformer: 1.25, action: 1.1, adventure: 1.1, simulation: 0.85, shooter: 0.9 }, maker: 'Novaworks', tagline: 'Sixteen bits. Every colour of the rainbow.', announced: 1990 },
+  { id: 'cheetah', name: 'Arcadium Cheetah', icon: '🐆', kind: 'Console', start: 1993, end: 1996, users: [[1993, 0.3], [1994, 1], [1996, 0.2]], license: 30000, priceMult: 1, genreFit: { shooter: 1.15, action: 1.1, rpg: 0.8, platformer: 0.9 }, maker: 'Arcadium', tagline: 'Do the math: the first 64-bit console.', announced: 1992 },
+  { id: 'spectra', name: 'Spectra', icon: '💿', kind: 'Console', start: 1995, end: 2006, users: [[1995, 3], [1999, 60], [2006, 12]], license: 80000, priceMult: 1, genreFit: { rpg: 1.2, action: 1.1, strategy: 0.85, rhythm: 1.25, platformer: 1.1 }, maker: 'Spectra Entertainment', tagline: 'Games on disc. Worlds in 3D.', announced: 1994 },
+  { id: 'zephyrorbit', name: 'Zephyr Orbit', icon: '🪐', kind: 'Console', start: 1995, end: 1999, users: [[1995, 2], [1997, 9], [1999, 2]], license: 70000, priceMult: 1, genreFit: { action: 1.15, rpg: 1.1, shooter: 1.05, platformer: 0.9, casual: 0.85 }, maker: 'Zephyr Corp', tagline: 'Two processors. The arcade, at home.', announced: 1994 },
+  { id: 'hyperion', name: 'Hyperion 64', icon: '🎮', kind: 'Console', start: 1996, end: 2003, users: [[1996, 3], [1999, 26], [2003, 5]], license: 70000, priceMult: 1, genreFit: { action: 1.2, adventure: 1.15, casual: 1.1, rpg: 0.9, platformer: 1.3, shooter: 1.1 }, maker: 'Novaworks', tagline: 'Sixty-four bits of pure play.', announced: 1994, codename: 'Project Horizon' },
+  { id: 'zephyrstar', name: 'Zephyr Starcast', icon: '🌀', kind: 'Console', start: 1999, end: 2001, users: [[1999, 3], [2000, 9], [2001, 4]], license: 90000, priceMult: 1, genreFit: { action: 1.2, shooter: 1.15, rhythm: 1.2, adventure: 1.05, strategy: 0.85 }, maker: 'Zephyr Corp', tagline: 'The first console that plays online, out of the box.', announced: 1998 },
+  { id: 'spectra2', name: 'Spectra 2', icon: '💿', kind: 'Console', start: 2000, end: 2013, users: [[2000, 5], [2005, 120], [2013, 25]], license: 150000, priceMult: 1, genreFit: { rpg: 1.15, action: 1.15, strategy: 0.85, rhythm: 1.2, shooter: 1.05 }, maker: 'Spectra Entertainment', tagline: 'It plays games. It plays movies. It plays everything.', announced: 1998 },
+  { id: 'pocketadvance', name: 'Pocket Pal Advance', icon: '🔋', kind: 'Handheld', start: 2001, end: 2009, users: [[2001, 5], [2005, 80], [2009, 8]], license: 50000, priceMult: 0.8, genreFit: { platformer: 1.25, rpg: 1.2, puzzle: 1.15, action: 1.05, casual: 1.1, shooter: 0.85 }, maker: 'Novaworks', tagline: 'Sixteen-bit classics, wherever you go.', announced: 2000 },
+  { id: 'novacube', name: 'Nova Cube', icon: '🧊', kind: 'Console', start: 2001, end: 2007, users: [[2001, 3], [2004, 20], [2007, 4]], license: 120000, priceMult: 1, genreFit: { platformer: 1.25, adventure: 1.15, action: 1.1, casual: 1.05, strategy: 0.8, shooter: 0.9 }, maker: 'Novaworks', tagline: 'Small box. Big worlds.', announced: 1999, codename: 'Project Porpoise' },
+  { id: 'monolith', name: 'Monolith X', icon: '⬛', kind: 'Console', start: 2002, end: 2010, users: [[2002, 3], [2006, 25], [2010, 8]], license: 150000, priceMult: 1, genreFit: { action: 1.25, strategy: 0.9, casual: 0.85, shooter: 1.35 }, maker: 'Vantage Systems', tagline: 'Built like a server. Plays like a dream.', announced: 2000, codename: 'Project Blackbox' },
+  { id: 'njoy', name: 'N-Joy', icon: '☎️', kind: 'Phone', start: 2003, end: 2006, users: [[2003, 0.5], [2004, 2], [2006, 1]], license: 30000, priceMult: 0.8, genreFit: { casual: 1.15, puzzle: 1.1, action: 0.9, platformer: 0.85, rpg: 0.9 }, maker: 'Nordia', tagline: 'Your phone is now a console. Hold it sideways to talk.', announced: 2002 },
   { id: 'pocketduo', name: 'Pocket Duo', icon: '📱', kind: 'Handheld', start: 2004, end: 2015, users: [[2004, 5], [2009, 120], [2015, 30]], license: 120000, priceMult: 0.8, genreFit: { puzzle: 1.25, casual: 1.3, rpg: 1.1, action: 0.9, platformer: 1.2, rhythm: 1.2, shooter: 0.8 }, maker: 'Novaworks', tagline: 'Two screens. One touch. Endless play.' },
-  { id: 'monolith2', name: 'Monolith 360', icon: '⬛', kind: 'Console', start: 2005, end: 2016, users: [[2005, 5], [2010, 85], [2016, 20]], license: 250000, priceMult: 1, genreFit: { action: 1.25, simulation: 1.05, casual: 0.85, shooter: 1.35 }, maker: 'Vantage Systems', tagline: 'Online. HD. Always on.' },
-  { id: 'wave', name: 'Wave', icon: '🌊', kind: 'Console', start: 2006, end: 2014, users: [[2006, 8], [2009, 95], [2014, 20]], license: 180000, priceMult: 1, genreFit: { casual: 1.4, puzzle: 1.1, action: 0.9, strategy: 0.7, rpg: 0.8, rhythm: 1.35, platformer: 1.2, shooter: 0.75 }, maker: 'Novaworks', tagline: 'Get off the couch. Play with your whole body.' },
-  { id: 'spectra3', name: 'Spectra 3', icon: '💿', kind: 'Console', start: 2006, end: 2016, users: [[2006, 4], [2010, 80], [2016, 20]], license: 250000, priceMult: 1, genreFit: { rpg: 1.15, action: 1.15, casual: 0.85, shooter: 1.1 }, maker: 'Spectra Entertainment', tagline: 'Cell-powered. Blu-ray ready. Unbelievable.' },
-  { id: 'apex', name: 'Apex Phone', icon: '📱', kind: 'Mobile', start: 2008, users: [[2008, 10], [2012, 400], [2020, 900], [2026, 1100]], license: 2000, priceMult: 0.25, genreFit: { casual: 1.4, puzzle: 1.3, simulation: 1.05, rpg: 0.9, strategy: 0.9, action: 0.8, adventure: 0.8, rhythm: 1.2, platformer: 0.9, shooter: 0.75 }, maker: 'Apex', tagline: 'A phone, a music player and a games console. One device.' },
-  { id: 'spectra4', name: 'Spectra 4', icon: '💿', kind: 'Console', start: 2013, end: 2023, users: [[2013, 8], [2018, 115], [2023, 40]], license: 300000, priceMult: 1, genreFit: { action: 1.15, rpg: 1.15, adventure: 1.1, casual: 0.8, shooter: 1.15 }, maker: 'Spectra Entertainment', tagline: 'Made for players. Made to share.' },
-  { id: 'monolithone', name: 'Monolith One', icon: '⬛', kind: 'Console', start: 2013, end: 2023, users: [[2013, 6], [2018, 50], [2023, 20]], license: 300000, priceMult: 1, genreFit: { action: 1.2, simulation: 1.05, casual: 0.8, shooter: 1.3 }, maker: 'Vantage Systems', tagline: 'All in one. One for all.' },
-  { id: 'switchback', name: 'Switchback', icon: '🔀', kind: 'Hybrid', start: 2017, users: [[2017, 10], [2022, 130], [2026, 150]], license: 250000, priceMult: 1, genreFit: { casual: 1.2, adventure: 1.15, puzzle: 1.1, action: 0.95, platformer: 1.3, rhythm: 1.15, shooter: 0.85 }, maker: 'Novaworks', tagline: 'Play at home. Snap it out. Play anywhere.' },
-  { id: 'spectra5', name: 'Spectra 5', icon: '💿', kind: 'Console', start: 2020, users: [[2020, 8], [2025, 65]], license: 350000, priceMult: 1, genreFit: { action: 1.15, rpg: 1.15, adventure: 1.1, casual: 0.8, shooter: 1.15 }, maker: 'Spectra Entertainment', tagline: 'No loading screens. Just play.' },
-  { id: 'monolithseries', name: 'Monolith Series', icon: '⬛', kind: 'Console', start: 2020, users: [[2020, 6], [2025, 32]], license: 350000, priceMult: 1, genreFit: { action: 1.2, strategy: 1.05, casual: 0.8, shooter: 1.3 }, maker: 'Vantage Systems', tagline: 'The fastest, most powerful Monolith ever.' },
+  { id: 'monolith2', name: 'Monolith 360', icon: '⬛', kind: 'Console', start: 2005, end: 2016, users: [[2005, 5], [2010, 85], [2016, 20]], license: 250000, priceMult: 1, genreFit: { action: 1.25, simulation: 1.05, casual: 0.85, shooter: 1.35 }, maker: 'Vantage Systems', tagline: 'Online. HD. Always on.', announced: 2004 },
+  { id: 'spectraportable', name: 'Spectra Portable', icon: '🎴', kind: 'Handheld', start: 2005, end: 2015, users: [[2005, 4], [2009, 70], [2015, 6]], license: 120000, priceMult: 0.8, genreFit: { action: 1.15, rpg: 1.15, rhythm: 1.15, shooter: 1.05, puzzle: 0.9, casual: 0.85 }, maker: 'Spectra Entertainment', tagline: 'Console power. In your hands.', announced: 2003 },
+  { id: 'wave', name: 'Wave', icon: '🌊', kind: 'Console', start: 2006, end: 2014, users: [[2006, 8], [2009, 95], [2014, 20]], license: 180000, priceMult: 1, genreFit: { casual: 1.4, puzzle: 1.1, action: 0.9, strategy: 0.7, rpg: 0.8, rhythm: 1.35, platformer: 1.2, shooter: 0.75 }, maker: 'Novaworks', tagline: 'Get off the couch. Play with your whole body.', announced: 2004, codename: 'Project Ripple' },
+  { id: 'spectra3', name: 'Spectra 3', icon: '💿', kind: 'Console', start: 2006, end: 2016, users: [[2006, 4], [2010, 80], [2016, 20]], license: 250000, priceMult: 1, genreFit: { rpg: 1.15, action: 1.15, casual: 0.85, shooter: 1.1 }, maker: 'Spectra Entertainment', tagline: 'Cell-powered. Blu-ray ready. Unbelievable.', announced: 2005 },
+  { id: 'apex', name: 'Apex Phone', icon: '📱', kind: 'Mobile', start: 2008, users: [[2008, 10], [2012, 400], [2020, 900], [2026, 1100]], license: 2000, priceMult: 0.25, genreFit: { casual: 1.4, puzzle: 1.3, simulation: 1.05, rpg: 0.9, strategy: 0.9, action: 0.8, adventure: 0.8, rhythm: 1.2, platformer: 0.9, shooter: 0.75 }, maker: 'Apex', tagline: 'A phone, a music player and a games console. One device.', announced: 2007 },
+  { id: 'pocketduo3d', name: 'Pocket Duo 3D', icon: '🕶️', kind: 'Handheld', start: 2011, end: 2021, users: [[2011, 4], [2015, 65], [2021, 15]], license: 150000, priceMult: 0.8, genreFit: { platformer: 1.25, rpg: 1.2, casual: 1.15, puzzle: 1.15, adventure: 1.1, shooter: 0.8 }, maker: 'Novaworks', tagline: '3D you can see. No glasses needed.', announced: 2010 },
+  { id: 'spectravista', name: 'Spectra Vista', icon: '🎴', kind: 'Handheld', start: 2012, end: 2019, users: [[2012, 3], [2014, 12], [2019, 2]], license: 150000, priceMult: 0.8, genreFit: { action: 1.15, rpg: 1.2, shooter: 1.1, rhythm: 1.1, casual: 0.85, platformer: 0.9 }, maker: 'Spectra Entertainment', tagline: 'Two sticks. Two touch panels. No compromises.', announced: 2011 },
+  { id: 'wavepad', name: 'Wave Pad', icon: '📲', kind: 'Console', start: 2012, end: 2017, users: [[2012, 3], [2014, 12], [2017, 3]], license: 200000, priceMult: 1, genreFit: { platformer: 1.25, casual: 1.15, puzzle: 1.1, adventure: 1.05, shooter: 0.75, strategy: 0.8 }, maker: 'Novaworks', tagline: 'A second screen, right in your hands.', announced: 2011 },
+  { id: 'spectra4', name: 'Spectra 4', icon: '💿', kind: 'Console', start: 2013, end: 2023, users: [[2013, 8], [2018, 115], [2023, 40]], license: 300000, priceMult: 1, genreFit: { action: 1.15, rpg: 1.15, adventure: 1.1, casual: 0.8, shooter: 1.15 }, maker: 'Spectra Entertainment', tagline: 'Made for players. Made to share.', announced: 2012 },
+  { id: 'monolithone', name: 'Monolith One', icon: '⬛', kind: 'Console', start: 2013, end: 2023, users: [[2013, 6], [2018, 50], [2023, 20]], license: 300000, priceMult: 1, genreFit: { action: 1.2, simulation: 1.05, casual: 0.8, shooter: 1.3 }, maker: 'Vantage Systems', tagline: 'All in one. One for all.', announced: 2012 },
+  { id: 'spectravr', name: 'Spectra VR', icon: '🥽', kind: 'VR', start: 2016, end: 2023, users: [[2016, 1], [2019, 5], [2023, 2]], license: 80000, priceMult: 0.8, genreFit: { rhythm: 1.35, simulation: 1.25, shooter: 1.2, action: 1.15, strategy: 0.75, rpg: 0.85, platformer: 0.85 }, maker: 'Spectra Entertainment', tagline: "Don't watch the game. Stand inside it.", announced: 2014, codename: 'Project Mirage' },
+  { id: 'switchback', name: 'Switchback', icon: '🔀', kind: 'Hybrid', start: 2017, users: [[2017, 10], [2022, 130], [2026, 150]], license: 250000, priceMult: 1, genreFit: { casual: 1.2, adventure: 1.15, puzzle: 1.1, action: 0.95, platformer: 1.3, rhythm: 1.15, shooter: 0.85 }, maker: 'Novaworks', tagline: 'Play at home. Snap it out. Play anywhere.', announced: 2015, codename: 'Project Hinge' },
+  { id: 'omnivisor', name: 'Omni Visor', icon: '🥽', kind: 'VR', start: 2019, users: [[2019, 1], [2022, 18], [2025, 24]], license: 60000, priceMult: 0.7, genreFit: { rhythm: 1.4, simulation: 1.25, shooter: 1.2, action: 1.15, casual: 1.05, strategy: 0.75, rpg: 0.85, platformer: 0.8 }, maker: 'Omniverse', tagline: 'No PC. No wires. Just put it on.', announced: 2018 },
+  { id: 'stratus', name: 'Stratus', icon: '☁️', kind: 'Cloud', start: 2019, end: 2023, users: [[2019, 0.5], [2021, 3], [2023, 1]], license: 50000, priceMult: 1, genreFit: { action: 1.1, shooter: 1.1, adventure: 1.05, rhythm: 0.75, platformer: 0.9 }, maker: 'Omnisearch', tagline: 'No console. No downloads. Just press play.', announced: 2018 },
+  { id: 'spectra5', name: 'Spectra 5', icon: '💿', kind: 'Console', start: 2020, users: [[2020, 8], [2025, 65]], license: 350000, priceMult: 1, genreFit: { action: 1.15, rpg: 1.15, adventure: 1.1, casual: 0.8, shooter: 1.15 }, maker: 'Spectra Entertainment', tagline: 'No loading screens. Just play.', announced: 2019 },
+  { id: 'monolithseries', name: 'Monolith Series', icon: '⬛', kind: 'Console', start: 2020, users: [[2020, 6], [2025, 32]], license: 350000, priceMult: 1, genreFit: { action: 1.2, strategy: 1.05, casual: 0.8, shooter: 1.3 }, maker: 'Vantage Systems', tagline: 'The fastest, most powerful Monolith ever.', announced: 2019 },
+  { id: 'vapordeck', name: 'Vapor Deck', icon: '🎛️', kind: 'Handheld PC', start: 2022, users: [[2022, 1], [2025, 6]], license: 0, priceMult: 1, genreFit: { rpg: 1.15, strategy: 1.1, simulation: 1.1, platformer: 1.1, action: 1.05, casual: 0.9 }, maker: 'Vapor', tagline: 'Your whole PC library. On the couch, on the train, anywhere.', announced: 2021 },
+  { id: 'switchback2', name: 'Switchback 2', icon: '🔀', kind: 'Hybrid', start: 2025, users: [[2025, 6], [2027, 40]], license: 300000, priceMult: 1, genreFit: { casual: 1.2, adventure: 1.15, platformer: 1.3, puzzle: 1.1, rhythm: 1.15, action: 1, shooter: 0.9 }, maker: 'Novaworks', tagline: 'Bigger, sharper, faster. Still plays anywhere.', announced: 2024 },
+];
+
+/**
+ * Hardware news with no new platform of its own: mid-life upgrades, makers
+ * leaving the business. Each is a headline in the January of its year.
+ */
+export const HARDWARE_NEWS: { year: number; icon: string; text: string; kind?: 'good' | 'bad' | 'info' }[] = [
+  { year: 1992, icon: '💽', text: 'Zephyr Corp straps a CD drive to the Zephyr Drive. Full-motion video is the future, apparently.' },
+  { year: 1997, icon: '🕹️', text: "Spectra Entertainment's new controller has two thumbsticks and shakes in your hands." },
+  { year: 1998, icon: '🌈', text: 'Novaworks colours in the Pocket Pal: a new model plays every old game, in colour.' },
+  { year: 2001, icon: '🏳️', text: 'Zephyr Corp is leaving the console business. Its studios will make games for everyone else\'s hardware.', kind: 'bad' },
+  { year: 2007, icon: '🛒', text: 'All three console makers now run online stores: small downloadable games are finding a big audience.' },
+  { year: 2009, icon: '📉', text: 'A slimmer, cheaper Spectra 3 is out, and sales are finally picking up.' },
+  { year: 2010, icon: '📷', text: 'Motion control everywhere: Spectra and Monolith both launch camera and wand add-ons to answer the Wave.' },
+  { year: 2014, icon: '📦', text: 'Vantage Systems drops the camera from the Monolith One and cuts its price.' },
+  { year: 2016, icon: '✨', text: 'Spectra Entertainment shows the Spectra 4 Pro: the same games, now in 4K.' },
+  { year: 2017, icon: '✨', text: 'Vantage Systems answers with the Monolith One X, "the most powerful console ever made".' },
+  { year: 2020, icon: '🏠', text: 'Stuck at home, the world is playing more games than ever. Every platform is busy.', kind: 'good' },
+  { year: 2021, icon: '🔌', text: 'A chip shortage means new Spectra 5 and Monolith Series consoles sell out in minutes.', kind: 'bad' },
+  { year: 2024, icon: '✨', text: 'The Spectra 5 Pro is out: faster, sharper and very expensive.' },
 ];
 
 export function platformById(id: string): Platform {
@@ -193,6 +236,20 @@ export function platformUsers(p: Platform, year: number): number {
     }
   }
   return pts[pts.length - 1][1];
+}
+
+/** How long after a platform is discontinued its last owners keep buying games, in years. */
+export const PLATFORM_TAIL_YEARS = 1;
+
+/**
+ * The players a game released now can sell to. While the platform is on sale that is its
+ * users; once it's discontinued, the owners it had at the end drift away over
+ * PLATFORM_TAIL_YEARS instead of vanishing overnight.
+ */
+export function platformBuyers(p: Platform, year: number): number {
+  if (p.end === undefined || year < p.end) return platformUsers(p, year);
+  const last = p.users[p.users.length - 1][1];
+  return last * Math.max(0, 1 - (year - p.end) / PLATFORM_TAIL_YEARS);
 }
 
 export function isPlatformAvailable(p: Platform, year: number): boolean {

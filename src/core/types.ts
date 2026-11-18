@@ -1,4 +1,6 @@
 import type { Keynote } from './keynote';
+import type { GoalsState } from './goals';
+import type { PendingDecision } from './events';
 
 export type GenreId = 'action' | 'adventure' | 'rpg' | 'simulation' | 'strategy' | 'puzzle' | 'casual' | 'platformer' | 'shooter' | 'rhythm';
 export type SizeId = 'small' | 'medium' | 'large';
@@ -17,6 +19,8 @@ export interface Staff {
   zone?: number;
   /** Found by a headhunter: rare skills, faster, paid a premium. */
   rockstar?: boolean;
+  /** Week a rival last tried to hire them away (see events.ts). */
+  poachedWeek?: number;
 }
 
 export interface GameSpec {
@@ -45,6 +49,8 @@ export interface GameProject extends GameSpec {
   focus: number[][];
   awaitingFocus: boolean;
   polishWeeks: number;
+  /** Team size added up over each development week, for the average (absent on older saves). */
+  teamWeeks?: number;
   /** What the team works on while polishing (default: fixing bugs). */
   polishMode?: PolishMode;
   /** Weeks spent polishing design or tech; each one yields less than the last. */
@@ -65,6 +71,8 @@ export interface GameProject extends GameSpec {
   contrib: Record<number, { design: number; tech: number }>;
   /** Upfront money spent (license, size, marketing). */
   cost: number;
+  /** Share of sales a publisher keeps, if one funded the game (see events.ts). */
+  publisherCut?: number;
 }
 
 export interface ContractOffer {
@@ -105,6 +113,8 @@ export interface ReleasedGame extends GameSpec {
   /** Hype at launch, and the post-launch pushes used on it. */
   hype?: number;
   pushes?: string[];
+  /** The free press tour (a reward video) was used on it. */
+  pressTour?: boolean;
   /** Special recognition for a great score ('choice' or 'masterpiece'), see acclaim.ts. */
   acclaim?: string;
   /** Year it was named Game of the Year. */
@@ -113,6 +123,8 @@ export interface ReleasedGame extends GameSpec {
   spend?: Spend;
   /** Copies sold and money made in each week on the market. */
   weekly?: { units: number[]; revenue: number[] };
+  /** Share of sales a publisher keeps, if one funded the game (see events.ts). */
+  publisherCut?: number;
 }
 
 export interface Spend {
@@ -165,6 +177,12 @@ export interface GameState {
   totalRevenue: number;
   debtStrikes: number;
   over: null | 'bankrupt' | 'retired';
+  /**
+   * Kept playing past the last year, for high scores only: no new platforms or research
+   * arrive, the market stays as it was when the timeline ended, and the studio retires
+   * whenever the player says (or goes bankrupt).
+   */
+  endless?: boolean;
   /** Active store boosts and the game-development weeks they have left. */
   boosts?: Partial<Record<string, number>>;
   /** Permanent store upgrades bought. */
@@ -177,6 +195,8 @@ export interface GameState {
   industry?: IndustryState;
   /** A headhunter's search for a rockstar developer, with the weeks it has left. */
   headhunt?: { weeks: number };
+  /** Studio goals: the three on the board, and how many are done (see goals.ts). */
+  goals?: GoalsState;
   /** Week each ad reward was last claimed (Android app only). */
   adRewards?: Partial<Record<string, number>>;
   /** The one-time bankruptcy bailout (watched a video to escape the first bankruptcy). */
@@ -187,6 +207,14 @@ export interface GameState {
   ventures?: string[];
   /** Rival studios bought out. */
   acquired?: string[];
+  /** Levels of the never-ending R&D projects (see rnd.ts). */
+  rnd?: Partial<Record<string, number>>;
+  /** The guided first game: the cards already dismissed, and whether it's finished or skipped (see guide.ts). */
+  guide?: { seen?: string[]; done?: boolean };
+  /** A decision event waiting for the player, and the week of the last one (see events.ts). */
+  decision?: PendingDecision;
+  lastDecisionWeek?: number;
+  lastDecisionId?: string;
 }
 
 export interface DecorState {
@@ -258,4 +286,5 @@ export type SimEvent =
   | { type: 'catLap'; staffId: number; name: string }
   | { type: 'catLeft'; staffId: number }
   | { type: 'expo'; report: ExpoReport }
-  | { type: 'keynote'; keynote: Keynote };
+  | { type: 'keynote'; keynote: Keynote }
+  | { type: 'decision'; decision: PendingDecision };

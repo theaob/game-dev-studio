@@ -2,7 +2,7 @@ import { genreById, platformById, sizeById, topicFit } from './data';
 import { platformFit } from './ventures';
 import { gaussian, type RngHolder } from './rng';
 import { sequelQualityMult } from './sequels';
-import { yearFraction, START_YEAR } from './time';
+import { WEEKS_PER_YEAR, marketWeek, yearFraction, START_YEAR } from './time';
 import type { GameProject, GameState } from './types';
 
 /** Quality multiplier per topic/genre fit: bad, okay, good, great, perfect. */
@@ -31,10 +31,31 @@ export function phaseAlignment(genreImportance: number[], phase: number, rawFocu
   return Math.max(0, Math.min(1, align));
 }
 
-/** The market's expectation of points-per-week: rises over time and with your own best work. */
-export function benchmark(state: Pick<GameState, 'week' | 'bestPPW'>): number {
-  const years = yearFraction(state.week) - START_YEAR;
-  return Math.max(3 * Math.pow(1.07, years), state.bestPPW * 0.9);
+/** How much of a past release's points-per-week players still hold the studio to, per year once the grace years are over. */
+export const BAR_MEMORY = 0.9;
+/** Players hold the studio to a game's full points-per-week for this many years before they start to forget. */
+export const BAR_GRACE_YEARS = 2;
+
+/**
+ * The best points-per-week players remember from the studio. A game counts in full
+ * for BAR_GRACE_YEARS, then players remember it a little less each year (BAR_MEMORY),
+ * so one lucky peak doesn't set a bar for the rest of the career that a full, fully
+ * trained team can never reach again. Studios that release often barely notice: a
+ * recent game usually sets the bar. Without the released games (old callers), the
+ * all-time best.
+ */
+export function rememberedBest(state: Pick<GameState, 'week' | 'bestPPW'> & { released?: { ppw: number; releaseWeek: number }[] }): number {
+  const games = state.released;
+  if (!games?.length) return state.bestPPW;
+  let best = 0;
+  for (const g of games) best = Math.max(best, (g.ppw || 0) * Math.pow(BAR_MEMORY, Math.max(0, (state.week - g.releaseWeek) / WEEKS_PER_YEAR - BAR_GRACE_YEARS)));
+  return best;
+}
+
+/** The market's expectation of points-per-week: rises over time and with your own recent best work. */
+export function benchmark(state: Pick<GameState, 'week' | 'bestPPW'> & { released?: { ppw: number; releaseWeek: number }[] }): number {
+  const years = yearFraction(marketWeek(state.week)) - START_YEAR;
+  return Math.max(3 * Math.pow(1.07, years), rememberedBest(state) * 0.9);
 }
 
 export interface Evaluation {
@@ -80,7 +101,8 @@ export function evaluate(state: GameState, project: GameProject): Evaluation {
   const original = project.sequelOf !== undefined ? state.released.find((g) => g.id === project.sequelOf) : undefined;
   const repeatMult = original ? sequelQualityMult(state.week, original) : repeatMultiplier(state.released, project.topic, project.genre);
 
-  const staffMult = state.staff.length < size.minStaff ? 0.9 - 0.05 * (size.minStaff - state.staff.length) : 1;
+  const team = developmentTeam(state, project);
+  const staffMult = team < size.minStaff ? 0.9 - 0.05 * (size.minStaff - team) : 1;
   const platformMult = Math.sqrt(platformFit(state, platformById(project.platform), project.genre));
 
   const quality = pointsRatio * fitMult * alignMult * balanceMult * bugMult * repeatMult * Math.max(0.6, staffMult) * platformMult;
@@ -104,6 +126,17 @@ export function evaluate(state: GameState, project: GameProject): Evaluation {
     quality,
     score,
   };
+}
+
+/**
+ * The team size a game is judged on: the average over its development weeks, so hiring
+ * on release day doesn't make up for building it short-handed. Saves from before this
+ * was tracked (and games that haven't had a week yet) use today's team.
+ */
+export function developmentTeam(state: Pick<GameState, 'staff'>, project: Pick<GameProject, 'teamWeeks' | 'phase' | 'phaseWeeks' | 'weekInPhase'>): number {
+  const weeks = Math.min(project.phase, 3) * project.phaseWeeks + (project.phase < 3 ? project.weekInPhase : 0);
+  if (!project.teamWeeks || weeks <= 0) return state.staff.length;
+  return Math.round(project.teamWeeks / weeks);
 }
 
 /** Best and worst raw design/tech balance multipliers. */

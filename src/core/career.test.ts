@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { NO_RECORDS, addCareer, careerStats, careerTitle } from './career';
-import { createGame, tick } from './sim';
-import { END_YEAR, START_YEAR, TOTAL_WEEKS, WEEKS_PER_YEAR } from './time';
+import { availablePlatforms, bonusYears, createGame, keepPlaying, retireForGood, tick } from './sim';
+import { priceIndex } from './economy';
+import { benchmark } from './scoring';
+import { END_YEAR, START_YEAR, TOTAL_WEEKS, WEEKS_PER_YEAR, yearOf } from './time';
 import type { GameState, ReleasedGame } from './types';
 
 function game(id: number, score: number, extra: Partial<ReleasedGame> = {}): ReleasedGame {
@@ -73,5 +75,53 @@ describe('the final year', () => {
     s.cash = 10_000_000;
     tick(s);
     expect(s.notices.some((n) => n.text.startsWith(`${END_YEAR} is Last's last year`))).toBe(true);
+  });
+});
+
+describe('playing on for high scores', () => {
+  it('lets a retired studio keep going past the last year, and nothing new arrives', () => {
+    const s = createGame('Endless', 4);
+    s.cash = 50_000_000;
+    s.week = TOTAL_WEEKS - 1;
+    tick(s);
+    expect(s.over).toBe('retired');
+    expect(keepPlaying(s)).toBeNull();
+    expect(s.over).toBeNull();
+    expect(keepPlaying(s)).not.toBeNull();
+    const platforms = availablePlatforms(s).map((p) => p.id);
+    const prices = priceIndex(s.week);
+    const bar = benchmark({ week: s.week, bestPPW: 0 });
+    for (let i = 0; i < WEEKS_PER_YEAR * 3; i++) tick(s);
+    expect(s.over).toBeNull();
+    expect(yearOf(s.week)).toBe(END_YEAR + 4);
+    expect(bonusYears(s)).toBe(3);
+    // The market stays as it was when the timeline ended.
+    expect(availablePlatforms(s).map((p) => p.id)).toEqual(platforms);
+    expect(priceIndex(s.week)).toBe(prices);
+    expect(benchmark({ week: s.week, bestPPW: 0 })).toBe(bar);
+    expect(s.notices.some((n) => n.text.includes('discontinued') && yearOf(n.week) > END_YEAR)).toBe(false);
+  });
+
+  it('retires when the player says so', () => {
+    const s = retired('Done', []);
+    expect(retireForGood(s)).not.toBeNull();
+    keepPlaying(s);
+    s.week += WEEKS_PER_YEAR * 2 + 10;
+    expect(retireForGood(s)).toBeNull();
+    expect(s.over).toBe('retired');
+    expect(retireForGood(s)).not.toBeNull();
+  });
+
+  it('only raises the records later, without counting the career twice', () => {
+    const s = retired('Again', [game(1, 7)], { totalRevenue: 100_000, fans: 1000 });
+    const first = addCareer(NO_RECORDS, s).records;
+    keepPlaying(s);
+    s.week += WEEKS_PER_YEAR * 2;
+    s.totalRevenue = 300_000;
+    const { records, beaten } = addCareer(first, s, false);
+    expect(records.careers).toBe(1);
+    expect(beaten).toEqual(['revenue']);
+    expect(records.best.revenue).toEqual({ value: 300_000, studio: 'Again', year: END_YEAR + 2 });
+    expect(records.best.fans?.value).toBe(1000);
   });
 });

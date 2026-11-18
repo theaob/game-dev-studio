@@ -2,6 +2,7 @@
  * Simple automated players used by tests to check that a full playthrough
  * works and that the economy is balanced (smart play wins, careless play struggles).
  */
+import { decisionById, resolveDecision } from './events';
 import { OFFICES, RESEARCH, TOPICS, genreById, platformGenreFit, platformUsers, topicFit } from './data';
 import {
   availableGenres,
@@ -43,6 +44,7 @@ function smartFocus(genre: string, phase: number): number[] {
 }
 
 export function botTurn(state: GameState, style: BotStyle, reports: ReleaseReport[]): void {
+  if (state.decision) resolveDecision(state, decisionById(state.decision.id).botChoice);
   const act = state.activity;
 
   if (act?.kind === 'game') {

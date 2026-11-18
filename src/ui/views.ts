@@ -1,5 +1,5 @@
 import { OFFICES, PHASES, PLATFORMS, RESEARCH, STORE, TOPICS, genreById, platformById, platformUsers, sizeById, topicById } from '../core/data';
-import { TREND_GENRE_BONUS, TREND_TOPIC_BONUS } from '../core/industry';
+import { TREND_GENRE_BONUS, TREND_TOPIC_BONUS, announcedName, isPlatformAnnounced } from '../core/industry';
 import { profit, verdict } from '../core/results';
 import { GOTY_ICON, acclaimOf } from '../core/acclaim';
 import { profitChart, sparkline } from './charts';
@@ -25,6 +25,8 @@ import { EXPO_BOOKING_WEEKS, weeksToExpo } from '../core/marketing';
 import type { GameProject, GameState, PolishMode, ReleasedGame, Staff } from '../core/types';
 import { esc, money, num, scoreClass } from './format';
 import { officeCost, officeRent } from '../core/economy';
+import { goalDone, goalProgress, goalsUnlocked } from '../core/goals';
+import { RND, RND_BUGS_PER_LEVEL, RND_POINTS_PER_LEVEL, rndBlocker, rndById, rndCost, rndLevel, type RndId } from '../core/rnd';
 
 export type Tab = 'studio' | 'games' | 'research' | 'staff' | 'news';
 export const SPEEDS = [0, 1, 2, 4];
@@ -37,7 +39,7 @@ export function renderTopbar(state: GameState, speed: number, lastSpeed: number)
   <div class="hud-row">
     <button class="hud-pill studio-pill" data-action="menu" aria-label="Menu">
       <span class="studio-logo">🎮</span>
-      <span class="studio-text"><b>${esc(state.studioName)}</b><small>${formatDate(state.week)}${weekDots(state.week)}</small></span>
+      <span class="studio-text"><b>${esc(state.studioName)}</b><small>${state.endless ? '<span title="Playing for high scores">🥇</span> ' : ''}${formatDate(state.week)}${weekDots(state.week)}</small></span>
     </button>
     <div class="grow"></div>
     <button class="hud-btn ${paused ? 'paused' : ''}" data-action="toggle-pause" aria-label="${paused ? 'Play' : 'Pause'}">${paused ? '▶' : '❚❚'}</button>
@@ -61,7 +63,7 @@ function weekDots(week: number): string {
 }
 
 export function renderNav(tab: Tab, state: GameState, unreadNews: number): string {
-  const canResearch = [...RESEARCH.map((r) => r.id), ...TOPICS.map((t) => t.id)].some((id) => !researchBlocker(state, id));
+  const canResearch = [...RESEARCH.map((r) => r.id), ...TOPICS.map((t) => t.id)].some((id) => !researchBlocker(state, id)) || RND.some((r) => !rndBlocker(state, r.id));
   const items: [Tab, string, string, boolean][] = [
     ['studio', '🏠', 'Studio', false],
     ['games', '🏆', 'Games', false],
@@ -81,28 +83,34 @@ export function renderNav(tab: Tab, state: GameState, unreadNews: number): strin
 // Studio: an action dock floating over the office
 // ---------------------------------------------------------------------------
 
+/** A reward chip on the studio screen (Android only): which reward, and what the chip says. */
+export interface RewardOffer {
+  id: string;
+  text: string;
+}
+
 /**
- * `cashOffer`: the text of a "watch a video for cash" chip, when the studio is in the red (Android only).
+ * `offer`: a reward that's ready to claim, shown as a chip (Android only).
  * `compact`: shrink the game-in-development card to a two-line summary, so it fits next to the chips.
  */
-export function renderDock(state: GameState, cashOffer = '', compact = false): string {
-  const chips = dockChips(state, cashOffer);
+export function renderDock(state: GameState, offer: RewardOffer | null = null, compact = false): string {
+  const chips = dockChips(state, offer);
   const row = chips.length ? `<div class="dock-chips">${chips.join('')}</div>` : '';
   return `${row}${renderActivity(state, compact)}`;
 }
 
 /** What decides the dock's height, apart from live numbers: re-check whether the full card fits when it changes. */
-export function dockLayoutKey(state: GameState, cashOffer = ''): string {
+export function dockLayoutKey(state: GameState, offer: RewardOffer | null = null): string {
   const a = state.activity;
   const card = !a ? 'idle' : a.kind === 'contract' ? 'contract' : `game:${a.phase >= 3}:${activeBoosts(state) ? 1 : 0}`;
-  return `${card}|${dockChips(state, cashOffer).length}`;
+  return `${card}|${dockChips(state, offer).length}`;
 }
 
-/** Reminders above the activity card, side by side in one row: the cash offer, GameExpo and sales. */
-function dockChips(state: GameState, cashOffer: string): string[] {
+/** Reminders above the activity card, side by side in one row: a reward offer, GameExpo and sales. */
+function dockChips(state: GameState, offer: RewardOffer | null): string[] {
   const selling = state.released.filter((g) => g.weeksOnMarket < SALES_WEEKS);
   const chips: string[] = [];
-  if (cashOffer) chips.push(`<button class="ticker expo" data-action="ad-reward" data-arg="investor">${esc(cashOffer)}</button>`);
+  if (offer) chips.push(`<button class="ticker expo" data-action="ad-reward" data-arg="${esc(offer.id)}">${esc(offer.text)}</button>`);
   const expo = expoChip(state);
   if (expo) chips.push(expo);
   if (selling.length) {
@@ -111,7 +119,21 @@ function dockChips(state: GameState, cashOffer: string): string[] {
     // Just the money when it shares the row with another chip, so both fit on a small phone.
     chips.push(`<button class="ticker" data-action="tab" data-arg="games" title="${full}">📈 ${chips.length ? earned : full}</button>`);
   }
+  const goals = goalsChip(state, chips.length);
+  if (goals) chips.push(goals);
   return chips;
+}
+
+/** Studio goals: how close the nearest one is, or just the icon when the row is full. */
+function goalsChip(state: GameState, others: number): string {
+  const active = state.goals?.active ?? [];
+  if (!goalsUnlocked(state) || !active.length) return '';
+  const near = Math.max(...active.filter((g) => !goalDone(state, g)).map((g) => {
+    const p = goalProgress(state, g);
+    return p.target ? p.value / p.target : 0;
+  }), 0);
+  const label = others >= 2 ? '🎯' : others === 1 || near < 0.05 ? '🎯 Goals' : `🎯 Goals · ${Math.floor(near * 100)}%`;
+  return `<button class="ticker goals-chip" data-action="goals" aria-label="Studio goals">${label}</button>`;
 }
 
 /** While GameExpo booking is open: a reminder that opens the Marketing sheet. */
@@ -165,12 +187,12 @@ export function renderNews(state: GameState): string {
       ${dir}
     </div>`;
   });
-  const coming = PLATFORMS.filter((p) => p.start === year + 1);
+  const coming = PLATFORMS.filter((p) => isPlatformAnnounced(p, state.week)).sort((a, b) => a.start - b.start);
   const comingRows = coming.map(
     (p) => `
     <div class="list-item">
       <div class="emoji">${p.icon}</div>
-      <div class="grow"><div class="name">${esc(p.name)}</div><div class="sub">${p.kind} · arrives in ${p.start}</div></div>
+      <div class="grow"><div class="name">${esc(announcedName(p, state.week))}</div><div class="sub">${p.kind}${p.maker ? ` · ${esc(p.maker)}` : ''} · arrives in ${p.start}</div></div>
       <span class="tag">Coming soon</span>
     </div>`,
   );
@@ -365,7 +387,7 @@ function gameRow(g: ReleasedGame, detail: string, aside = ''): string {
   <button class="list-item" data-action="game-detail" data-arg="${g.id}">
     <div class="score ${scoreClass(g.score)}">${g.score.toFixed(1)}</div>
     <div class="grow">
-      <div class="name">${esc(g.name)}${(g.series ?? 1) > 1 ? ` <span class="tag">Part ${g.series}</span>` : ''}${acclaimTag(g)}</div>
+      <div class="name wrap">${esc(g.name)}${(g.series ?? 1) > 1 ? ` <span class="tag">Part ${g.series}</span>` : ''}${acclaimTag(g)}</div>
       <div class="sub">${topicById(g.topic).name} ${genreById(g.genre).name} · ${platformById(g.platform).name}</div>
       <div class="sub">${detail}</div>
     </div>
@@ -457,12 +479,32 @@ export function renderResearch(state: GameState): string {
   const topics = TOPICS.filter((t) => t.cost > 0).map((t) =>
     researchRow(state, t.id, t.icon, t.name, 'New game topic', state.topics.includes(t.id)),
   );
+  // Once a whole line is researched, its R&D project opens and goes to the top: it's where research points go from then on.
+  const rnd = RND.filter((r) => state.researched.includes(r.requires));
   return `
+  ${rnd.length ? `<h2>R&amp;D projects</h2><p class="sub">Research that never runs out. Each level helps forever and costs more than the last.</p><div class="list">${rnd.map((r) => rndRow(state, r.id)).join('')}</div>` : ''}
   ${Object.entries(groups)
     .map(([cat, rows]) => `<h2>${cat}</h2><div class="list">${rows.join('')}</div>`)
     .join('')}
   <h2>Topics</h2>
   <div class="list">${topics.join('')}</div>`;
+}
+
+function rndRow(state: GameState, id: RndId): string {
+  const r = rndById(id);
+  const level = rndLevel(state, id);
+  const blocker = rndBlocker(state, id);
+  const total =
+    id === 'rnd_qa' ? `${Math.round((1 - Math.pow(RND_BUGS_PER_LEVEL, level)) * 100)}% fewer bugs` : `+${Math.round(RND_POINTS_PER_LEVEL * level * 100)}% ${id === 'rnd_engine' ? 'tech' : 'design'} points`;
+  return `
+  <div class="list-item">
+    <div class="emoji">${r.icon}</div>
+    <div class="grow">
+      <div class="name">${esc(r.name)} <span class="tag">Lv ${level}</span></div>
+      <div class="sub">Each level: ${esc(r.perLevel)}${level ? ` · now ${total}` : ''}</div>
+    </div>
+    <button class="btn small ${blocker ? 'ghost' : ''}" data-action="rnd" data-arg="${id}" ${blocker ? 'disabled' : ''}>${rndCost(state, id)} RP</button>
+  </div>`;
 }
 
 function researchRow(state: GameState, id: string, icon: string, name: string, desc: string, done: boolean): string {
@@ -489,7 +531,8 @@ function researchRow(state: GameState, id: string, icon: string, name: string, d
 // Staff
 // ---------------------------------------------------------------------------
 
-export function renderStaff(state: GameState): string {
+/** `headhunterVideo`: the free-search button for the headhunter (a reward video), or '' when it isn't on offer. */
+export function renderStaff(state: GameState, headhunterVideo = ''): string {
   const office = OFFICES[state.officeLevel];
   const next = OFFICES[state.officeLevel + 1];
   const full = state.staff.length >= officeCapacity(state);
@@ -526,6 +569,7 @@ export function renderStaff(state: GameState): string {
           <div class="name">${esc(c.name)}${c.rockstar ? ' <span class="tag good">Rockstar</span>' : ''}</div>
           <div class="sub">${money(c.salary)}/mo · speed ${c.speed.toFixed(1)}x</div>
           ${skillBars(c)}
+          <div class="sub${!full && state.cash < c.salary ? ' warn' : ''}" style="margin-top:4px">${!full && state.cash < c.salary ? `You need ${money(c.salary)} for the hiring fee.` : `Hiring fee: ${money(c.salary)} (one month's pay).`}</div>
         </div>
         <button class="btn small" data-action="hire" data-arg="${c.id}" ${full || state.cash < c.salary ? 'disabled' : ''}>Hire</button>
       </div>`,
@@ -533,16 +577,19 @@ export function renderStaff(state: GameState): string {
         .join('') || '<div class="empty">No applicants right now. New ones arrive every few months.</div>'
     }
   </div>
-  ${headhuntCard(state)}`;
+  ${headhuntCard(state, headhunterVideo)}`;
 }
 
-function headhuntCard(state: GameState): string {
+function headhuntCard(state: GameState, video: string): string {
   const waiting = state.candidates.some((c) => c.rockstar);
+  const blocker = headhuntBlocker(state);
   const status = state.headhunt
     ? `Searching… ${state.headhunt.weeks} week${state.headhunt.weeks === 1 ? '' : 's'} left.`
     : waiting
       ? 'Your rockstar is waiting above.'
-      : '';
+      : blocker && !blocker.startsWith('The headhunter charges')
+        ? blocker
+        : '';
   return `
   <div class="list mt">
     <div class="list-item" style="align-items:flex-start">
@@ -552,7 +599,7 @@ function headhuntCard(state: GameState): string {
         <div class="sub">A headhunter finds a rare developer with top skills and extra speed in ${HEADHUNT_WEEKS} weeks. Rockstars ask for ${Math.round((ROCKSTAR_SALARY_MULT - 1) * 100)}% more pay.</div>
         ${status ? `<div class="sub" style="margin-top:4px"><b>${status}</b></div>` : ''}
       </div>
-      ${state.headhunt || waiting ? '' : `<button class="btn small" data-action="headhunt" ${headhuntBlocker(state) ? 'disabled' : ''}>${money(headhuntFee(state))}</button>`}
+      ${state.headhunt || waiting ? '' : `<div class="btn-col"><button class="btn small" data-action="headhunt" ${blocker ? 'disabled' : ''}>${money(headhuntFee(state))}</button>${video}</div>`}
     </div>
   </div>`;
 }

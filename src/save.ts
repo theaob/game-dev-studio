@@ -81,3 +81,22 @@ export function saveRecords(records: CareerRecords): void {
     // ignore
   }
 }
+
+// The guided first game is shown once per device: a second studio starts without it.
+const GUIDE_KEY = 'game-dev-studio/guide-done';
+
+export function loadGuideDone(): boolean {
+  try {
+    return localStorage.getItem(GUIDE_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function saveGuideDone(): void {
+  try {
+    localStorage.setItem(GUIDE_KEY, '1');
+  } catch {
+    // ignore
+  }
+}

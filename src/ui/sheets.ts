@@ -1,3 +1,5 @@
+import { reviewQuote } from '../core/quotes';
+import { decisionById, decisionContext, decisionValid } from '../core/events';
 import {
   FIT_LABELS,
   PERFECT_FIT,
@@ -16,6 +18,7 @@ import {
   availableMarketing,
   availablePlatforms,
   availableSizes,
+  bonusYears,
   boostWeeks,
   gameCost,
   hasUpgrade,
@@ -27,12 +30,12 @@ import {
   promoBlocker,
   salesPushBlocker,
 } from '../core/sim';
-import { SEQUEL_TOO_SOON_WEEKS, sequelCandidates, sequelSalesMult, seriesNumber } from '../core/sequels';
-import { WEEKS_PER_YEAR, formatShortDate, yearFraction, yearOf } from '../core/time';
+import { SEQUEL_TOO_SOON_WEEKS, sequelCandidates, sequelSalesMult, seriesNumber, seriesTitle } from '../core/sequels';
+import { WEEKS_PER_MONTH, WEEKS_PER_YEAR, formatShortDate, marketWeek, yearFraction, yearOf } from '../core/time';
 import { RIVAL_CLASH_MULT, RIVAL_CLASH_WEEKS, rivalClash, trendMult } from '../core/industry';
 import { onSale, paybackWeek, profit, returnMultiple, revenueRank, totalCost, verdict } from '../core/results';
 import { moneyChart, spendBar, weeklyChart } from './charts';
-import { REWARDS, bailoutCash, canBailout, rewardAmount, rewardBlocker, type Reward } from '../core/rewards';
+import { PRESS_TOUR_BOOST, REWARDS, bailoutCash, canBailout, pressTourBlocker, pressTourCopies, rewardAmount, rewardBlocker, type Reward } from '../core/rewards';
 import type { MonetizationView } from './monetization';
 import { RIVALS } from '../core/industry';
 import { VENTURES, VENTURE_OFFICE, licenseCost, phaseWeeks, platformFit, acquirableRivals, acquireBlocker, acquisitionFans, acquisitionPrice, hasVenture, ventureBlocker, venturePrice, type Venture } from '../core/ventures';
@@ -40,7 +43,7 @@ import { BOOTHS, EXPO_BOOKING_WEEKS, MAX_HYPE, PROMOS, SALES_PUSHES, boothById, 
 import type { GameProject, GameSpec, GameState, ReleaseReport } from '../core/types';
 import { esc, money, num, scoreClass } from './format';
 import type { StoreItem } from '../core/data';
-import { DECOR, FLOOR_PAINTS, WALL_PAINTS, decorPrice, isPlaced, ownsDecor, paintPrice, trophyCount } from '../core/decor';
+import { DECOR, FLOOR_PAINTS, SUPPORTER_DECOR, WALL_PAINTS, decorPrice, isPlaced, ownsDecor, paintPrice, trophyCount } from '../core/decor';
 import type { DecorItem, Paint } from '../core/decor';
 import { acclaimTag, polishPicker } from './views';
 import { acclaimOf, beloved, longAwaitedHype, sequelHype } from '../core/acclaim';
@@ -51,11 +54,15 @@ import type { PlayGamesView } from './play-games';
 import type { Keynote } from '../core/keynote';
 import { CAREER_HIT_SCORE, RECORD_KEYS, careerStats, careerTitle, type CareerRecords, type RecordKey } from '../core/career';
 import { END_YEAR as LAST_YEAR, TOTAL_WEEKS } from '../core/time';
+import { goalIcon, goalProgress, goalText, rewardText, swapCooldown, type Goal } from '../core/goals';
+import { guideStep } from '../core/guide';
+import { coachCard } from './guide';
 
 export type Sheet =
   | { kind: 'welcome'; name: string }
   /** `nameEdited`: the player typed their own title, so picking a genre won't replace it. */
-  | { kind: 'newGame'; step: 1 | 2; draft: GameSpec; error?: string; nameEdited?: boolean }
+  /** `allSequels`: the sequel picker lists every game that can get one, not just the best few. */
+  | { kind: 'newGame'; step: 1 | 2; draft: GameSpec; error?: string; nameEdited?: boolean; allSequels?: boolean }
   | { kind: 'focus'; phase: number; values: number[]; spec?: GameSpec; error?: string }
   | { kind: 'devComplete' }
   | { kind: 'review'; report: ReleaseReport; shown: number }
@@ -69,12 +76,16 @@ export type Sheet =
   | { kind: 'marketing' }
   | { kind: 'expo' }
   | { kind: 'keynote'; keynote: Keynote }
+  | { kind: 'decision' }
   | { kind: 'achievements' }
+  | { kind: 'goals' }
+  /** The one-time Remove ads offer, after a few full-screen ads (Android only). */
+  | { kind: 'supportOffer' }
   /** `records`: the career records on this device; `beaten`: the ones this career just set. */
   | { kind: 'gameOver'; records?: CareerRecords; beaten?: RecordKey[] };
 
 /** The web build: no ads, no purchases. */
-const NO_ADS: MonetizationView = { native: false, rewardedReady: false, adFree: false, privacyOptions: false, busy: false };
+const NO_ADS: MonetizationView = { native: false, rewardedReady: false, adFree: false, supporter: false, privacyOptions: false, busy: false };
 
 export const OUTLETS = ['Game Weekly', 'Pixel Press', 'PlayZone', 'Joystick Journal'];
 
@@ -102,19 +113,31 @@ export function renderSheet(
         </div>`;
   }
   if (!state) return '';
+  return sheetCoach(state, sheet) + stateSheet(state, sheet, ads, unlocked);
+}
+
+/** The guided first game's coach card, at the top of the sheet it explains. */
+function sheetCoach(state: GameState, sheet: Sheet): string {
+  const step = guideStep(state, { sheet: { kind: sheet.kind, step: sheet.kind === 'newGame' ? sheet.step : undefined, spec: sheet.kind === 'focus' && !!sheet.spec }, tab: 'studio' });
+  if (!step) return '';
+  const draft = sheet.kind === 'newGame' ? sheet.draft : sheet.kind === 'focus' ? sheet.spec : undefined;
+  return coachCard(state, step, draft);
+}
+
+function stateSheet(state: GameState, sheet: Sheet, ads: MonetizationView, unlocked: Record<string, Unlock>): string {
   switch (sheet.kind) {
     case 'newGame':
-      return sheet.step === 1 ? newGameStep1(state, sheet.draft, sheet.error) : newGameStep2(state, sheet.draft, sheet.error);
+      return sheet.step === 1 ? newGameStep1(state, sheet.draft, sheet.error, sheet.allSequels) : newGameStep2(state, sheet.draft, sheet.error);
     case 'focus':
       return focusSheet(state, sheet);
     case 'devComplete':
       return devComplete(state);
     case 'review':
-      return review(sheet.report, sheet.shown);
+      return review(state, sheet.report, sheet.shown, ads);
     case 'gameDetail':
-      return gameDetail(state, sheet.id);
+      return gameDetail(state, sheet.id, ads);
     case 'menu':
-      return menu(sheet.saved, ads, unlocked);
+      return menu(state, sheet.saved, ads, unlocked);
     case 'gameOver':
       return gameOver(state, ads, sheet);
     case 'contracts':
@@ -122,14 +145,50 @@ export function renderSheet(
     case 'store':
       return store(state, ads);
     case 'decor':
-      return decorSheet(state);
+      return decorSheet(state, ads);
+    case 'supportOffer':
+      return supportOffer(ads);
     case 'marketing':
       return marketing(state);
     case 'expo':
       return expoResults(state);
     case 'keynote':
       return keynote(state, sheet.keynote);
+    case 'goals':
+      return goalsSheet(state);
+    case 'decision':
+      return decisionSheet(state);
   }
+  return '';
+}
+
+/** Something happened to the studio: the player picks what to do about it (see events.ts). */
+function decisionSheet(state: GameState): string {
+  const d = state.decision;
+  if (!d) return '';
+  const def = decisionById(d.id);
+  const c = decisionContext(state, d);
+  if (!decisionValid(state, d)) {
+    return `
+      <div class="big-emoji">${def.icon}</div>
+      <h3 class="center">${esc(def.title)}</h3>
+      <p class="muted center">It sorted itself out.</p>
+      <div class="btn-row"><button class="btn big" data-action="decide" data-arg="0">OK</button></div>`;
+  }
+  return `
+    <div class="big-emoji">${def.icon}</div>
+    <h3 class="center">${esc(def.title)}</h3>
+    <p class="muted center">${esc(def.text(c))}</p>
+    <div class="options mt">
+      ${def.choices
+        .map(
+          (ch, i) => `
+        <button class="option" data-action="decide" data-arg="${i}">
+          <span class="grow"><b>${esc(ch.label)}</b><br/><span class="sub">${esc(ch.hint(c))}</span></span>
+        </button>`,
+        )
+        .join('')}
+    </div>`;
 }
 
 function welcome(name: string): string {
@@ -153,10 +212,11 @@ function help(): string {
       <p><b>Design vs Tech.</b> Every genre has a sweet spot between creative (design) and technical (tech) points.</p>
       <p><b>Polish.</b> After development you can keep polishing before you release: fix bugs (they hurt reviews), or add more design or tech points to fix the game's balance. Design and tech polishing gives less each week. Rework moves points from one side to the other until the split suits the genre, losing a quarter of what it moves.</p>
       <p><b>Marketing.</b> Pick an ad budget when you start a game. Tap 📣 Promote while making it to build hype with previews and trailers, and book a booth at the yearly GameExpo. A game with good points builds hype on its own by word of mouth. Hype sells more copies of a good game, but a hyped flop gets a backlash. After launch, 📣 Push sales runs ads or a discount sale. Research the Marketing Department to add press tours, TV commercials and TV ad blitzes.</p>
-      <p><b>Read the news.</b> Each year has a trending genre and topic (marked 🔥 when you start a game) that sell better. Rival studios release games too: right after a rival's hit, the same topic and genre sells less for a while. The News tab also shows which platforms are growing or on their way out.</p>
+      <p><b>Read the news.</b> Each year has a trending genre and topic (marked 🔥 when you start a game) that sell better. Rival studios release games too: right after a rival's hit, the same topic and genre sells less for a while. The News tab also shows which platforms are growing, which are on their way out, and the new hardware makers have announced at the summer show.</p>
       <p><b>The cat.</b> Sometimes the studio cat curls up on a developer's lap, and they work 30% faster while it stays. You can carry the cat over and drop it on someone too, but it needs some alone time between laps.</p>
       <p><b>Store.</b> Spend cash on power-ups: boosts like an espresso bar or pizza night last a few weeks of development, and studio upgrades help forever. Once you're on the Campus it also sells big investments and rival studios to buy out. Find it next to Contracts, or tap ⚡ Boost while making a game.</p>
       <p><b>Awards.</b> A game that reviews 9.0 or better is a 🏅 Critics' Choice, and 9.5 or better a 👑 Masterpiece. A perfect 10 is an 💎 Instant Classic. Its sequel starts development with hype already built: the better the original and the longer fans have waited, the more. Those fans never get bored: the hype doesn't fade, and they don't tire of a long series. Each new year, the best-reviewed game of the last one, yours or a rival's, is named 🏆 Game of the Year: winning brings fans, more sales if it's still selling, and extra hype for its sequel.</p>
+      <p><b>Studio goals.</b> After your first release, tap 🎯 Goals above the studio for three goals at a time, like a hit in a new genre, a new platform or more fans. Each one pays cash, research points or fans, and a new one takes its place. Goals have a deadline, and you can swap one you don't fancy every six months.</p>
       <p><b>Track your results.</b> Tap any game to see what it cost, what it made each week, when it paid for itself and whether it was a hit or a flop. The Games tab charts the profit of every release.</p>
       <p><b>Free with a video.</b> In the Android app, the Store has rewards for watching an optional video: an investor's cash, a free Espresso Bar or a research grant. Each one can be claimed again after a few weeks.</p>
       <p><b>Raise the bar.</b> Players expect each game to beat your last one, and the industry keeps moving. Grow your team, train them and research better tech.</p>
@@ -249,20 +309,25 @@ function newsNotes(state: GameState, genre: string, topic: string): string[] {
 }
 
 /** The "New game or sequel?" picker and, for a sequel, what to expect. */
-function sequelPicker(state: GameState, d: GameSpec): string {
+/** How many sequel candidates show before "More". */
+const SEQUEL_CHIPS = 8;
+
+function sequelPicker(state: GameState, d: GameSpec, all = false): string {
   const candidates = sequelCandidates(state);
   if (!candidates.length) return '';
   const original = d.sequelOf !== undefined ? state.released.find((g) => g.id === d.sequelOf) : undefined;
+  const shown = all ? [...candidates] : candidates.filter((g, i) => i < SEQUEL_CHIPS || g.id === original?.id);
+  const hidden = candidates.length - shown.length;
   const chips = [
     `<button class="chip ${original ? '' : 'on'}" data-action="pick-sequel" data-arg="none">✨ New game</button>`,
-    // The 8 best-reviewed candidates, listed in release order.
-    ...candidates
-      .slice(0, 8)
+    // The best-reviewed candidates (plus the one picked), or all of them, listed in release order.
+    ...shown
       .sort((a, b) => a.releaseWeek - b.releaseWeek || a.id - b.id)
       .map(
         (g) =>
           `<button class="chip ${original?.id === g.id ? 'on' : ''}" data-action="pick-sequel" data-arg="${g.id}">🔁 ${esc(g.name)}${acclaimOf(g) ? ` ${acclaimOf(g)!.icon}` : ''}${g.goty !== undefined ? ' 🏆' : ''} <small class="muted">${yearOf(g.releaseWeek)}</small> <span class="tag ${g.score >= 7.5 ? 'good' : g.score >= 5 ? 'mid' : 'bad'}">${g.score.toFixed(1)}</span></button>`,
       ),
+    ...(hidden > 0 ? [`<button class="chip" data-action="more-sequels">＋ ${hidden} more</button>`] : []),
   ].join('');
   let info = '';
   if (original) {
@@ -285,7 +350,7 @@ function sequelPicker(state: GameState, d: GameSpec): string {
     if (part >= 4) notes.push(beloved(original) ? `<li>❤️ Part ${part}, but fans of an award winner never tire of the series.</li>` : `<li>🥱 Part ${part} of a long series: players are starting to tire of it.</li>`);
     info = `
       <div class="sequel-card mt">
-        <div class="row"><b class="grow">Part ${part} of the ${esc(original.name.replace(/\s+\d+$/, ''))} series</b><span class="tag">${topicById(original.topic).icon} ${topicById(original.topic).name} ${genreById(original.genre).name}</span></div>
+        <div class="row"><b class="grow">Part ${part} of the ${esc(seriesTitle(original))} series</b><span class="tag">${topicById(original.topic).icon} ${topicById(original.topic).name} ${genreById(original.genre).name}</span></div>
         <ul class="reception-notes">${notes.join('')}</ul>
       </div>`;
   }
@@ -295,12 +360,12 @@ function sequelPicker(state: GameState, d: GameSpec): string {
     ${info}`;
 }
 
-function newGameStep1(state: GameState, d: GameSpec, error?: string): string {
+function newGameStep1(state: GameState, d: GameSpec, error?: string, allSequels = false): string {
   const sequel = d.sequelOf !== undefined;
   return `
     <h3>New game</h3>
     <p class="muted">Step 1 of 3 · Concept</p>
-    ${sequelPicker(state, d)}
+    ${sequelPicker(state, d, allSequels)}
     ${
       sequel
         ? '<p class="sub mt">A sequel keeps the original\'s topic and genre.</p>'
@@ -346,7 +411,7 @@ function newGameStep1(state: GameState, d: GameSpec, error?: string): string {
 }
 
 function newGameStep2(state: GameState, d: GameSpec, error?: string): string {
-  const year = yearFraction(state.week);
+  const year = yearFraction(marketWeek(state.week));
   const cost = gameCost(state, d);
   const size = sizeById(d.size);
   const sizes = availableSizes(state);
@@ -363,8 +428,8 @@ function newGameStep2(state: GameState, d: GameSpec, error?: string): string {
           const license = licenseCost(state, p);
           const owned = state.licenses.includes(p.id);
           // A game that launches after the platform is gone has nobody to sell to.
-          const launch = yearFraction(state.week + size.phaseWeeks * 3);
-          const endTag = p.end === undefined ? '' : launch >= p.end ? '<span class="tag bad">Gone before launch</span>' : p.end - launch < 1 ? `<span class="tag mid">Discontinued in ${p.end}</span>` : '';
+          const launch = yearFraction(marketWeek(state.week + phaseWeeks(state, d.size) * 3));
+          const endTag = p.end === undefined ? '' : launch >= p.end ? '<span class="tag bad">Discontinued before launch</span>' : p.end - launch < 1 ? `<span class="tag mid">Discontinued in ${p.end}</span>` : '';
           const fitTag = fit > 1.05 ? `<span class="tag good">Loves ${genreById(d.genre).name}</span>` : fit < 0.95 ? `<span class="tag bad">Weak for ${genreById(d.genre).name}</span>` : '';
           return `
         <button class="option ${d.platform === p.id ? 'on' : ''}" data-action="pick-platform" data-arg="${p.id}">
@@ -513,7 +578,7 @@ function balanceAdvice(p: GameProject): string {
   return `${genre.name} players like about ${target}% design; this game is ${share}%. Polishing ${more} or reworking the game would help.`;
 }
 
-function review(report: ReleaseReport, shown: number): string {
+function review(state: GameState, report: ReleaseReport, shown: number, ads: MonetizationView): string {
   const g = report.game;
   const done = shown >= g.reviews.length;
   return `
@@ -525,7 +590,7 @@ function review(report: ReleaseReport, shown: number): string {
           (r, i) => `
         <div class="review">
           <div class="outlet">${OUTLETS[i]}</div>
-          ${i < shown ? `<div class="num" style="color:${r >= 8 ? 'var(--good)' : r >= 5 ? '#ffe07d' : 'var(--bad)'}">${r}</div>` : '<div class="num pending">?</div>'}
+          ${i < shown ? `<div class="num" style="color:${r >= 8 ? 'var(--good)' : r >= 5 ? '#ffe07d' : 'var(--bad)'}">${r}</div><div class="quote">“${esc(reviewQuote(g, i))}”</div>` : '<div class="num pending">?</div>'}
         </div>`,
         )
         .join('')}
@@ -541,12 +606,13 @@ function review(report: ReleaseReport, shown: number): string {
       </div>
       <h4>What we learned</h4>
       <ul class="insights">${report.insights.map((i) => `<li class="${i.kind}">${esc(i.text)}</li>`).join('')}</ul>
+      ${pressTourOffer(state, g.id, ads)}
       <div class="btn-row"><button class="btn big" data-action="close">Continue</button></div>`
         : '<div class="btn-row"><button class="btn ghost" data-action="skip-reviews">Skip</button></div>'
     }`;
 }
 
-function gameDetail(state: GameState, id: number): string {
+function gameDetail(state: GameState, id: number, ads: MonetizationView = NO_ADS): string {
   const g = state.released.find((x) => x.id === id);
   if (!g) return '';
   const prequel = g.sequelOf !== undefined ? state.released.find((x) => x.id === g.sequelOf) : undefined;
@@ -575,6 +641,7 @@ function gameDetail(state: GameState, id: number): string {
       <div class="stat"><small>Score</small><b>${g.score.toFixed(1)}</b></div>
     </div>
     ${selling ? `<p class="sub mt-s">Still selling: week ${g.weeksOnMarket} of ${SALES_WEEKS}.</p>` : ''}
+    ${selling ? pressTourOffer(state, g.id, ads) : ''}
     <h4>Money made vs cost</h4>
     ${moneyChart(g)}
     ${payText ? `<p class="sub">${payText}</p>` : ''}
@@ -582,7 +649,7 @@ function gameDetail(state: GameState, id: number): string {
     ${g.spend ? `<h4>Where the money went · ${money(totalCost(g))}</h4>${spendBar(g)}` : ''}
     <h4>Reviews</h4>
     <div class="reviews">
-      ${g.reviews.map((r, i) => `<div class="review"><div class="outlet">${OUTLETS[i]}</div><div class="num" style="animation:none">${r}</div></div>`).join('')}
+      ${g.reviews.map((r, i) => `<div class="review"><div class="outlet">${OUTLETS[i]}</div><div class="num" style="animation:none">${r}</div><div class="quote">“${esc(reviewQuote(g, i))}”</div></div>`).join('')}
     </div>
     <div class="summary">
       ${g.spend ? '' : `<div class="line"><span>Upfront cost</span><span>${money(g.cost)}</span></div>`}
@@ -593,16 +660,17 @@ function gameDetail(state: GameState, id: number): string {
     <div class="btn-row"><button class="btn ghost" data-action="close">Close</button></div>`;
 }
 
-function menu(saved: boolean | undefined, ads: MonetizationView, unlocked: Record<string, Unlock>): string {
+function menu(state: GameState | null, saved: boolean | undefined, ads: MonetizationView, unlocked: Record<string, Unlock>): string {
   // Ads and purchases only exist in the Android app.
   const shop = ads.native
     ? `
       ${
         ads.adFree
-          ? '<div class="option"><span class="emoji">💖</span><span class="grow"><b>Ads removed</b><br/><span class="sub">Thanks for supporting the game! Optional videos for rewards stay available.</span></span></div>'
-          : `<button class="option" data-action="remove-ads" ${ads.busy ? 'disabled' : ''}><span class="emoji">🚫</span><span class="grow"><b>Remove ads${ads.removeAdsPrice ? ` · ${esc(ads.removeAdsPrice)}` : ''}</b><br/><span class="sub">One-time purchase. No more full-screen ads; optional reward videos stay.</span></span></button>`
+          ? '<div class="option"><span class="emoji">💖</span><span class="grow"><b>Ads removed</b><br/><span class="sub">Thanks for supporting the game! Rewards are yours without watching a video.</span></span></div>'
+          : removeAdsRow(ads)
       }
-      <button class="option" data-action="restore-purchases"><span class="emoji">♻️</span><span class="grow"><b>Restore purchases</b><br/><span class="sub">Bought "Remove ads" on another phone? Get it back here.</span></span></button>
+      ${supporterRow(ads)}
+      <button class="option" data-action="restore-purchases"><span class="emoji">♻️</span><span class="grow"><b>Restore purchases</b><br/><span class="sub">Bought "Remove ads" or the Supporter Pack on another phone? Get it back here.</span></span></button>
       ${ads.privacyOptions ? '<button class="option" data-action="privacy-options"><span class="emoji">🔒</span><span class="grow"><b>Privacy options</b><br/><span class="sub">Change your ad consent choices.</span></span></button>' : ''}`
     : '';
   return `
@@ -612,6 +680,11 @@ function menu(saved: boolean | undefined, ads: MonetizationView, unlocked: Recor
       <button class="option" data-action="achievements"><span class="emoji">🏆</span><span class="grow"><b>Achievements</b><br/><span class="sub">${unlockedCount(unlocked)} of ${ACHIEVEMENTS.length} unlocked</span></span></button>
       <button class="option" data-action="save"><span class="emoji">💾</span><span class="grow"><b>Save game</b>${saved ? ' <span class="tag good">Saved!</span>' : '<br/><span class="sub">The game also saves automatically every month.</span>'}</span></button>
       ${shop}
+      ${
+        state?.endless && !state.over
+          ? `<button class="option" data-action="ask-retire"><span class="emoji">🏁</span><span class="grow"><b>Retire the studio</b><br/><span class="sub">End the career here and see how it did against the records. New records are also saved every New Year.</span></span></button>`
+          : ''
+      }
       <button class="option" data-action="ask-reset"><span class="emoji">🔄</span><span class="grow"><b>Start over</b><br/><span class="sub">Delete this save and found a new studio.</span></span></button>
     </div>
     <div class="btn-row"><button class="btn ghost" data-action="close">Close</button></div>`;
@@ -644,6 +717,43 @@ function achievements(unlocked: Record<string, Unlock>, play: PlayGamesView): st
     <div class="bar mt"><i style="width:${Math.round((done / ACHIEVEMENTS.length) * 100)}%"></i></div>
     <div class="options mt">${rows}</div>
     <div class="btn-row"><button class="btn ghost" data-action="close">Close</button></div>`;
+}
+
+function goalsSheet(state: GameState): string {
+  const gs = state.goals;
+  const wait = swapCooldown(state);
+  const rows = (gs?.active ?? [])
+    .map((g) => {
+      const p = goalProgress(state, g);
+      const pct = p.target ? Math.min(100, (p.value / p.target) * 100) : 0;
+      const counted = p.target > 1 ? `<span class="sub">${goalAmount(g, p.value)} / ${goalAmount(g, p.target)}</span>` : '';
+      const left = Math.max(0, g.until - state.week);
+      const months = Math.max(1, Math.ceil(left / WEEKS_PER_MONTH));
+      const time = left < WEEKS_PER_MONTH * 3 ? `<span class="tag bad">${months} mo left</span>` : `<span class="sub">${months} months left</span>`;
+      return `
+      <div class="option goal">
+        <span class="emoji">${goalIcon(g)}</span>
+        <span class="grow">
+          <b>${esc(goalText(g))}</b>
+          <span class="goal-meta"><span class="tag good">${esc(rewardText(g.reward))}</span>${time}</span>
+          ${p.target > 1 ? `<span class="bar goal-bar"><i style="width:${pct}%"></i></span>${counted}` : ''}
+        </span>
+        <button class="btn small ghost" data-action="goal-swap" data-arg="${g.id}" ${wait ? 'disabled' : ''} aria-label="Swap this goal" title="Swap for a different goal">↻</button>
+      </div>`;
+    })
+    .join('');
+  const done = gs?.done ?? 0;
+  return `
+    <h3>🎯 Studio goals</h3>
+    <p class="muted">Finish a goal to collect its reward, and a new one takes its place. Only what you do after a goal is set counts.</p>
+    <div class="options mt">${rows || '<p class="muted center">Release your first game to get goals.</p>'}</div>
+    <p class="muted mt goal-foot">${wait ? `You can swap a goal for another one in ${wait} week${wait === 1 ? '' : 's'}.` : 'Not keen on one? Tap ↻ to swap it (once every six months).'}${done ? ` Goals done: <b>${done}</b>.` : ''}</p>
+    <div class="btn-row"><button class="btn ghost" data-action="close">Close</button></div>`;
+}
+
+/** A goal's numbers in its own unit: money for cash goals, plain numbers otherwise. */
+function goalAmount(g: Goal, v: number): string {
+  return g.kind === 'cash' ? money(v) : num(v);
 }
 
 function contracts(state: GameState): string {
@@ -725,15 +835,63 @@ function acquisitions(state: GameState): string {
 
 /** A reward for watching an optional video, with what it gives now or why not. */
 function rewardRow(state: GameState, r: Reward, ads: MonetizationView): string {
-  const blocked = rewardBlocker(state, r.id) ?? (ads.busy ? 'Just a moment…' : !ads.rewardedReady ? 'Loading a video…' : null);
+  const blocked = rewardBlocker(state, r.id) ?? videoWaiting(ads);
   return `
     <div class="option store-item">
       <span class="emoji">${r.icon}</span>
       <span class="grow"><b>${r.name}</b> <span class="tag good">${esc(rewardAmount(state, r.id))}</span><br/><span class="sub">${r.desc}</span>${
         blocked ? `<br/><span class="sub warn">${esc(blocked)}</span>` : ''
       }</span>
-      <button class="btn small" data-action="ad-reward" data-arg="${r.id}" ${blocked ? 'disabled' : ''}>▶ Watch</button>
+      ${videoButton('ad-reward', r.id, !!blocked, ads)}
     </div>`;
+}
+
+/** The button that earns a reward: a video for most players, a plain claim for those who bought a pack. */
+export function videoButton(action: string, arg: string, disabled: boolean, ads: MonetizationView): string {
+  return `<button class="btn small" data-action="${action}" data-arg="${esc(arg)}" ${disabled ? 'disabled' : ''}>${ads.adFree ? '🎁 Claim' : '▶ Watch'}</button>`;
+}
+
+/** Why a reward button is greyed out while the ad itself isn't ready, or null. */
+export function videoWaiting(ads: MonetizationView): string | null {
+  return ads.busy ? 'Just a moment…' : !ads.rewardedReady ? 'Loading a video…' : null;
+}
+
+/** After a release (and on the game's page while it sells): one free press tour for more sales. */
+function pressTourOffer(state: GameState, gameId: number, ads: MonetizationView): string {
+  if (!ads.native || pressTourBlocker(state, gameId)) return '';
+  const copies = pressTourCopies(state, gameId);
+  if (copies <= 0) return '';
+  const waiting = videoWaiting(ads);
+  return `
+    <div class="options mt-s"><div class="option store-item">
+      <span class="emoji">🎤</span>
+      <span class="grow"><b>Press tour</b> <span class="tag good">+${Math.round(PRESS_TOUR_BOOST * 100)}% sales</span><br/><span class="sub">${ads.adFree ? 'On the house for supporters' : 'Watch a video'} and the team tours the magazines: about ${num(copies)} more copies to sell. Once per game.</span>${
+        waiting ? `<br/><span class="sub warn">${waiting}</span>` : ''
+      }</span>
+      ${videoButton('press-tour', String(gameId), !!waiting, ads)}
+    </div></div>`;
+}
+
+function removeAdsRow(ads: MonetizationView): string {
+  return `<button class="option" data-action="remove-ads" ${ads.busy ? 'disabled' : ''}><span class="emoji">🚫</span><span class="grow"><b>Remove ads${ads.removeAdsPrice ? ` · ${esc(ads.removeAdsPrice)}` : ''}</b><br/><span class="sub">One-time purchase. No more full-screen ads, and rewards without watching a video.</span></span></button>`;
+}
+
+/** The Supporter Pack, once Google Play has a price for it (so it stays hidden until it's set up). */
+function supporterRow(ads: MonetizationView): string {
+  if (ads.supporter) return '<div class="option"><span class="emoji">🌟</span><span class="grow"><b>Supporter</b><br/><span class="sub">Thank you! Your exclusive decorations are in the Decorate sheet.</span></span></div>';
+  if (!ads.supporterPrice) return '';
+  const names = SUPPORTER_DECOR.map((d) => `${d.icon} ${d.name}`).join(' and ');
+  return `<button class="option" data-action="buy-supporter" ${ads.busy ? 'disabled' : ''}><span class="emoji">🌟</span><span class="grow"><b>Supporter Pack · ${esc(ads.supporterPrice)}</b><br/><span class="sub">Everything in Remove ads, plus the exclusive ${names} for your studio.</span></span></button>`;
+}
+
+/** The one-time offer after a few full-screen ads. */
+function supportOffer(ads: MonetizationView): string {
+  return `
+    <div class="big-emoji">💖</div>
+    <h3 class="center">Enjoying Game Dev Studio?</h3>
+    <p class="muted center">Ads keep Game Dev Studio free. If you'd rather not see them, a one-time purchase turns them off for good, and rewards come without a video.</p>
+    <div class="options mt">${removeAdsRow(ads)}${supporterRow(ads)}</div>
+    <div class="btn-row"><button class="btn ghost" data-action="close">Maybe later</button></div>`;
 }
 
 function store(state: GameState, ads: MonetizationView): string {
@@ -742,7 +900,7 @@ function store(state: GameState, ads: MonetizationView): string {
   return `
     <h3>Store</h3>
     <p class="muted">Power-ups for your team. Boosts only count down while a game is in development.</p>
-    ${ads.native ? `<h4>Free with a video</h4><div class="options">${REWARDS.map((r) => rewardRow(state, r, ads)).join('')}</div>` : ''}
+    ${ads.native ? `<h4>${ads.adFree ? 'Free for supporters' : 'Free with a video'}</h4><div class="options">${REWARDS.filter((r) => !r.notInStore).map((r) => rewardRow(state, r, ads)).join('')}</div>` : ''}
     <h4>Boosts</h4>
     <div class="options">${boosts.map((x) => storeRow(state, x)).join('')}</div>
     <h4>Studio upgrades</h4>
@@ -771,7 +929,7 @@ function swatches(state: GameState, surface: 'wall' | 'floor', paints: Paint[]):
   return `<div class="swatches">${swatch('', 'Original', null)}${paints.map((p) => swatch(p.id, p.name, p.color)).join('')}</div>`;
 }
 
-function decorRow(state: GameState, item: DecorItem): string {
+function decorRow(state: GameState, item: DecorItem, ads: MonetizationView = NO_ADS): string {
   const owned = ownsDecor(state, item.id);
   const placed = isPlaced(state, item.id);
   const price = decorPrice(state, item.id);
@@ -780,7 +938,11 @@ function decorRow(state: GameState, item: DecorItem): string {
   const extra = item.id === 'trophies' && owned ? ` You have ${trophyCount(state)} so far.` : '';
   const button = owned
     ? `<button class="btn small${placed ? ' ghost' : ''}" data-action="toggle-decor" data-arg="${item.id}">${placed ? 'Put away' : 'Place'}</button>`
-    : `<button class="btn small" data-action="buy-decor" data-arg="${item.id}" ${blocked ? 'disabled' : ''}>Buy · ${money(price)}</button>`;
+    : item.supporter
+      ? ads.supporter
+        ? `<button class="btn small" data-action="buy-decor" data-arg="${item.id}">Add · Free</button>`
+        : '<span class="tag">🌟 Supporter</span>'
+      : `<button class="btn small" data-action="buy-decor" data-arg="${item.id}" ${blocked ? 'disabled' : ''}>Buy · ${money(price)}</button>`;
   return `
     <div class="option store-item">
       <span class="emoji">${item.icon}</span>
@@ -789,7 +951,7 @@ function decorRow(state: GameState, item: DecorItem): string {
     </div>`;
 }
 
-function decorSheet(state: GameState): string {
+function decorSheet(state: GameState, ads: MonetizationView): string {
   const wall = WALL_PAINTS.find((p) => p.id === state.decor?.wall)?.name ?? 'Original';
   const floor = FLOOR_PAINTS.find((p) => p.id === state.decor?.floor)?.name ?? 'Original';
   return `
@@ -802,8 +964,18 @@ function decorSheet(state: GameState): string {
     <p class="sub">A new colour costs ${money(paintPrice(state))}. Going back to the original is free.</p>
     <h4>Decorations</h4>
     <p class="sub">Buy once, then place or put away for free.</p>
-    <div class="options">${DECOR.map((d) => decorRow(state, d)).join('')}</div>
+    <div class="options">${DECOR.filter((d) => !d.supporter).map((d) => decorRow(state, d)).join('')}</div>
+    ${supporterDecor(state, ads)}
     <div class="btn-row"><button class="btn ghost" data-action="store">Back to Store</button><button class="btn ghost" data-action="close">Close</button></div>`;
+}
+
+/** The Supporter Pack's decorations: free for supporters, a peek (and the offer) for everyone else in the app. */
+function supporterDecor(state: GameState, ads: MonetizationView): string {
+  if (!ads.native || (!ads.supporter && !ads.supporterPrice && !SUPPORTER_DECOR.some((d) => ownsDecor(state, d.id)))) return '';
+  return `
+    <h4>🌟 Supporter exclusives</h4>
+    ${ads.supporter ? '<p class="sub">Thanks for your support! These are yours in every studio.</p>' : ''}
+    <div class="options">${SUPPORTER_DECOR.map((d) => decorRow(state, d, ads)).join('')}${ads.supporter ? '' : supporterRow(ads)}</div>`;
 }
 
 /** One buyable marketing option: icon, name, what it does, and a price button (or why not). */
@@ -953,14 +1125,14 @@ function keynote(state: GameState, k: Keynote): string {
 /** The first bankruptcy in a save can be undone once with a video (Android app only). */
 function bailoutOffer(state: GameState, ads: MonetizationView): string {
   if (!ads.native || !canBailout(state)) return '';
-  const waiting = ads.busy ? 'Just a moment…' : !ads.rewardedReady ? 'Loading a video…' : null;
+  const waiting = videoWaiting(ads);
   return `
     <div class="option store-item">
       <span class="emoji">🏦</span>
-      <span class="grow"><b>Bailout</b> <span class="tag good">+${money(bailoutCash(state))}</span><br/><span class="sub">Watch a video and the bank pays off your debt and gives you three months of running costs. One bailout per studio.</span>${
+      <span class="grow"><b>Bailout</b> <span class="tag good">+${money(bailoutCash(state))}</span><br/><span class="sub">${ads.adFree ? 'As a supporter, no video needed: the bank' : 'Watch a video and the bank'} pays off your debt and gives you three months of running costs. One bailout per studio.</span>${
         waiting ? `<br/><span class="sub warn">${waiting}</span>` : ''
       }</span>
-      <button class="btn small" data-action="bailout" ${waiting ? 'disabled' : ''}>▶ Watch</button>
+      ${videoButton('bailout', '', !!waiting, ads)}
     </div>`;
 }
 
@@ -970,10 +1142,14 @@ function gameOver(state: GameState, ads: MonetizationView, sheet: Extract<Sheet,
   const best = games.length ? games.reduce((a, g) => (g.score > a.score ? g : a)) : null;
   const bankrupt = state.over === 'bankrupt';
   const bailout = bankrupt ? bailoutOffer(state, ads) : '';
+  const extra = bonusYears(state);
+  const retiredText = state.endless
+    ? `${esc(state.studioName)} kept going ${extra ? `${extra} year${extra === 1 ? '' : 's'} past ${LAST_YEAR}` : `past ${LAST_YEAR}`} and retires in ${formatShortDate(state.week)}.`
+    : `${esc(state.studioName)} has reached ${formatShortDate(state.week)}. Time to retire.`;
   return `
     <div class="big-emoji">${bankrupt ? '💸' : '🏆'}</div>
     <h3 class="center">${bankrupt ? 'Bankrupt!' : 'A legendary career'}</h3>
-    <p class="muted center">${bankrupt ? (bailout ? 'The money ran out. But the bank is willing to give you one more chance.' : 'The money ran out. Every great studio has a failure or two. Try again!') : `${esc(state.studioName)} has reached ${formatShortDate(state.week)}. Time to retire.`}</p>
+    <p class="muted center">${bankrupt ? (bailout ? 'The money ran out. But the bank is willing to give you one more chance.' : 'The money ran out. Every great studio has a failure or two. Try again!') : retiredText}</p>
     ${bailout ? `<div class="options">${bailout}</div>` : ''}
     <div class="summary">
       <div class="line"><span>Games released</span><b>${games.length}</b></div>
@@ -983,8 +1159,18 @@ function gameOver(state: GameState, ads: MonetizationView, sheet: Extract<Sheet,
       <div class="line"><span>Final cash</span><b>${money(state.cash)}</b></div>
       ${best ? `<div class="line"><span>Best game</span><b>${esc(best.name)} (${best.score.toFixed(1)})</b></div>` : ''}
     </div>
-    ${bankrupt ? '' : careerRecap(state, sheet)}
+    ${bankrupt && !state.endless ? '' : careerRecap(state, sheet)}
+    ${!bankrupt && !state.endless ? keepPlayingOffer() : ''}
+    ${ads.native && !ads.adFree ? `<h4>Play the next one ad-free</h4><div class="options">${removeAdsRow(ads)}${supporterRow(ads)}</div>` : ''}
     <div class="btn-row"><button class="btn big" data-action="reset">Found a new studio</button></div>`;
+}
+
+/** After the last year: carry on with the same studio, for high scores only. */
+function keepPlayingOffer(): string {
+  return `
+    <div class="options mt">
+      <button class="option" data-action="keep-playing"><span class="emoji">🔁</span><span class="grow"><b>Keep playing for high scores</b><br/><span class="sub">Carry on with this studio past ${LAST_YEAR}. No new platforms or research arrive and the market stays as it is now: it's all about beating the records. Retire from the menu whenever you like.</span></span></button>
+    </div>`;
 }
 
 /** A retired studio's title, highlights and the device's records. */
@@ -1028,6 +1214,7 @@ function careerRecap(state: GameState, sheet: Extract<Sheet, { kind: 'gameOver' 
 
 /** On the new-game sheet: a game that can't come out, or barely sell, before the studio retires. */
 function retirementWarning(state: GameState, devWeeks: number): string {
+  if (state.endless) return '';
   const left = TOTAL_WEEKS - state.week;
   if (devWeeks >= left) return `<p class="error">The studio retires at the end of ${LAST_YEAR}, in ${left} weeks. This game takes ${devWeeks} weeks to make, so it would never come out.</p>`;
   const onSale = left - devWeeks;

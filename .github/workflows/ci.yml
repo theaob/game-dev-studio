@@ -11,6 +11,10 @@ on:
         description: itch.io channel to push to
         default: html5
         required: false
+      itch:
+        description: Push the builds to itch.io (turn off to only build the APK/AAB)
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -81,7 +85,7 @@ jobs:
     name: Push to itch.io
     needs: build
     # Deploy from main, from version tags, or when started by hand. Never from pull requests.
-    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')))
+    if: (github.event_name == 'workflow_dispatch' && inputs.itch) || (github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')))
     runs-on: ubuntu-latest
     # Secrets aren't allowed in an environment URL, so the page link is in the job summary instead.
     environment: itch.io
@@ -191,6 +195,7 @@ jobs:
         env:
           SIGNED: ${{ steps.signing.outputs.signed }}
           ADMOB_APP_ID: ${{ vars.ADMOB_APP_ID }}
+          ADMOB_MEDIATION: ${{ vars.ADMOB_MEDIATION }}
           PLAY_GAMES_RESOURCES: ${{ vars.PLAY_GAMES_RESOURCES }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
@@ -253,7 +258,7 @@ jobs:
   deploy-android:
     name: Push APK to itch.io
     needs: [build, android]
-    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')))
+    if: (github.event_name == 'workflow_dispatch' && inputs.itch) || (github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')))
     runs-on: ubuntu-latest
     environment: itch.io
     concurrency:

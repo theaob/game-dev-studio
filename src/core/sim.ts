@@ -18,7 +18,7 @@ import {
   isPlatformAvailable,
   marketingById,
   platformById,
-  platformUsers,
+  platformBuyers,
   sizeById,
   topicById,
 } from './data';
@@ -46,8 +46,10 @@ import { hasSequel, sequelSalesMult, seriesNumber } from './sequels';
 import { acclaimFor, longAwaitedHype, sequelHype } from './acclaim';
 import { ESPORTS_FANS, PUBLISHING_SALES, hasVenture, licenseCost, phaseWeeks, platformFit, ventureHypeMult } from './ventures';
 import { expertiseMult, genreLevel, topicLevel } from './expertise';
+import { rndBugMult, rndDesignMult, rndTechMult } from './rnd';
+import { rollDecision } from './events';
 import { average, benchmark, clamp, evaluate, normalizeFocus, rollReviews, scoreFactor } from './scoring';
-import { END_YEAR, START_YEAR, TOTAL_WEEKS, WEEKS_PER_MONTH, WEEKS_PER_YEAR, yearFraction, yearOf } from './time';
+import { END_YEAR, START_YEAR, TOTAL_WEEKS, WEEKS_PER_MONTH, WEEKS_PER_YEAR, formatShortDate, marketWeek, yearFraction, yearOf } from './time';
 import type {
   ContractOffer,
   ExpoReport,
@@ -118,7 +120,7 @@ export function currentYear(state: GameState): number {
 }
 
 export function availablePlatforms(state: GameState) {
-  const year = yearFraction(state.week);
+  const year = yearFraction(marketWeek(state.week));
   return PLATFORMS.filter((p) => isPlatformAvailable(p, year));
 }
 
@@ -149,7 +151,7 @@ export function techMultiplier(state: GameState): number {
   if (hasResearch(state, 'engine2')) m *= 1.15;
   if (hasResearch(state, 'engine3')) m *= 1.15;
   if (hasResearch(state, 'engine4')) m *= 1.2;
-  return m * storeOutputMultiplier(state);
+  return m * rndTechMult(state) * storeOutputMultiplier(state);
 }
 
 export function designMultiplier(state: GameState): number {
@@ -157,7 +159,7 @@ export function designMultiplier(state: GameState): number {
   if (hasResearch(state, 'design1')) m *= 1.15;
   if (hasResearch(state, 'design2')) m *= 1.15;
   if (hasResearch(state, 'design3')) m *= 1.2;
-  return m * storeOutputMultiplier(state);
+  return m * rndDesignMult(state) * storeOutputMultiplier(state);
 }
 
 export function bugMultiplier(state: GameState): number {
@@ -165,7 +167,7 @@ export function bugMultiplier(state: GameState): number {
   if (hasResearch(state, 'qa1')) m *= 0.7;
   if (hasResearch(state, 'qa2')) m *= 0.7;
   if (hasUpgrade(state, 'tests')) m *= 0.85;
-  return m;
+  return m * rndBugMult(state);
 }
 
 // ---------------------------------------------------------------------------
@@ -341,7 +343,7 @@ export function validateGame(state: GameState, spec: GameSpec): string | null {
   if (!state.topics.includes(spec.topic)) return 'Topic not researched.';
   if (!availableGenres(state).some((g) => g.id === spec.genre)) return GENRES.some((g) => g.id === spec.genre) ? 'Genre not researched.' : 'Pick a genre.';
   const platform = PLATFORMS.find((p) => p.id === spec.platform);
-  if (!platform || !isPlatformAvailable(platform, yearFraction(state.week))) return 'Platform not available.';
+  if (!platform || !isPlatformAvailable(platform, yearFraction(marketWeek(state.week)))) return 'Platform not available.';
   if (!availableSizes(state).some((s) => s.id === spec.size)) return 'Game size not researched.';
   if (!availableMarketing(state).some((m) => m.id === spec.marketing)) return 'Marketing not available.';
   if (spec.sequelOf !== undefined) {
@@ -484,19 +486,21 @@ export function headhuntFee(state: GameState): number {
   return friendly(salaryFor(state, skill, skill) * ROCKSTAR_SALARY_MULT * HEADHUNT_FEE_MONTHS);
 }
 
-export function headhuntBlocker(state: GameState): string | null {
+/** Why the headhunter can't search now, or null. `free`: the fee is waived (a reward video), so cash doesn't matter. */
+export function headhuntBlocker(state: GameState, free = false): string | null {
   if (state.over) return 'The game is over.';
   if (state.headhunt) return 'The headhunter is already searching.';
   if (state.candidates.some((c) => c.rockstar)) return 'Your rockstar applicant is still waiting for an answer.';
-  if (state.cash < headhuntFee(state)) return `The headhunter charges $${headhuntFee(state).toLocaleString('en-US')}.`;
+  if (state.staff.length >= officeCapacity(state) && !OFFICES[state.officeLevel + 1]) return 'Your office is full, so a rockstar would have no desk.';
+  if (!free && state.cash < headhuntFee(state)) return `The headhunter charges $${headhuntFee(state).toLocaleString('en-US')}.`;
   return null;
 }
 
-/** Pays a headhunter to find a rockstar developer, who applies after HEADHUNT_WEEKS. */
-export function startHeadhunt(state: GameState): string | null {
-  const err = headhuntBlocker(state);
+/** Pays a headhunter (or not, when `free`) to find a rockstar developer, who applies after HEADHUNT_WEEKS. */
+export function startHeadhunt(state: GameState, free = false): string | null {
+  const err = headhuntBlocker(state, free);
   if (err) return err;
-  state.cash -= headhuntFee(state);
+  if (!free) state.cash -= headhuntFee(state);
   state.headhunt = { weeks: HEADHUNT_WEEKS };
   notify(state, 'A headhunter is searching for a rockstar developer.', 'info');
   return null;
@@ -582,10 +586,12 @@ export function releaseGame(state: GameState): ReleaseReport | string {
   const size = sizeById(p.size);
   const platform = platformById(p.platform);
   const market = marketingById(p.marketing);
-  const year = yearFraction(state.week);
+  const year = yearFraction(marketWeek(state.week));
   const years = year - START_YEAR;
 
-  const users = platformUsers(platform, year);
+  // A platform discontinued during development still has owners, but they are drifting away.
+  const users = platformBuyers(platform, year);
+  const discontinued = platform.end !== undefined && year >= platform.end;
   const sf = scoreFactor(score);
   const original = p.sequelOf !== undefined ? state.released.find((g) => g.id === p.sequelOf) : undefined;
   // A sequel sells to the original's fans (or suffers from its reputation).
@@ -631,6 +637,7 @@ export function releaseGame(state: GameState): ReleaseReport | string {
     acclaim: acclaimFor(score)?.id,
     spend: p.spend ? { ...p.spend } : undefined,
     weekly: { units: [], revenue: [] },
+    ...(p.publisherCut ? { publisherCut: p.publisherCut } : {}),
   };
 
   // Learning: knowledge about combos, area importance and balance.
@@ -701,6 +708,7 @@ export function releaseGame(state: GameState): ReleaseReport | string {
   if (trend > 1) insights.push({ text: `Riding this year's trend: +${Math.round((trend - 1) * 100)}% sales.`, kind: 'good' });
   if (clash) insights.push({ text: `${clash.studio}'s ${clash.name} got there first: ${Math.round((clashMult - 1) * 100)}% sales.`, kind: 'bad' });
   if (ev.staffMult < 1) insights.push({ text: `A ${size.name.toLowerCase()} game really needs a team of ${size.minStaff}+.`, kind: 'bad' });
+  if (discontinued) insights.push({ text: `The ${platform.name} was discontinued before launch, and its owners were already moving on.`, kind: 'bad' });
   const pFit = platformFit(state, platform, p.genre);
   if (pFit > 1.05) insights.push({ text: `${platform.name} owners love ${genre.name} games.`, kind: 'good' });
   else if (pFit < 0.95) insights.push({ text: `${genre.name} games are a hard sell on ${platform.name}.`, kind: 'bad' });
@@ -797,10 +805,12 @@ export function tick(state: GameState): SimEvent[] {
 
   tickExpo(state, events);
   tickIndustry(state, events);
+  const decision = rollDecision(state);
+  if (decision) events.push({ type: 'decision', decision });
   if (state.week % WEEKS_PER_MONTH === 0) monthly(state);
   if (state.week % WEEKS_PER_YEAR === 0) yearly(state);
 
-  if (!state.over && state.week >= TOTAL_WEEKS) {
+  if (!state.over && !state.endless && state.week >= TOTAL_WEEKS) {
     state.over = 'retired';
     notify(state, 'After 41 years, it is time to retire. What a journey!', 'good');
   }
@@ -808,6 +818,31 @@ export function tick(state: GameState): SimEvent[] {
   for (const n of state.notices.slice(state.notices.lastIndexOf(lastNotice) + 1)) events.push({ type: 'notice', notice: n });
   if (state.over) events.push({ type: 'gameOver', reason: state.over });
   return events;
+}
+
+/**
+ * After retiring at the end of the last year, the studio can keep going for high scores:
+ * the career is already in the records, and from here on it can only push them higher.
+ */
+export function keepPlaying(state: GameState): string | null {
+  if (state.over !== 'retired' || state.endless) return 'Only a studio that just retired can keep playing.';
+  state.over = null;
+  state.endless = true;
+  notify(state, `${state.studioName} keeps going! No new platforms or research will arrive after ${END_YEAR}: from here on it's all about high scores. Retire from the menu whenever you like.`, 'good');
+  return null;
+}
+
+/** Ends a career that kept playing past the last year. */
+export function retireForGood(state: GameState): string | null {
+  if (!state.endless || state.over) return 'The studio can only retire early once it has kept playing past the last year.';
+  state.over = 'retired';
+  notify(state, `${state.studioName} retires in ${formatShortDate(state.week)}. What a run!`, 'good');
+  return null;
+}
+
+/** Whole years played past the last year. */
+export function bonusYears(state: GameState): number {
+  return Math.max(0, Math.floor((state.week - TOTAL_WEEKS) / WEEKS_PER_YEAR));
 }
 
 function tickProject(state: GameState, p: GameProject, events: SimEvent[]) {
@@ -837,6 +872,9 @@ function tickProject(state: GameState, p: GameProject, events: SimEvent[]) {
     }
     return;
   }
+
+  // The team's size is judged over the whole of development, not on release day.
+  p.teamWeeks = (p.teamWeeks ?? 0) + state.staff.length;
 
   let design = 0;
   let tech = 0;
@@ -1124,7 +1162,8 @@ function tickSales(state: GameState) {
     const units = isLast ? left : Math.round(left * salesShare(g.weeksOnMarket));
     g.weeksOnMarket++;
     g.unitsSold += units;
-    const revenue = Math.round(units * g.unitPrice);
+    // A publisher that funded the game keeps its share; revenue is what the studio gets.
+    const revenue = Math.round(units * g.unitPrice * (1 - (g.publisherCut ?? 0)));
     g.revenue += revenue;
     if (g.weekly) {
       g.weekly.units.push(units);

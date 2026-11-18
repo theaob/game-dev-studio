@@ -24,11 +24,19 @@ export function sequelCandidates(state: GameState): ReleasedGame[] {
   return state.released.filter((g) => !hasSequel(state, g.id)).sort((a, b) => b.score - a.score);
 }
 
+/**
+ * The series' name without its part number. Only a trailing number that is the part
+ * number is dropped, so "Area 51" stays "Area 51" (and its sequel is "Area 51 2").
+ */
+export function seriesTitle(g: ReleasedGame): string {
+  const part = seriesNumber(g);
+  const m = g.name.match(/^(.*?)\s+(\d+)$/);
+  return m && part > 1 && Number(m[2]) === part ? m[1] : g.name;
+}
+
 /** "Dragon Saga" → "Dragon Saga 2", "Dragon Saga 2" → "Dragon Saga 3". */
 export function sequelName(original: ReleasedGame): string {
-  const m = original.name.match(/^(.*?)\s+(\d+)$/);
-  if (m) return `${m[1]} ${Number(m[2]) + 1}`;
-  return `${original.name} ${seriesNumber(original) + 1}`;
+  return `${seriesTitle(original)} ${seriesNumber(original) + 1}`;
 }
 
 /**

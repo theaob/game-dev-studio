@@ -3,11 +3,11 @@
  * better), rival studios releasing games, platform rumours and a yearly
  * round-up. It all shows up as headlines on the News tab.
  */
-import { GENRES, PLATFORMS, TOPICS, genreById, topicById } from './data';
+import { GENRES, HARDWARE_NEWS, PLATFORMS, TOPICS, genreById, topicById, type Platform } from './data';
 import { pick, random, range } from './rng';
 import { SALES_WEEKS, notify, randomTitle } from './sim';
 import { GOTY_ICON, GOTY_SALES_BOOST, gotyFans } from './acclaim';
-import { WEEKS_PER_YEAR, yearOf } from './time';
+import { WEEKS_PER_MONTH, WEEKS_PER_YEAR, marketWeek, yearOf } from './time';
 import { platformKeynote } from './keynote';
 import type { GameState, GenreId, IndustryState, NoticeKind, SimEvent } from './types';
 
@@ -21,6 +21,8 @@ export const RIVAL_HIT_SCORE = 8;
 /** Chance per week that some rival releases a game. */
 const RIVAL_RELEASE_CHANCE = 0.15;
 const MAX_HEADLINES = 80;
+/** The week of the year the summer games show is on (early June), where new hardware is announced. */
+export const SHOW_WEEK = 5 * WEEKS_PER_MONTH;
 
 export interface Rival {
   name: string;
@@ -87,7 +89,7 @@ export function rivalClash(state: GameState, genre: string, topic: string) {
 
 function rivalRelease(state: GameState) {
   const ind = industry(state);
-  const year = yearOf(state.week);
+  const year = yearOf(marketWeek(state.week));
   const rivals = activeRivals(year).filter((r) => !state.acquired?.includes(r.name));
   if (!rivals.length) return;
   const rival = pick(state, rivals);
@@ -128,10 +130,11 @@ function yearlyIndustry(state: GameState, events: SimEvent[]) {
       headline(state, '🚀', `The ${p.name} (${p.kind}) is out now!`, 'good');
       events.push({ type: 'keynote', keynote: platformKeynote(p, year) });
     }
-    if (p.start === year + 1) headline(state, '👀', `Rumour: a new ${p.kind.toLowerCase()}, the ${p.name}, arrives next year.`);
+    if (p.start === year + 1) headline(state, '👀', comingNextYear(p));
     if (p.end === year) headline(state, '🪦', `The ${p.name} has been discontinued.`);
     if (p.end === year + 1) headline(state, '📉', `The ${p.name} is on its way out: it will be discontinued next year.`, 'bad');
   }
+  for (const n of HARDWARE_NEWS) if (n.year === year) headline(state, n.icon, n.text, n.kind ?? 'info');
   for (const r of RIVALS) {
     if (r.from === year && year > RIVALS[0].from) headline(state, '🏢', `A new studio, ${r.name}, has opened its doors.`);
     if (r.until === year && !state.acquired?.includes(r.name)) headline(state, '🏚️', `${r.name} has closed down.`, 'bad');
@@ -168,9 +171,44 @@ export function gameOfTheYear(state: GameState, year: number) {
   }
 }
 
+/** The January headline the year before a platform launches. */
+function comingNextYear(p: Platform): string {
+  if (p.announced === undefined || p.announced >= p.start - 1) return `Rumour: a new ${p.kind.toLowerCase()}, the ${p.name}, arrives next year.`;
+  if (p.codename) return `${p.maker} reveals the real name of ${p.codename}: the ${p.name} arrives next year.`;
+  return `The ${p.name} from ${p.maker} arrives next year.`;
+}
+
+/** Whether a platform has been announced (or rumoured) by `week`, before it's out. */
+export function isPlatformAnnounced(p: Platform, week: number): boolean {
+  const year = yearOf(week);
+  if (year >= p.start) return false;
+  if (year === p.start - 1) return true;
+  return p.announced !== undefined && (year > p.announced || (year === p.announced && week % WEEKS_PER_YEAR >= SHOW_WEEK));
+}
+
+/** What the News tab calls a platform that isn't out yet: its codename until the January before launch. */
+export function announcedName(p: Platform, week: number): string {
+  return p.codename && yearOf(week) < p.start - 1 ? p.codename : p.name;
+}
+
+/** The summer show: makers announce the hardware they'll launch in the next few years. */
+function summerShow(state: GameState) {
+  const year = yearOf(state.week);
+  for (const p of PLATFORMS) {
+    if (p.announced !== year) continue;
+    const when = p.start === year + 1 ? 'next year' : `in ${p.start}`;
+    const text = p.codename && p.start > year + 1
+      ? `${p.maker} announces new ${p.kind.toLowerCase()} hardware, codename ${p.codename}. It's due ${when}.`
+      : `${p.maker} announces the ${p.name}, a new ${p.kind.toLowerCase()} out ${when}.`;
+    headline(state, '📣', text, 'info');
+    notify(state, `📣 ${text}`, 'info');
+  }
+}
+
 /** Weekly industry news. Call after the week has advanced. New hardware launches add a keynote to `events`. */
 export function tickIndustry(state: GameState, events: SimEvent[] = []) {
   if (!state.industry?.trend) newTrend(state);
   if (state.week % WEEKS_PER_YEAR === 0) yearlyIndustry(state, events);
+  if (state.week % WEEKS_PER_YEAR === SHOW_WEEK) summerShow(state);
   if (random(state) < RIVAL_RELEASE_CHANCE) rivalRelease(state);
 }
