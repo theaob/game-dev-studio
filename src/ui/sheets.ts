@@ -22,6 +22,7 @@ import {
   bonusYears,
   boostWeeks,
   gameCost,
+  tooBuggy,
   hasUpgrade,
   staffWeeklyPoints,
   storeBlocker,
@@ -70,7 +71,8 @@ export type Sheet =
   | { kind: 'gameDetail'; id: number }
   | { kind: 'menu'; saved?: boolean }
   | { kind: 'help' }
-  | { kind: 'confirm'; text: string; action: string; arg?: string; confirmLabel: string }
+  /** `keepLabel`: the safe choice gets its own words and the big button; the risky one goes quiet. */
+  | { kind: 'confirm'; text: string; action: string; arg?: string; confirmLabel: string; keepLabel?: string }
   | { kind: 'contracts' }
   | { kind: 'store' }
   | { kind: 'decor' }
@@ -108,10 +110,17 @@ export function renderSheet(
       return `
         <h3>Are you sure?</h3>
         <p class="muted">${esc(sheet.text)}</p>
-        <div class="btn-row">
+        ${
+          sheet.keepLabel
+            ? `<div class="btn-col">
+          <button class="btn big" data-action="close">${esc(sheet.keepLabel)}</button>
+          <button class="btn ghost" data-action="${sheet.action}" data-arg="${sheet.arg ?? ''}">${esc(sheet.confirmLabel)}</button>
+        </div>`
+            : `<div class="btn-row">
           <button class="btn ghost" data-action="close">Cancel</button>
           <button class="btn danger" data-action="${sheet.action}" data-arg="${sheet.arg ?? ''}">${esc(sheet.confirmLabel)}</button>
-        </div>`;
+        </div>`
+        }`;
   }
   if (!state) return '';
   return sheetCoach(state, sheet) + stateSheet(state, sheet, ads, unlocked);
@@ -648,8 +657,13 @@ function focusSheet(state: GameState, sheet: Extract<Sheet, { kind: 'focus' }>):
 function devComplete(state: GameState): string {
   const p = state.activity;
   if (!p || p.kind !== 'game') return '';
-  const total = p.design + p.tech;
-  const bugPct = total ? (p.bugs / total) * 100 : 0;
+  const bugs = Math.round(p.bugs);
+  const buggy = tooBuggy(p);
+  // With bugs left, the big button keeps polishing; releasing is the smaller, clearly worded one.
+  const buttons = bugs > 0
+    ? `<button class="btn big" data-action="polish-start">🧹 Keep polishing</button>
+      <button class="btn ghost release-anyway" data-action="release">🚀 Release with ${bugs} bug${bugs === 1 ? '' : 's'}</button>`
+    : '<button class="btn big" data-action="release">🚀 Release now</button>';
   return `
     <div class="big-emoji">🎉</div>
     <h3 class="center">${esc(p.name)} is feature complete!</h3>
@@ -659,17 +673,18 @@ function devComplete(state: GameState): string {
       <div class="counter c-bugs"><b>${Math.round(p.bugs)}</b><small>Bugs</small></div>
     </div>
     <p class="muted">${
-      bugPct > 6
+      buggy
         ? 'There are still quite a few bugs. Reviewers will notice. Polishing for a few weeks will help.'
         : 'The game is in decent shape. You can release now or polish it a bit more.'
     }</p>
     <p class="muted">${esc(balanceAdvice(p))}</p>
     <h4>Keep polishing</h4>
     ${polishPicker(p)}
-    <div class="btn-row">
-      <button class="btn big" data-action="release">🚀 Release now</button>
+    <div class="btn-col">
+      ${buttons}
     </div>`;
 }
+
 
 /** How the design/tech split compares to what the genre's players like. */
 function balanceAdvice(p: GameProject): string {
