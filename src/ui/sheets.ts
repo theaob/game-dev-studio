@@ -2,7 +2,6 @@ import { reviewQuote } from '../core/quotes';
 import { decisionById, decisionContext, decisionValid } from '../core/events';
 import {
   FIT_LABELS,
-  GENRES,
   PERFECT_FIT,
   PHASES,
   STORE,
@@ -39,6 +38,7 @@ import { onSale, paybackWeek, profit, returnMultiple, revenueRank, totalCost, ve
 import { moneyChart, spendBar, weeklyChart } from './charts';
 import { PRESS_TOUR_BOOST, REWARDS, bailoutCash, canBailout, pressTourBlocker, pressTourCopies, rewardAmount, rewardBlocker, type Reward } from '../core/rewards';
 import type { MonetizationView } from './monetization';
+import { coverArt } from './cover';
 import { RIVALS } from '../core/industry';
 import { VENTURES, VENTURE_OFFICE, licenseCost, phaseWeeks, platformFit, acquirableRivals, acquireBlocker, acquisitionFans, acquisitionPrice, hasVenture, ventureBlocker, venturePrice, type Venture } from '../core/ventures';
 import { BOOTHS, EXPO_BOOKING_WEEKS, MAX_HYPE, PROMOS, SALES_PUSHES, boothById, boothPrice, hypeEffect, promoPrice, salesPushPrice, weeksToExpo } from '../core/marketing';
@@ -395,12 +395,6 @@ export function newGameReachable(d: GameSpec, step: number): boolean {
   return !!d.topic && !!d.name.trim();
 }
 
-/** A colour for the box art, so each genre has its own look. */
-function boxHue(genre: string): number {
-  const i = GENRES.findIndex((g) => g.id === genre);
-  return i < 0 ? 35 : (i * 37 + 8) % 360;
-}
-
 /** How players should take the genre + topic pair, as far as the studio knows: a short badge. */
 function fitBadge(state: GameState, d: GameSpec): string {
   if (!d.genre || !d.topic) return '';
@@ -418,14 +412,14 @@ function gameBox(state: GameState, d: GameSpec, step: number): string {
   const genre = d.genre ? genreById(d.genre) : undefined;
   const topic = d.topic ? topicById(d.topic) : undefined;
   const platform = step > 3 || (step === 3 && d.platform) ? platformById(d.platform) : undefined;
+  const original = d.sequelOf !== undefined ? state.released.find((g) => g.id === d.sequelOf) : undefined;
   const slot = (n: number, filled: string | undefined, empty: string) =>
     `<button class="box-slot ${filled ? 'filled' : ''} ${step === n ? 'here' : ''}" data-action="ng-goto" data-arg="${n}" ${newGameReachable(d, n) ? '' : 'disabled'}>${filled ?? empty}</button>`;
   return `
-    <div class="game-box" style="--hue:${boxHue(d.genre)}">
-      <div class="box-art" aria-hidden="true">
-        <span class="bi-genre">${genre?.icon ?? '🎮'}</span>
-        ${topic ? `<span class="bi-topic">${topic.icon}</span>` : ''}
-        ${d.sequelOf !== undefined ? '<span class="box-ribbon">Sequel</span>' : ''}
+    <div class="game-box">
+      <div class="box-art">
+        ${coverArt({ ...d, platform: platform ? d.platform : '', series: original ? seriesNumber(original) + 1 : 1 }, 'md')}
+        ${genre ? '<button class="box-reroll" data-action="reroll-cover" aria-label="Draw another cover">🎨</button>' : ''}
       </div>
       <div class="box-info">
         <div class="box-title">
@@ -701,8 +695,13 @@ function review(state: GameState, report: ReleaseReport, shown: number, ads: Mon
   const g = report.game;
   const done = shown >= g.reviews.length;
   return `
-    <h3>Reviews are in!</h3>
-    <p class="muted">${esc(g.name)} · ${topicById(g.topic).name} ${genreById(g.genre).name} · ${platformById(g.platform).name}</p>
+    <div class="cover-hero">
+      ${coverArt(g, 'md')}
+      <div class="grow">
+        <h3>Reviews are in!</h3>
+        <p class="muted">${esc(g.name)} · ${topicById(g.topic).name} ${genreById(g.genre).name} · ${platformById(g.platform).name}</p>
+      </div>
+    </div>
     <div class="reviews">
       ${g.reviews
         .map(
@@ -745,10 +744,15 @@ function gameDetail(state: GameState, id: number, ads: MonetizationView = NO_ADS
   const multText = !isFinite(mult) ? '' : mult >= 1 ? `${mult.toFixed(1)}× its cost` : `${Math.round(mult * 100)}% of its cost back`;
   const payText = pay !== null ? `Paid for itself in week ${pay} on sale.` : g.weekly?.revenue.length ? (selling ? "Hasn't paid for itself yet." : 'Never paid for itself.') : '';
   return `
-    <h3>${esc(g.name)}</h3>
-    ${acclaimTag(g) ? `<p>${acclaimTag(g).trim()}</p>` : ''}
-    ${prequel || next ? `<p class="sub">${prequel ? `Part ${seriesNumber(g)} · sequel to <b>${esc(prequel.name)}</b> (${prequel.score.toFixed(1)})` : 'Part 1'}${next ? ` · followed by <b>${esc(next.name)}</b> (${next.score.toFixed(1)})` : ''}</p>` : ''}
-    <p class="muted">${topicById(g.topic).name} ${genreById(g.genre).name} · ${platformById(g.platform).name} · ${sizeById(g.size).name} · ${formatShortDate(g.releaseWeek)}</p>
+    <div class="cover-hero">
+      ${coverArt(g, 'lg')}
+      <div class="grow">
+        <h3>${esc(g.name)}</h3>
+        ${acclaimTag(g) ? `<p>${acclaimTag(g).trim()}</p>` : ''}
+        ${prequel || next ? `<p class="sub">${prequel ? `Part ${seriesNumber(g)} · sequel to <b>${esc(prequel.name)}</b> (${prequel.score.toFixed(1)})` : 'Part 1'}${next ? ` · followed by <b>${esc(next.name)}</b> (${next.score.toFixed(1)})` : ''}</p>` : ''}
+        <p class="muted">${topicById(g.topic).name} ${genreById(g.genre).name} · ${platformById(g.platform).name} · ${sizeById(g.size).name} · ${formatShortDate(g.releaseWeek)}</p>
+      </div>
+    </div>
     <div class="verdict v-${vd.id} mt">
       <span class="emoji">${vd.icon}</span>
       <div class="grow"><b>${vd.label}${selling ? ' so far' : ''}</b><div class="sub">${selling ? 'On track to make' : 'Made'} ${multText}${rank <= 3 && state.released.length > 1 ? ` · your #${rank} best seller` : ` · #${rank} of ${state.released.length} by revenue`}</div></div>

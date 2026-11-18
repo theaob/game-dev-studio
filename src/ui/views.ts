@@ -1,3 +1,4 @@
+import { coverArt } from './cover';
 import { OFFICES, PHASES, PLATFORMS, RESEARCH, STORE, TOPICS, genreById, platformById, platformUsers, sizeById, topicById } from '../core/data';
 import { TREND_GENRE_BONUS, TREND_TOPIC_BONUS, announcedName, isPlatformAnnounced } from '../core/industry';
 import { profit, verdict } from '../core/results';
@@ -392,6 +393,7 @@ export function acclaimTag(g: ReleasedGame): string {
 function gameRow(g: ReleasedGame, detail: string, aside = ''): string {
   return `
   <button class="list-item" data-action="game-detail" data-arg="${g.id}">
+    ${coverArt(g, 'sm')}
     <div class="score ${scoreClass(g.score)}">${g.score.toFixed(1)}</div>
     <div class="grow">
       <div class="name wrap">${esc(g.name)}${(g.series ?? 1) > 1 ? ` <span class="tag">Part ${g.series}</span>` : ''}${acclaimTag(g)}</div>

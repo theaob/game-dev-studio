@@ -1,3 +1,4 @@
+import { rollCover } from './cover';
 import { resolveDecision } from '../core/events';
 import { availablePlatforms, createGame, doResearch, fire, hire, startHeadhunt, randomTitle, bookBooth, buyStoreItem, catLeaveLap, pushSales, runPromo, placeCatOnLap, releaseGame, keepPlaying, retireForGood, setPhaseFocus, setPolishMode, startContract, tooBuggy, startGame, tick, train, upgradeOffice, validateGame } from '../core/sim';
 import { storeItemById } from '../core/data';
@@ -869,7 +870,7 @@ export class App {
 
       // Studio
       case 'new-game': {
-        const draft: GameSpec = { name: '', topic: '', genre: '' as GenreId, platform: 'pc', size: 'small', marketing: 'none' };
+        const draft: GameSpec = { name: '', topic: '', genre: '' as GenreId, platform: 'pc', size: 'small', marketing: 'none', cover: rollCover() };
         this.open({ kind: 'newGame', step: 1, draft });
         return;
       }
@@ -877,7 +878,7 @@ export class App {
         this.els.sheet.querySelector('.keynote')?.classList.add('skip');
         return;
       case 'keynote-make': {
-        const draft: GameSpec = { name: '', topic: '', genre: '' as GenreId, platform: arg, size: 'small', marketing: 'none' };
+        const draft: GameSpec = { name: '', topic: '', genre: '' as GenreId, platform: arg, size: 'small', marketing: 'none', cover: rollCover() };
         this.replace({ kind: 'newGame', step: 1, draft });
         return;
       }
@@ -1098,6 +1099,12 @@ export class App {
         if (sheet?.kind === 'newGame') {
           if (sheet.draft.genre) sheet.draft.name = randomTitle(sheet.draft.genre, sheet.draft.name, sheet.draft.topic || undefined);
           sheet.nameEdited = false;
+          this.renderSheet();
+        }
+        return;
+      case 'reroll-cover':
+        if (sheet?.kind === 'newGame') {
+          sheet.draft.cover = rollCover();
           this.renderSheet();
         }
         return;

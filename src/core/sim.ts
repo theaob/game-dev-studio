@@ -632,6 +632,7 @@ export function releaseGame(state: GameState): ReleaseReport | string {
     unitPrice,
     cost: p.cost,
     sequelOf: original?.id,
+    ...(p.cover !== undefined ? { cover: p.cover } : {}),
     series: original ? seriesNumber(original) + 1 : 1,
     hype: Math.round(hype),
     acclaim: acclaimFor(score)?.id,

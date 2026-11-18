@@ -32,6 +32,8 @@ export interface GameSpec {
   marketing: MarketingId;
   /** Id of the released game this is a sequel to. */
   sequelOf?: number;
+  /** Seed for the game's box cover art (see ui/cover.ts); absent on older saves. */
+  cover?: number;
 }
 
 /** Fix bugs, add design or tech points, or rework the game to shift points towards the genre's ideal split. */
