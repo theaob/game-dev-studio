@@ -619,7 +619,7 @@ export class App {
   private back() {
     this.tooltip.hide();
     const sheet = this.sheet;
-    if (sheet?.kind === 'newGame' && sheet.step === 2) return this.action('ng-back', '');
+    if (sheet?.kind === 'newGame' && sheet.step > 1) return this.action('ng-back', '');
     if (sheet?.kind === 'focus' && sheet.spec) return this.action('focus-back', '');
     if (sheet?.kind === 'welcome') {
       // Nothing behind the first screen: offer to quit, then come back to it.
@@ -1157,20 +1157,23 @@ export class App {
         }
         return;
       case 'ng-next':
-        if (sheet?.kind === 'newGame') {
-          if (!sheet.draft.name.trim()) {
-            sheet.error = 'Give your game a name.';
+        if (sheet?.kind === 'newGame' && sheet.step < 4) {
+          const d = sheet.draft;
+          const err = sheet.step === 1 ? (d.genre ? '' : 'Pick a genre.') : sheet.step === 2 ? (!d.topic ? 'Pick a topic.' : !d.name.trim() ? 'Give your game a name.' : '') : '';
+          if (err) {
+            sheet.error = err;
           } else {
-            sheet.step = 2;
+            sheet.step = (sheet.step + 1) as 2 | 3 | 4;
             sheet.error = undefined;
-            if (!availablePlatforms(s).some((p) => p.id === sheet.draft.platform)) sheet.draft.platform = 'pc';
+            if (!availablePlatforms(s).some((p) => p.id === d.platform)) d.platform = 'pc';
           }
           this.replace(sheet);
         }
         return;
       case 'ng-back':
-        if (sheet?.kind === 'newGame') {
-          sheet.step = 1;
+        if (sheet?.kind === 'newGame' && sheet.step > 1) {
+          sheet.step = (sheet.step - 1) as 1 | 2 | 3;
+          sheet.error = undefined;
           this.replace(sheet);
         }
         return;
@@ -1186,7 +1189,7 @@ export class App {
         }
         return;
       case 'focus-back':
-        if (sheet?.kind === 'focus' && sheet.spec) this.replace({ kind: 'newGame', step: 2, draft: sheet.spec });
+        if (sheet?.kind === 'focus' && sheet.spec) this.replace({ kind: 'newGame', step: 4, draft: sheet.spec });
         return;
       case 'focus-go':
         if (sheet?.kind === 'focus') {

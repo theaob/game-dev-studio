@@ -1531,7 +1531,26 @@ nav.tabs .dot {
   margin-left: 2px;
 }
 
-/* ---------- Genre & topic tiles (new game, step 1) ---------- */
+/* ---------- New game wizard progress ---------- */
+
+.ng-steps {
+  display: flex;
+  gap: 4px;
+  margin: 6px 0 6px;
+}
+
+.ng-steps span {
+  flex: 1;
+  height: 5px;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.ng-steps span.done {
+  background: var(--accent);
+}
+
+/* ---------- Genre & topic tiles (new game) ---------- */
 
 .pick-grid {
   display: grid;

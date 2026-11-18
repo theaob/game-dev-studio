@@ -32,7 +32,9 @@ describe('guided first game', () => {
     startGuide(s, false);
     expect(guideStep(s, studio)).toBe('start');
     expect(guideStep(s, { sheet: { kind: 'newGame', step: 1 }, tab: 'studio' })).toBe('concept');
-    expect(guideStep(s, { sheet: { kind: 'newGame', step: 2 }, tab: 'studio' })).toBe('setup');
+    expect(guideStep(s, { sheet: { kind: 'newGame', step: 2 }, tab: 'studio' })).toBe('topic');
+    expect(guideStep(s, { sheet: { kind: 'newGame', step: 3 }, tab: 'studio' })).toBe('platform');
+    expect(guideStep(s, { sheet: { kind: 'newGame', step: 4 }, tab: 'studio' })).toBe('setup');
     expect(guideStep(s, { sheet: { kind: 'focus', spec: true }, tab: 'studio' })).toBe('focus');
     // Other sheets and tabs stay clean.
     expect(guideStep(s, { sheet: { kind: 'store' }, tab: 'studio' })).toBeNull();
