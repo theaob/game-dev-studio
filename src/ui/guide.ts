@@ -13,19 +13,29 @@ function coachText(state: GameState, step: GuideStep, draft?: GameSpec): { title
         body: `You have a garage, a computer and ${money(state.cash)}. Tap <b>🎮 New Game</b> and I’ll walk you through it.`,
       };
     case 'concept':
-      if (draft?.genre && draft.topic)
+      return {
+        title: 'Pick a genre',
+        body: 'The genre decides what players care about. You pick a topic for it next. Not sure? <b>🗺️ Adventure</b> is a safe first game. Then tap <b>Next</b>.',
+      };
+    case 'topic':
+      if (draft?.topic)
         return {
           title: 'Give it a name',
-          body: 'The card under the topics shows how players might take this pair. You only learn for sure by releasing it. Keep the suggested title or type your own, then tap <b>Next</b>.',
+          body: 'The card under the topics shows how players might take this pair. You only learn for sure by releasing it. Keep the suggested title on the box or type your own, then tap <b>Next</b>.',
         };
       return {
-        title: 'Pick a genre, then a topic',
-        body: 'Some pairs work much better than others, and you discover which with each release. Not sure? <b>🗺️ Adventure</b> with <b>🐉 Fantasy</b> is a safe first game.',
+        title: 'Now a topic',
+        body: `Some pairs work much better than others, and you discover which with each release. ${draft?.genre === 'adventure' ? '<b>🐉 Fantasy</b> goes well with Adventure.' : 'Pick one that sounds fun.'}`,
+      };
+    case 'platform':
+      return {
+        title: 'Where will it come out?',
+        body: '<b>PC</b> has a free dev kit, so it’s the place to start. Consoles need a license you can buy later. Tap <b>Next</b>.',
       };
     case 'setup':
       return {
         title: 'Keep it small',
-        body: `<b>PC</b> has a free dev kit. Make it <b>Small</b> with <b>No marketing</b> for now: your cash has to last until the game sells. Then tap <b>Next</b>.`,
+        body: 'Make it <b>Small</b> with <b>No marketing</b> for now: your cash has to last until the game sells. Then tap <b>Next</b>.',
       };
     case 'focus':
       return {

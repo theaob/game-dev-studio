@@ -7,8 +7,10 @@ import type { GameState } from './types';
  */
 export type GuideStep =
   | 'start' // studio, nothing on: tap New Game
-  | 'concept' // new game, step 1: genre, topic, title
-  | 'setup' // new game, step 2: platform, size, marketing
+  | 'concept' // new game, step 1: genre
+  | 'topic' // new game, step 2: topic and title
+  | 'platform' // new game, step 3: platform
+  | 'setup' // new game, step 4: size, marketing
   | 'focus' // the first focus sheet
   | 'develop' // the game is in development (studio screen)
   | 'phase' // the focus sheet for phases 2 and 3
@@ -44,7 +46,7 @@ export function guideStep(state: GameState | null, view: GuideView): GuideStep |
   if (sheet) {
     if (sheet.kind === 'review' && state.released.length === 1) return 'reviews';
     if (!first) return null;
-    if (sheet.kind === 'newGame') return sheet.step === 2 ? 'setup' : 'concept';
+    if (sheet.kind === 'newGame') return (['concept', 'topic', 'platform', 'setup'] as const)[(sheet.step ?? 1) - 1] ?? 'setup';
     if (sheet.kind === 'focus') return sheet.spec ? 'focus' : seen.includes('phase') ? null : 'phase';
     if (sheet.kind === 'devComplete') return 'polish';
     return null;
