@@ -1,5 +1,5 @@
 import { resolveDecision } from '../core/events';
-import { availablePlatforms, createGame, doResearch, fire, hire, startHeadhunt, randomTitle, bookBooth, buyStoreItem, catLeaveLap, pushSales, runPromo, placeCatOnLap, releaseGame, keepPlaying, retireForGood, setPhaseFocus, setPolishMode, startContract, startGame, tick, train, upgradeOffice, validateGame } from '../core/sim';
+import { availablePlatforms, createGame, doResearch, fire, hire, startHeadhunt, randomTitle, bookBooth, buyStoreItem, catLeaveLap, pushSales, runPromo, placeCatOnLap, releaseGame, keepPlaying, retireForGood, setPhaseFocus, setPolishMode, startContract, tooBuggy, startGame, tick, train, upgradeOffice, validateGame } from '../core/sim';
 import { storeItemById } from '../core/data';
 import { acquireRival, buyVenture, ventureById, type VentureId } from '../core/ventures';
 import { App as NativeApp } from '@capacitor/app';
@@ -1038,8 +1038,25 @@ export class App {
         if (sheet?.kind === 'devComplete') this.close();
         report(setPolishMode(s, arg as PolishMode));
         return;
-      case 'release': {
-        if (sheet?.kind === 'devComplete') this.sheet = null;
+      case 'polish-start':
+        if (sheet?.kind === 'devComplete') this.close();
+        return;
+      case 'release':
+      case 'release-yes': {
+        // A buggy game gets marked down, so ask once before shipping it.
+        const p = s.activity;
+        if (name === 'release' && p?.kind === 'game' && tooBuggy(p)) {
+          const bugs = Math.round(p.bugs);
+          this.replace({
+            kind: 'confirm',
+            text: `${p.name} still has ${bugs} bug${bugs === 1 ? '' : 's'}. Reviewers will mark it down. A few more weeks of fixing bugs would help.`,
+            action: 'release-yes',
+            confirmLabel: `🚀 Release with ${bugs} bug${bugs === 1 ? '' : 's'}`,
+            keepLabel: '🐛 Keep fixing bugs',
+          });
+          return;
+        }
+        if (sheet?.kind === 'devComplete' || sheet?.kind === 'confirm') this.sheet = null;
         const r = releaseGame(s);
         if (typeof r === 'string') {
           report(r);

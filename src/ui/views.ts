@@ -6,6 +6,7 @@ import { profitChart, sparkline } from './charts';
 import {
   SALES_WEEKS,
   boostWeeks,
+  tooBuggy,
   catLapStaff,
   HEADHUNT_WEEKS,
   ROCKSTAR_SALARY_MULT,
@@ -262,7 +263,13 @@ function renderActivity(state: GameState, compact: boolean): string {
       <div class="counter c-tech"><b>${Math.round(a.tech)}</b><small>Tech</small></div>
       <div class="counter c-bugs"><b>${Math.round(a.bugs)}</b><small>Bugs</small></div>
     </div>`;
-  const release = polishing ? '<button class="btn big pulse mt-s" data-action="release">🚀 Release</button>' : '';
+  // Only pulse once the bugs are under control; while they pile up the button says how many ship with it.
+  const bugsLeft = Math.round(a.bugs);
+  const release = !polishing
+    ? ''
+    : tooBuggy(a)
+      ? `<button class="btn ghost mt-s release-buggy" data-action="release">🚀 Release · 🐛 ${bugsLeft} bug${bugsLeft === 1 ? '' : 's'} left</button>`
+      : '<button class="btn big pulse mt-s" data-action="release">🚀 Release</button>';
   // Tapping the name or the grip folds the card down to two lines, or opens it back up.
   const head = (sub: string) => `
       <button class="dock-head grow" data-action="dock-toggle" aria-expanded="${!compact}">

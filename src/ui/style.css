@@ -4003,3 +4003,8 @@ canvas.office {
   gap: 6px;
   align-items: stretch;
 }
+
+/* The dock's Release button while the game is still too buggy: full width, but quiet (no pulse). */
+.btn.release-buggy {
+  width: 100%;
+}
