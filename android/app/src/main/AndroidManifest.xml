@@ -40,6 +40,11 @@
         </provider>
     </application>
 
+    <!-- The portrait lock above makes Play infer a required android.hardware.screen.portrait
+         feature, which hides the app from tablets, Chromebooks, Play Games on PC and XR.
+         Mark it optional so those devices can still install; the activity stays portrait. -->
+    <uses-feature android:name="android.hardware.screen.portrait" android:required="false" />
+
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
