@@ -4,7 +4,7 @@
  * Only the Android app shows ads: on the web and itch.io everything here is
  * switched off, and the plugins aren't even loaded.
  */
-import { Capacitor } from '@capacitor/core';
+import { Capacitor, type PluginListenerHandle } from '@capacitor/core';
 
 /** Google's sample ad units: always fill, never pay. Real units come from the build environment. */
 const TEST_REWARDED = 'ca-app-pub-3940256099942544/5224354917';
@@ -136,11 +136,22 @@ export class Monetization {
       this.admob = await import('@capacitor-community/admob');
       const { AdMob, AdmobConsentStatus } = this.admob;
       // Google's consent form (UMP) for players in the EEA, UK and Switzerland.
-      let consent = await AdMob.requestConsentInfo();
-      if (consent.status === AdmobConsentStatus.REQUIRED && consent.isConsentFormAvailable) consent = await AdMob.showConsentForm();
-      this.canRequestAds = consent.canRequestAds;
-      this.privacyOptions = String(consent.privacyOptionsRequirementStatus) === 'REQUIRED';
-      if (!this.canRequestAds) return;
+      try {
+        let consent = await AdMob.requestConsentInfo();
+        if (consent.status === AdmobConsentStatus.REQUIRED && consent.isConsentFormAvailable) consent = await AdMob.showConsentForm();
+        this.canRequestAds = consent.canRequestAds;
+        this.privacyOptions = String(consent.privacyOptionsRequirementStatus) === 'REQUIRED';
+      } catch (e) {
+        // The consent check itself failed (offline, or AdMob's "Privacy & messaging" isn't set up for this app).
+        // That used to switch ads off for the whole session. Without a consent answer the Ads SDK only
+        // serves limited, non-personalised ads where the law needs consent, so carry on.
+        console.warn('Ads: consent check failed, loading ads anyway', e);
+        this.canRequestAds = true;
+      }
+      if (!this.canRequestAds) {
+        console.warn('Ads: the player has not allowed ads');
+        return;
+      }
       await AdMob.initialize({ initializeForTesting: TESTING });
       this.listen();
       void this.loadRewarded();
@@ -152,13 +163,16 @@ export class Monetization {
 
   private listen() {
     const { AdMob, RewardAdPluginEvents, InterstitialAdPluginEvents } = this.admob!;
-    void AdMob.addListener(RewardAdPluginEvents.FailedToLoad, () => {
+    void AdMob.addListener(RewardAdPluginEvents.FailedToLoad, (e) => {
+      // Shows in `adb logcat` as Capacitor/Console: code 3 is "no fill" (normal for a new AdMob app for a while).
+      console.warn('Ads: rewarded video failed to load', e?.code, e?.message);
       this.rewardedReady = false;
       this.onChange();
       // Try again later rather than hammering the network.
       window.setTimeout(() => void this.loadRewarded(), 60_000);
     });
-    void AdMob.addListener(InterstitialAdPluginEvents.FailedToLoad, () => {
+    void AdMob.addListener(InterstitialAdPluginEvents.FailedToLoad, (e) => {
+      console.warn('Ads: interstitial failed to load', e?.code, e?.message);
       this.interstitialReady = false;
       window.setTimeout(() => void this.loadInterstitial(), 120_000);
     });
@@ -202,16 +216,29 @@ export class Monetization {
     this.busy = true;
     this.rewardedReady = false;
     this.onChange();
+    const handles: PluginListenerHandle[] = [];
     let rewarded = false;
-    const handle = await AdMob.addListener(RewardAdPluginEvents.Rewarded, () => (rewarded = true));
     try {
-      const item = await AdMob.showRewardVideoAd();
-      // The promise resolves with the reward when the player earned it.
-      if (item && item.amount !== undefined) rewarded = true;
-    } catch {
-      // Closed early or failed to show: no reward.
+      // The plugin's show call only settles when the reward is earned: if the player closes the video
+      // early it never settles. Waiting on it alone left `busy` stuck on, which turned off every
+      // video and full-screen ad until the app restarted. So finish when the ad closes or fails to show.
+      await new Promise<void>((resolve) => {
+        void (async () => {
+          try {
+            handles.push(await AdMob.addListener(RewardAdPluginEvents.Rewarded, () => (rewarded = true)));
+            handles.push(await AdMob.addListener(RewardAdPluginEvents.Dismissed, () => resolve()));
+            handles.push(await AdMob.addListener(RewardAdPluginEvents.FailedToShow, () => resolve()));
+            const item = await AdMob.showRewardVideoAd();
+            if (item && item.amount !== undefined) rewarded = true;
+          } catch (e) {
+            // Not loaded after all, or failed to show: no reward.
+            console.warn('Ads: rewarded video failed to show', e);
+            resolve();
+          }
+        })();
+      });
     } finally {
-      await handle.remove();
+      await Promise.allSettled(handles.map((h) => h.remove()));
       this.busy = false;
       this.lastAdAt = Date.now();
       void this.loadRewarded();
