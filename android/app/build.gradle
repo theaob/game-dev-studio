@@ -6,6 +6,13 @@ String playGamesAppId(String xml) {
     return m.find() ? m.group(1) : ''
 }
 
+/** The AdMob app ID from admob.json at the repo root, or Google's sample app ID without one. */
+String admobAppId() {
+    def file = rootProject.file('../admob.json')
+    def id = file.exists() ? (new groovy.json.JsonSlurper().parse(file).appId ?: '') : ''
+    return id ?: 'ca-app-pub-3940256099942544~3347511713'
+}
+
 /**
  * AdMob mediation: other ad networks bid for the same ad slots, which usually pays more per ad.
  * `ADMOB_MEDIATION` lists the networks to include, comma separated (say "applovin,unity"). Empty means
@@ -33,8 +40,8 @@ android {
         // CI passes -PversionCode=<run number> -PversionName=<web version>; local builds use 1 / dev.
         versionCode((project.findProperty('versionCode') ?: '1') as Integer)
         versionName(project.findProperty('versionName') ?: 'dev')
-        // The AdMob app ID (not secret). Without one, Google's sample app ID shows test ads only.
-        manifestPlaceholders = [admobAppId: System.getenv('ADMOB_APP_ID') ?: 'ca-app-pub-3940256099942544~3347511713']
+        // The AdMob app ID from admob.json at the repo root (not secret). Empty means Google's sample app ID.
+        manifestPlaceholders = [admobAppId: admobAppId()]
         // The Google Play Games project ID, read from the resources XML the Play Console exports
         // (PLAY_GAMES_RESOURCES). Empty means Play Games stays off.
         resValue 'string', 'game_services_project_id', playGamesAppId(System.getenv('PLAY_GAMES_RESOURCES'))

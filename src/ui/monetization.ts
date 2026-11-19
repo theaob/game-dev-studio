@@ -6,12 +6,20 @@
  */
 import { Capacitor, type PluginListenerHandle } from '@capacitor/core';
 
-/** Google's sample ad units: always fill, never pay. Real units come from the build environment. */
+import admob from '../../admob.json';
+
+/** Google's sample ad units: always fill, never pay. */
 const TEST_REWARDED = 'ca-app-pub-3940256099942544/5224354917';
 const TEST_INTERSTITIAL = 'ca-app-pub-3940256099942544/1033173712';
-const REWARDED_ID: string = import.meta.env.VITE_ADMOB_REWARDED_ID || TEST_REWARDED;
-const INTERSTITIAL_ID: string = import.meta.env.VITE_ADMOB_INTERSTITIAL_ID || TEST_INTERSTITIAL;
-const TESTING = REWARDED_ID === TEST_REWARDED;
+/**
+ * The real ad units live in `admob.json` (they ship inside the app, so they aren't secret).
+ * The dev server and pull request builds (`VITE_ADMOB_TEST_ADS`) show Google's test ads instead,
+ * because tapping your own real ads can get the AdMob account suspended.
+ */
+const TEST_ADS = import.meta.env.DEV || !!import.meta.env.VITE_ADMOB_TEST_ADS || !admob.rewardedId;
+const REWARDED_ID: string = TEST_ADS ? TEST_REWARDED : admob.rewardedId;
+const INTERSTITIAL_ID: string = TEST_ADS || !admob.interstitialId ? TEST_INTERSTITIAL : admob.interstitialId;
+const TESTING = TEST_ADS;
 
 /** The one-time "Remove ads" product, as set up in the Play Console. */
 export const REMOVE_ADS_PRODUCT = 'remove_ads';

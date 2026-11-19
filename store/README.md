@@ -61,15 +61,15 @@ Play Console → **Create app**:
 
 ### 2b. AdMob and the Remove ads product
 1. **AdMob** (https://admob.google.com): add an Android app, link it to the Play listing once it exists, and create two ad units: one **Rewarded** and one **Interstitial**.
-2. In GitHub → Settings → Secrets and variables → Actions → **Variables** (not secrets, the IDs ship inside the app), add:
+2. Put the three IDs in [`admob.json`](../admob.json) at the repo root (they aren't secret, they ship inside the app):
 
-   | Variable | Value |
+   | Key | Value |
    |---|---|
-   | `ADMOB_APP_ID` | the app ID, `ca-app-pub-…~…` |
-   | `ADMOB_REWARDED_ID` | the rewarded ad unit, `ca-app-pub-…/…` |
-   | `ADMOB_INTERSTITIAL_ID` | the interstitial ad unit |
+   | `appId` | the app ID, `ca-app-pub-…~…` |
+   | `rewardedId` | the rewarded ad unit, `ca-app-pub-…/…` |
+   | `interstitialId` | the interstitial ad unit |
 
-   Until these are set, builds show Google's **test ads**, which is what you want while testing. Never tap your own real ads.
+   Empty IDs, the dev server and pull request builds show Google's **test ads**, which is what you want while testing. Builds from `main`, tags and manual runs show real ads. Never tap your own real ads.
 3. **Privacy & messaging** in AdMob: create a **GDPR** consent message for the app (and a US state message if you like). The game shows it automatically to players who need it and adds a *Privacy options* menu entry for them.
 4. **app-ads.txt**: it's at https://theaob.github.io/app-ads.txt (repo `theaob/theaob.github.io`), authorising publisher `pub-3615836489279250`. In the Play Console's **Store settings → Store listing contact details**, set the website to `https://theaob.github.io/` (the game's page is https://theaob.github.io/games/game-dev-studio/). AdMob checks the file within about a day of the app being linked to its Play listing; see AdMob → Apps → app-ads.txt.
 5. **Play Console → Monetize → Products → In-app products**: create a one-time product with ID **`remove_ads`** (it must match exactly), a name like "Remove ads" and a price, then activate it. This needs a payments profile (merchant account) in the Play Console. The product only shows a price in the app once a build with billing has been uploaded to a testing track.
