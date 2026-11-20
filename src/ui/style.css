@@ -698,10 +698,6 @@ h2 {
   text-align: left;
 }
 
-.list-item:first-child {
-  border-top: 0;
-}
-
 .list-item .emoji {
   font-size: 24px;
   width: 32px;
