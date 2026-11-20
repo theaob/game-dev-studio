@@ -1,3 +1,4 @@
+import { bestEngine, startEngine, suggestEngineName, unlockedFeatures } from '../core/engines';
 import { rollCover } from './cover';
 import { resolveDecision } from '../core/events';
 import { availablePlatforms, createGame, doResearch, fire, hire, startHeadhunt, randomTitle, bookBooth, buyStoreItem, catLeaveLap, pushSales, runPromo, placeCatOnLap, releaseGame, keepPlaying, retireForGood, setPhaseFocus, setPolishMode, startContract, tooBuggy, startGame, tick, train, upgradeOffice, validateGame } from '../core/sim';
@@ -235,6 +236,10 @@ export class App {
         break;
       case 'contractDone':
         this.office.cheer(['💰', 'Paid!', '💵']);
+        this.vibrate(15);
+        break;
+      case 'engineDone':
+        this.office.cheer(['⚙️', 'It runs!', '🚀']);
         this.vibrate(15);
         break;
     }
@@ -698,6 +703,7 @@ export class App {
     const sheet = this.sheet;
     if (!sheet) return;
     if (el.dataset.bind === 'studio' && sheet.kind === 'welcome') sheet.name = el.value;
+    if (el.dataset.bind === 'engine-name' && sheet.kind === 'engines') sheet.name = el.value;
     if (el.dataset.bind === 'name' && sheet.kind === 'newGame') {
       sheet.draft.name = el.value;
       sheet.nameEdited = el.value.trim() !== '';
@@ -719,7 +725,7 @@ export class App {
       if (el) el.textContent = `${Math.round(v * 100)}%`;
     });
     if (!this.state) return;
-    const lean = focusLean(this.state, sheet.phase, sheet.values);
+    const lean = focusLean(this.state, sheet.phase, sheet.values, sheet.spec?.engine);
     const d = Math.round((lean.design / (lean.design + lean.tech || 1)) * 100);
     host.querySelector('[data-lean="d"]')!.textContent = `${d}%`;
     host.querySelector('[data-lean="t"]')!.textContent = `${100 - d}%`;
@@ -872,7 +878,7 @@ export class App {
 
       // Studio
       case 'new-game': {
-        const draft: GameSpec = { name: '', topic: '', genre: '' as GenreId, platform: 'pc', size: 'small', marketing: 'none', cover: rollCover() };
+        const draft: GameSpec = { name: '', topic: '', genre: '' as GenreId, platform: 'pc', size: 'small', marketing: 'none', cover: rollCover(), engine: bestEngine(s)?.id };
         this.open({ kind: 'newGame', step: 1, draft });
         return;
       }
@@ -880,12 +886,42 @@ export class App {
         this.els.sheet.querySelector('.keynote')?.classList.add('skip');
         return;
       case 'keynote-make': {
-        const draft: GameSpec = { name: '', topic: '', genre: '' as GenreId, platform: arg, size: 'small', marketing: 'none', cover: rollCover() };
+        const draft: GameSpec = { name: '', topic: '', genre: '' as GenreId, platform: arg, size: 'small', marketing: 'none', cover: rollCover(), engine: bestEngine(s)?.id };
         this.replace({ kind: 'newGame', step: 1, draft });
         return;
       }
       case 'contracts':
         this.open({ kind: 'contracts' });
+        return;
+      case 'engines':
+        this.open({ kind: 'engines', name: suggestEngineName(s), features: unlockedFeatures(s).map((f) => f.id) });
+        return;
+      case 'pick-feature':
+        if (sheet?.kind === 'engines') {
+          sheet.features = sheet.features.includes(arg) ? sheet.features.filter((f) => f !== arg) : [...sheet.features, arg];
+          sheet.error = undefined;
+          this.renderSheet();
+        }
+        return;
+      case 'engine-random-name':
+        if (sheet?.kind === 'engines') {
+          sheet.name = suggestEngineName(s);
+          this.renderSheet();
+        }
+        return;
+      case 'engine-start':
+        if (sheet?.kind === 'engines') {
+          const err = startEngine(s, sheet.name, sheet.features);
+          if (err) {
+            sheet.error = err;
+            this.renderSheet();
+          } else {
+            this.close();
+            this.office.cheer(['⚙️', '🔧', "Let's build!"]);
+            this.save();
+            this.render();
+          }
+        }
         return;
       case 'goals':
         this.open({ kind: 'goals' });
@@ -1147,6 +1183,7 @@ export class App {
       case 'pick-platform':
       case 'pick-size':
       case 'pick-marketing':
+      case 'pick-engine':
         if (sheet?.kind === 'newGame') {
           const d = sheet.draft;
           if (name === 'pick-genre') {
@@ -1160,6 +1197,7 @@ export class App {
             d.topic = arg;
           }
           if (name === 'pick-platform') d.platform = arg;
+          if (name === 'pick-engine') d.engine = arg ? Number(arg) : undefined;
           if (name === 'pick-size') d.size = arg as SizeId;
           if (name === 'pick-marketing') d.marketing = arg as MarketingId;
           sheet.error = undefined;

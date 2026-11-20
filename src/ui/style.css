@@ -3480,7 +3480,9 @@ nav.tabs {
 
 /* Store */
 .dock-actions {
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr);
+  grid-auto-columns: auto;
+  grid-auto-flow: column;
 }
 
 .dock-actions .btn.tile {
@@ -4334,4 +4336,44 @@ canvas.office {
 /* The dock's Release button while the game is still too buggy: full width, but quiet (no pulse). */
 .btn.release-buggy {
   width: 100%;
+}
+
+/* Custom engines: the builder's name field, feature toggles and the feature chips on engines. */
+.engine-name {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.engine-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.option.feature .check {
+  width: 26px;
+  height: 26px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border: 2px solid var(--ink);
+  border-radius: 8px;
+  background: var(--card, #fff);
+  font-weight: 800;
+}
+
+.option.feature.on .check {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* With the Engines tile there are three tiles beside New Game: narrower tiles so all four fit on a small phone. */
+.dock-actions.four .btn.tile {
+  width: 62px;
+}
+
+.dock-actions.four .btn.big {
+  font-size: 15px;
 }

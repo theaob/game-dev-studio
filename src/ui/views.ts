@@ -28,6 +28,7 @@ import type { GameProject, GameState, PolishMode, ReleasedGame, Staff } from '..
 import { esc, money, num, scoreClass } from './format';
 import { officeCost, officeRent } from '../core/economy';
 import { goalDone, goalProgress, goalsUnlocked } from '../core/goals';
+import { ENGINE_FEATURES, engineTechLabel, featureById, featuresNotBuilt, unlockedFeatures } from '../core/engines';
 import { RND, RND_BUGS_PER_LEVEL, RND_POINTS_PER_LEVEL, rndBlocker, rndById, rndCost, rndLevel, type RndId } from '../core/rnd';
 
 export type Tab = 'studio' | 'games' | 'research' | 'staff' | 'news';
@@ -104,7 +105,7 @@ export function renderDock(state: GameState, offer: RewardOffer | null = null, c
 /** What decides the dock's height, apart from live numbers: re-check whether the full card fits when it changes. */
 export function dockLayoutKey(state: GameState, offer: RewardOffer | null = null): string {
   const a = state.activity;
-  const card = !a ? 'idle' : a.kind === 'contract' ? 'contract' : `game:${a.phase >= 3}:${activeBoosts(state) ? 1 : 0}`;
+  const card = !a ? 'idle' : a.kind !== 'game' ? a.kind : `game:${a.phase >= 3}:${activeBoosts(state) ? 1 : 0}`;
   return `${card}|${dockChips(state, offer).length}`;
 }
 
@@ -227,11 +228,29 @@ function renderActivity(state: GameState, compact: boolean): string {
   const a = state.activity;
   if (!a) {
     const offers = state.contractOffers.length;
+    const engines = engineTile(state);
     return `
-    <div class="dock-actions" id="activity">
+    <div class="dock-actions${engines ? ' four' : ''}" id="activity">
       <button class="btn big pulse" data-action="new-game">🎮 New Game</button>
       <button class="btn tile" data-action="contracts" ${offers ? '' : 'disabled'}>📝<small>Contracts</small>${offers ? `<i class="badge">${offers}</i>` : ''}</button>
+      ${engines}
       <button class="btn tile" data-action="store">🛒<small>Store</small></button>
+    </div>`;
+  }
+
+  if (a.kind === 'engine') {
+    const pct = (a.weeksDone / a.weeks) * 100;
+    return `
+    <div class="dock-card" id="activity">
+      <div class="row">
+        <span class="dock-icon">⚙️</span>
+        <div class="grow">
+          <div class="dock-title">${esc(a.name)}</div>
+          <div class="sub">Building engine · week ${a.weeksDone}/${a.weeks} · ${engineTechLabel(a.features)}</div>
+        </div>
+      </div>
+      <div class="engine-chips">${a.features.map((id) => `<span class="tag">${featureById(id).icon} ${esc(featureById(id).name)}</span>`).join('')}</div>
+      <div class="bar live mt-s"><i style="width:${pct}%"></i></div>
     </div>`;
   }
 
@@ -318,6 +337,13 @@ function renderActivity(state: GameState, compact: boolean): string {
     ${polishing ? polishPicker(a) : ''}
     ${release}
   </div>`;
+}
+
+/** The Engines button: shows once research has unlocked an engine feature, with a dot when one isn't built into any engine yet. */
+function engineTile(state: GameState): string {
+  if (!unlockedFeatures(state).length && !state.engines?.length) return '';
+  const fresh = featuresNotBuilt(state).length;
+  return `<button class="btn tile" data-action="engines">⚙️<small>Engines</small>${fresh ? `<i class="badge">${fresh}</i>` : ''}</button>`;
 }
 
 /** Chips for boosts that are running, e.g. "☕ 3w". */
@@ -578,8 +604,12 @@ export function renderResearch(state: GameState): string {
   const groups: Record<string, string[]> = {};
   for (const r of RESEARCH) {
     const done = state.researched.includes(r.id);
-    (groups[r.category] ??= []).push(researchRow(state, r.id, r.icon ?? '🧪', r.name, r.desc, done));
+    const desc = r.engineTech ? `${r.desc} Engines with it: +${Math.round(r.engineTech * 100)}% tech points.` : r.desc;
+    (groups[r.category] ??= []).push(researchRow(state, r.id, r.icon ?? '🧪', r.name, desc, done));
   }
+  const engineNote = ENGINE_FEATURES.length
+    ? '<p class="sub">A feature does nothing on its own: build it into a custom engine (⚙️ Engines, when the studio is free), then make games with that engine.</p>'
+    : '';
   const topics = TOPICS.filter((t) => t.cost > 0).map((t) =>
     researchRow(state, t.id, t.icon, t.name, 'New game topic', state.topics.includes(t.id)),
   );
@@ -588,7 +618,7 @@ export function renderResearch(state: GameState): string {
   return `
   ${rnd.length ? `<h2>R&amp;D projects</h2><p class="sub">Research that never runs out. Each level helps forever and costs more than the last.</p><div class="list">${rnd.map((r) => rndRow(state, r.id)).join('')}</div>` : ''}
   ${Object.entries(groups)
-    .map(([cat, rows]) => `<h2>${cat}</h2><div class="list">${rows.join('')}</div>`)
+    .map(([cat, rows]) => `<h2>${cat}</h2>${cat === 'Engine features' ? engineNote : ''}<div class="list">${rows.join('')}</div>`)
     .join('')}
   <h2>Topics</h2>
   <div class="list">${topics.join('')}</div>`;

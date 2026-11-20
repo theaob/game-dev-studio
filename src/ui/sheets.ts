@@ -59,6 +59,7 @@ import { END_YEAR as LAST_YEAR, TOTAL_WEEKS } from '../core/time';
 import { goalIcon, goalProgress, goalText, rewardText, swapCooldown, type Goal } from '../core/goals';
 import { guideStep } from '../core/guide';
 import { coachCard } from './guide';
+import { ENGINE_FEATURES, bestEngine, engineBlocker, engineById, engineCost, engineTechLabel, engineWeeks, featureById, featuresNotBuilt } from '../core/engines';
 
 export type Sheet =
   | { kind: 'welcome'; name: string }
@@ -74,6 +75,7 @@ export type Sheet =
   /** `keepLabel`: the safe choice gets its own words and the big button; the risky one goes quiet. */
   | { kind: 'confirm'; text: string; action: string; arg?: string; confirmLabel: string; keepLabel?: string }
   | { kind: 'contracts' }
+  | { kind: 'engines'; name: string; features: string[]; error?: string }
   | { kind: 'store' }
   | { kind: 'decor' }
   | { kind: 'marketing' }
@@ -152,6 +154,8 @@ function stateSheet(state: GameState, sheet: Sheet, ads: MonetizationView, unloc
       return gameOver(state, ads, sheet);
     case 'contracts':
       return contracts(state);
+    case 'engines':
+      return enginesSheet(state, sheet);
     case 'store':
       return store(state, ads);
     case 'decor':
@@ -230,7 +234,8 @@ function help(): string {
       <p><b>Free with a video.</b> In the Android app, the Store has rewards for watching an optional video: an investor's cash, a free Espresso Bar or a research grant. Each one can be claimed again after a few weeks.</p>
       <p><b>Raise the bar.</b> Players expect each game to beat your last one, and the industry keeps moving. Grow your team, train them and research better tech.</p>
       <p><b>Stay solvent.</b> Rent and salaries are paid monthly. Three months in the red and you're bankrupt. Contract work pays the bills.</p>
-      <p><b>Grow.</b> Earn research points (RP) to unlock topics, bigger games and better engines. You earn RP every week you're making a game (more with a bigger team), a little even while the studio has nothing on, and with every release (more for better reviews). Move offices to hire more people.</p>
+      <p><b>Build your own engines.</b> Research unlocks engine features like Smooth Scrolling, 3D Graphics and Physics. Tap ⚙️ Engines when the studio is free to build them into an engine: it takes the team a few weeks and some money, like a game with nothing to sell. Then pick the engine when you start a game, and its features add tech points to everything the team makes.</p>
+      <p><b>Grow.</b> Earn research points (RP) to unlock topics, bigger games and engine features. You earn RP every week you're making a game (more with a bigger team), a little even while the studio has nothing on, and with every release (more for better reviews). Move offices to hire more people.</p>
       <p>The game runs from 1985 to 2025. Tap ❚❚ to pause anytime. Your progress is saved automatically.</p>
     </div>
     <div class="btn-row"><button class="btn" data-action="close">Got it</button></div>`;
@@ -580,11 +585,36 @@ function newGameScope(state: GameState, d: GameSpec): string {
             .join('')}</div>`
         : ''
     }
+    ${enginePicker(state, d)}
     <h4>Budget</h4>
     <div class="summary">
       ${cost.license ? `<div class="line"><span>Dev kit license</span><span>${money(cost.license)}</span></div>` : ''}
       ${cost.size ? `<div class="line"><span>Production budget</span><span>${money(cost.size)}</span></div>` : ''}
       ${cost.marketing ? `<div class="line"><span>Marketing</span><span>${money(cost.marketing)}</span></div>` : ''}
+    </div>`;
+}
+
+/** Which custom engine the game is made with: the studio's engines, best first, or none at all. */
+function enginePicker(state: GameState, d: GameSpec): string {
+  const engines = [...(state.engines ?? [])].reverse();
+  if (!engines.length) {
+    return featuresNotBuilt(state).length
+      ? '<h4>Engine</h4><p class="sub">No custom engine yet: this game is made with basic tools. Build one from ⚙️ Engines when the studio is free for more tech points.</p>'
+      : '';
+  }
+  const best = bestEngine(state);
+  const row = (id: number | undefined, name: string, sub: string, tag: string) => `
+        <button class="option ${d.engine === id ? 'on' : ''}" data-action="pick-engine" data-arg="${id ?? ''}">
+          <span class="emoji">${id === undefined ? '🧰' : '⚙️'}</span>
+          <span class="grow"><b>${esc(name)}</b> ${tag}<br/><span class="sub">${sub}</span></span>
+        </button>`;
+  return `
+    <h4>Which engine?</h4>
+    <div class="options">
+      ${engines
+        .map((e) => row(e.id, e.name, `${engineTechLabel(e.features)} · ${e.features.map((f) => featureById(f).icon).join(' ')}`, e === best ? '<span class="tag good">Best</span>' : ''))
+        .join('')}
+      ${row(undefined, 'No engine', 'Basic tools · no tech bonus', '')}
     </div>`;
 }
 
@@ -597,11 +627,12 @@ function importanceTag(state: GameState, genre: string, areaIndex: number): stri
   return '<span class="tag mid">● Standard</span>';
 }
 
-export function focusLean(state: GameState, phase: number, values: number[]): { design: number; tech: number } {
+/** `engineId`: the engine of a game that hasn't started yet (default: the one in development's). */
+export function focusLean(state: GameState, phase: number, values: number[], engineId?: number): { design: number; tech: number } {
   let design = 0;
   let tech = 0;
   for (const s of state.staff) {
-    for (const a of staffWeeklyPoints(state, s, phase, values)) {
+    for (const a of staffWeeklyPoints(state, s, phase, values, engineId)) {
       design += a.design;
       tech += a.tech;
     }
@@ -615,7 +646,7 @@ function focusSheet(state: GameState, sheet: Extract<Sheet, { kind: 'focus' }>):
   const genre = genreById(proj.genre);
   const phase = PHASES[sheet.phase];
   const shares = normalizeFocus(sheet.values);
-  const lean = focusLean(state, sheet.phase, sheet.values);
+  const lean = focusLean(state, sheet.phase, sheet.values, sheet.spec?.engine);
   const dPct = Math.round((lean.design / (lean.design + lean.tech || 1)) * 100);
   const balanceKnown = state.knowledge.balance[proj.genre];
   return `
@@ -750,7 +781,7 @@ function gameDetail(state: GameState, id: number, ads: MonetizationView = NO_ADS
         <h3>${esc(g.name)}</h3>
         ${acclaimTag(g) ? `<p>${acclaimTag(g).trim()}</p>` : ''}
         ${prequel || next ? `<p class="sub">${prequel ? `Part ${seriesNumber(g)} · sequel to <b>${esc(prequel.name)}</b> (${prequel.score.toFixed(1)})` : 'Part 1'}${next ? ` · followed by <b>${esc(next.name)}</b> (${next.score.toFixed(1)})` : ''}</p>` : ''}
-        <p class="muted">${topicById(g.topic).name} ${genreById(g.genre).name} · ${platformById(g.platform).name} · ${sizeById(g.size).name} · ${formatShortDate(g.releaseWeek)}</p>
+        <p class="muted">${topicById(g.topic).name} ${genreById(g.genre).name} · ${platformById(g.platform).name} · ${sizeById(g.size).name} · ${formatShortDate(g.releaseWeek)}${engineById(state, g.engine) ? ` · ⚙️ ${esc(engineById(state, g.engine)!.name)}` : ''}</p>
       </div>
     </div>
     <div class="verdict v-${vd.id} mt">
@@ -898,6 +929,67 @@ function contracts(state: GameState): string {
       }
     </div>
     <div class="btn-row"><button class="btn ghost" data-action="close">Close</button></div>`;
+}
+
+/** The studio's custom engines, and the builder for a new one from the researched features. */
+function enginesSheet(state: GameState, sheet: Extract<Sheet, { kind: 'engines' }>): string {
+  const engines = [...(state.engines ?? [])].reverse();
+  const best = bestEngine(state);
+  const owned = engines.length
+    ? engines
+        .map(
+          (e) => `
+      <div class="list-item engine-row">
+        <div class="emoji">⚙️</div>
+        <div class="grow">
+          <div class="name">${esc(e.name)} ${e === best ? '<span class="tag good">Best</span>' : ''}</div>
+          <div class="sub">${engineTechLabel(e.features)} · built ${formatShortDate(e.builtWeek)}</div>
+          <div class="engine-chips">${e.features.map((id) => `<span class="tag">${featureById(id).icon} ${esc(featureById(id).name)}</span>`).join('')}</div>
+        </div>
+      </div>`,
+        )
+        .join('')
+    : '<div class="empty">No engines yet. Until you build one, games are made with basic tools and get no tech bonus.</div>';
+  const picked = sheet.features;
+  const features = ENGINE_FEATURES.map((f) => {
+    const researched = state.researched.includes(f.id);
+    const on = picked.includes(f.id);
+    const isNew = researched && !engines.some((e) => e.features.includes(f.id));
+    return `
+        <button class="option feature ${on ? 'on' : ''}" data-action="pick-feature" data-arg="${f.id}" ${researched ? '' : 'disabled'} aria-pressed="${on}">
+          <span class="emoji">${f.icon ?? '⚙️'}</span>
+          <span class="grow"><b>${esc(f.name)}</b> ${isNew ? '<span class="tag good">New</span>' : ''}<br/><span class="sub">${researched ? `+${Math.round((f.engineTech ?? 0) * 100)}% tech points` : 'Research it first'}</span></span>
+          <span class="check" aria-hidden="true">${on ? '✓' : ''}</span>
+        </button>`;
+  }).join('');
+  const n = picked.length;
+  const cost = engineCost(state, n);
+  const weeks = engineWeeks(state, n);
+  const blocker = engineBlocker(state, sheet.name, picked);
+  const busy = state.activity ? '<p class="sub warn">Your team is busy. Engines are built between games, like a game of their own.</p>' : '';
+  return `
+    <h3>Engines</h3>
+    <p class="muted">Research unlocks engine features. Build them into an engine of your own, then pick it when you start a game: its features add tech points to everything the team makes with it.</p>
+    <h4>Your engines</h4>
+    <div class="list">${owned}</div>
+    <h4>Build a new engine</h4>
+    <div class="engine-name">
+      <input class="box-name" data-bind="engine-name" maxlength="32" value="${esc(sheet.name)}" placeholder="Name your engine" autocomplete="off" aria-label="Engine name" />
+      <button class="box-dice" data-action="engine-random-name" aria-label="Suggest another name">🎲</button>
+    </div>
+    <div class="options mt-s">${features}</div>
+    <div class="summary">
+      <div class="line"><span>Tech bonus</span><span><b>${n ? engineTechLabel(picked) : '–'}</b></span></div>
+      <div class="line"><span>Development</span><span>${n ? `${weeks} weeks with your team of ${state.staff.length}` : '–'}</span></div>
+      <div class="line"><span>Cost</span><span class="${n && cost > state.cash ? 'bad' : ''}">${n ? money(cost) : '–'}</span></div>
+    </div>
+    <p class="sub">The whole team works on the engine, and earns research points while it does, but there's nothing to sell until the next game. Every feature adds time and cost.</p>
+    ${busy}
+    ${sheet.error ? `<div class="error">${esc(sheet.error)}</div>` : ''}
+    <div class="btn-row">
+      <button class="btn ghost" data-action="close">Close</button>
+      <button class="btn" data-action="engine-start" ${blocker ? 'disabled' : ''}>⚙️ Build engine</button>
+    </div>`;
 }
 
 function storeRow(state: GameState, item: StoreItem): string {
