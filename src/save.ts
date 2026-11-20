@@ -1,4 +1,5 @@
 import { SAVE_VERSION } from './core/sim';
+import { migrateEngines } from './core/engines';
 import type { GameState } from './core/types';
 import { NO_RECORDS, type CareerRecords } from './core/career';
 
@@ -10,6 +11,7 @@ export function loadGame(): GameState | null {
     if (!raw) return null;
     const state = JSON.parse(raw) as GameState;
     if (state.version !== SAVE_VERSION) return null;
+    migrateEngines(state);
     return state;
   } catch {
     return null;

@@ -47,6 +47,7 @@ import { acclaimFor, longAwaitedHype, sequelHype } from './acclaim';
 import { ESPORTS_FANS, PUBLISHING_SALES, hasVenture, licenseCost, phaseWeeks, platformFit, ventureHypeMult } from './ventures';
 import { expertiseMult, genreLevel, topicLevel } from './expertise';
 import { rndBugMult, rndDesignMult, rndTechMult } from './rnd';
+import { engineById, engineTechMult, isEngineFeature, tickEngine } from './engines';
 import { rollDecision } from './events';
 import { average, benchmark, clamp, evaluate, normalizeFocus, rollReviews, scoreFactor } from './scoring';
 import { END_YEAR, START_YEAR, TOTAL_WEEKS, WEEKS_PER_MONTH, WEEKS_PER_YEAR, formatShortDate, marketWeek, yearFraction, yearOf } from './time';
@@ -102,6 +103,7 @@ export function createGame(studioName: string, seed = Date.now()): GameState {
     totalRevenue: 0,
     debtStrikes: 0,
     over: null,
+    engines: [],
   };
   state.staff.push({ id: state.nextId++, name: 'You', design: 3, tech: 3, speed: 1, salary: 0, founder: true, hiredWeek: 0 });
   refreshContracts(state);
@@ -146,12 +148,15 @@ export function hasResearch(state: GameState, id: string): boolean {
   return state.researched.includes(id);
 }
 
-export function techMultiplier(state: GameState): number {
-  let m = 1;
-  if (hasResearch(state, 'engine2')) m *= 1.15;
-  if (hasResearch(state, 'engine3')) m *= 1.15;
-  if (hasResearch(state, 'engine4')) m *= 1.2;
-  return m * rndTechMult(state) * storeOutputMultiplier(state);
+/** The engine the game in development is made with, if any. */
+function activeEngineId(state: GameState): number | undefined {
+  return state.activity?.kind === 'game' ? state.activity.engine : undefined;
+}
+
+/** Tech output: the features of the game's custom engine (see engines.ts), Engine R&D and the Store. */
+export function techMultiplier(state: GameState, engineId = activeEngineId(state)): number {
+  const engine = engineById(state, engineId);
+  return (engine ? engineTechMult(engine.features) : 1) * rndTechMult(state) * storeOutputMultiplier(state);
 }
 
 export function designMultiplier(state: GameState): number {
@@ -346,6 +351,7 @@ export function validateGame(state: GameState, spec: GameSpec): string | null {
   if (!platform || !isPlatformAvailable(platform, yearFraction(marketWeek(state.week)))) return 'Platform not available.';
   if (!availableSizes(state).some((s) => s.id === spec.size)) return 'Game size not researched.';
   if (!availableMarketing(state).some((m) => m.id === spec.marketing)) return 'Marketing not available.';
+  if (spec.engine !== undefined && !engineById(state, spec.engine)) return 'That engine could not be found.';
   if (spec.sequelOf !== undefined) {
     const original = state.released.find((g) => g.id === spec.sequelOf);
     if (!original) return 'The original game could not be found.';
@@ -432,6 +438,7 @@ export function researchBlocker(state: GameState, id: string): string | null {
     if (item.minOffice !== undefined && state.officeLevel < item.minOffice) {
       return `Requires a ${OFFICES[item.minOffice].name}.`;
     }
+    if (item.fromYear && yearOf(state.week) < item.fromYear) return `Available from ${item.fromYear}.`;
   } else {
     if (!TOPICS.some((t) => t.id === id)) return 'Unknown research.';
     if (state.topics.includes(id)) return 'Already researched.';
@@ -448,7 +455,15 @@ export function doResearch(state: GameState, id: string): string | null {
   if (item) {
     state.researched.push(id);
     const genre = GENRES.find((g) => g.research === id);
-    notify(state, genre ? `New genre unlocked: ${genre.name}.` : `Research complete: ${item.name}.`, 'good');
+    notify(
+      state,
+      genre
+        ? `New genre unlocked: ${genre.name}.`
+        : isEngineFeature(id)
+          ? `New engine feature: ${item.name}. Build it into a custom engine to use it.`
+          : `Research complete: ${item.name}.`,
+      'good',
+    );
   } else {
     state.topics.push(id);
     notify(state, `New topic unlocked: ${topicById(id).name}.`, 'good');
@@ -633,6 +648,7 @@ export function releaseGame(state: GameState): ReleaseReport | string {
     cost: p.cost,
     sequelOf: original?.id,
     ...(p.cover !== undefined ? { cover: p.cover } : {}),
+    ...(p.engine !== undefined ? { engine: p.engine } : {}),
     series: original ? seriesNumber(original) + 1 : 1,
     hype: Math.round(hype),
     acclaim: acclaimFor(score)?.id,
@@ -742,14 +758,16 @@ export function releaseGame(state: GameState): ReleaseReport | string {
 // ---------------------------------------------------------------------------
 
 /** Points one staff member produces in a week given a phase focus. */
-export function staffWeeklyPoints(state: GameState, s: Staff, phase: number, rawFocus: number[]) {
+/** `engineId`: the engine to count, for a game that hasn't started yet (default: the one in development's). */
+export function staffWeeklyPoints(state: GameState, s: Staff, phase: number, rawFocus: number[], engineId?: number) {
   const f = normalizeFocus(rawFocus);
   const areas = PHASES[phase].areas;
   const act = state.activity;
   const know = act?.kind === 'game' ? expertiseMult(state.released, act.genre, act.topic) : 1;
+  const techMult = engineId === undefined ? techMultiplier(state) : techMultiplier(state, engineId);
   const perArea = areas.map((a, i) => ({
     design: f[i] * a.designShare * s.design * s.speed * designMultiplier(state) * know,
-    tech: f[i] * (1 - a.designShare) * s.tech * s.speed * techMultiplier(state) * know,
+    tech: f[i] * (1 - a.designShare) * s.tech * s.speed * techMult * know,
   }));
   return perArea;
 }
@@ -795,6 +813,8 @@ export function tick(state: GameState): SimEvent[] {
       notify(state, `Contract "${act.offer.title}" done: +$${act.offer.pay.toLocaleString('en-US')}, +${act.offer.rp} RP.`, 'good');
       events.push({ type: 'contractDone', offer: act.offer });
     }
+  } else if (act?.kind === 'engine') {
+    tickEngine(state, act, events);
   } else if (!act) {
     // With no game in development the team tinkers and reads up, slowly earning research points.
     state.rp = Math.floor(state.rp) + wholeNumber(state, weeklyRp(state) * IDLE_RP_SHARE);
@@ -1308,7 +1328,7 @@ export function notify(state: GameState, text: string, kind: NoticeKind) {
 }
 
 /** Rounds randomly up or down so whole-number totals keep the same average (2.3 → 3 thirty percent of the time). */
-function wholeNumber(state: GameState, v: number): number {
+export function wholeNumber(state: GameState, v: number): number {
   const base = Math.floor(v);
   return base + (random(state) < v - base ? 1 : 0);
 }

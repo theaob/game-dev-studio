@@ -318,7 +318,11 @@ export interface ResearchItem {
   cost: number;
   requires?: string;
   minOffice?: number;
-  category: 'Game types' | 'Genres' | 'Technology' | 'Business';
+  category: 'Game types' | 'Genres' | 'Engine features' | 'Technology' | 'Business';
+  /** Can't be researched before this year. */
+  fromYear?: number;
+  /** Engine features: extra tech points (0.15 = +15%) in games made with an engine that has it; features multiply. */
+  engineTech?: number;
   /** Shown instead of the test tube in the Research list. */
   icon?: string;
 }
@@ -329,9 +333,14 @@ export const RESEARCH: ResearchItem[] = [
   { id: 'genre_platformer', name: 'Platformers', icon: '🏃', desc: 'A new genre: run, jump and collect. Loves heroes, ninjas and dinosaurs.', cost: 25, category: 'Genres' },
   { id: 'genre_shooter', name: 'Shooters', icon: '🎯', desc: 'A new genre: fast, technical and loud. Sci-fi, zombies and the military fit it well.', cost: 60, requires: 'engine2', category: 'Genres' },
   { id: 'genre_rhythm', name: 'Rhythm Games', icon: '🥁', desc: 'A new genre: play to the beat. Sound matters more than anything.', cost: 90, category: 'Genres' },
-  { id: 'engine2', name: 'Engine 2.0', desc: '+15% tech points.', cost: 40, category: 'Technology' },
-  { id: 'engine3', name: '3D Engine', desc: '+15% tech points.', cost: 140, requires: 'engine2', category: 'Technology' },
-  { id: 'engine4', name: 'Next-Gen Engine', desc: '+20% tech points.', cost: 400, requires: 'engine3', category: 'Technology' },
+  // Engine features don't help on their own: build them into a custom engine (engines.ts) and make games with it.
+  // engine2, engine3 and engine4 keep the ids of the old engine upgrades, so saves keep what they researched.
+  { id: 'engine2', name: 'Smooth Scrolling', icon: '🖼️', desc: 'Sprites that glide across the screen.', engineTech: 0.15, cost: 40, category: 'Engine features' },
+  { id: 'feat_sound', name: 'Digital Sound', icon: '🔊', desc: 'Sampled effects and music.', engineTech: 0.04, cost: 50, category: 'Engine features' },
+  { id: 'engine3', name: '3D Graphics', icon: '🧊', desc: 'Polygons, cameras and textures.', engineTech: 0.15, cost: 140, requires: 'engine2', category: 'Engine features' },
+  { id: 'feat_physics', name: 'Physics', icon: '🎱', desc: 'Things fall, bounce and break.', engineTech: 0.05, cost: 200, requires: 'engine3', category: 'Engine features' },
+  { id: 'feat_online', name: 'Online Play', icon: '🌐', desc: 'Players meet over the internet.', engineTech: 0.05, cost: 260, requires: 'engine3', fromYear: 1997, category: 'Engine features' },
+  { id: 'engine4', name: 'Next-Gen Rendering', icon: '✨', desc: 'Shaders, lighting and HD.', engineTech: 0.2, cost: 400, requires: 'engine3', category: 'Engine features' },
   { id: 'design1', name: 'Design Documents', desc: '+15% design points.', cost: 40, category: 'Technology' },
   { id: 'design2', name: 'Playtesting', desc: '+15% design points.', cost: 140, requires: 'design1', category: 'Technology' },
   { id: 'design3', name: 'Narrative Tools', desc: '+20% design points.', cost: 400, requires: 'design2', category: 'Technology' },

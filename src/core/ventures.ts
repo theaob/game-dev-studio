@@ -27,7 +27,7 @@ export interface Venture {
 
 export const VENTURES: Venture[] = [
   { id: 'mocap', name: 'Motion Capture Stage', icon: '🎬', desc: 'Actors in dotted suits make jaw-dropping trailers: promos and GameExpo build 25% more hype.', price: 1_500_000, fromYear: 1995 },
-  { id: 'engine_team', name: 'Engine Division', icon: '⚙️', desc: 'A team that only works on your in-house engine: large games take a week less per phase to make.', price: 4_000_000 },
+  { id: 'engine_team', name: 'Engine Division', icon: '⚙️', desc: 'A team that only works on your in-house engines: large games take a week less per phase to make, and new engines are built in half the time.', price: 4_000_000 },
   { id: 'hardware', name: 'Hardware Division', icon: '🔧', desc: 'Engineers who take every console apart: dev kits are free, and genres that are a weak fit for a platform lose only half as much.', price: 5_000_000 },
   { id: 'esports', name: 'Esports League', icon: '🏟️', desc: 'Stadium tournaments for your games: 15% more fans from every copy sold.', price: 6_000_000, fromYear: 2005 },
   { id: 'publishing', name: 'Worldwide Publishing', icon: '🌍', desc: 'Your own offices on every continent: every new release sells 10% more copies.', price: 10_000_000 },

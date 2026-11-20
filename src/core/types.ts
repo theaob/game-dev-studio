@@ -34,6 +34,8 @@ export interface GameSpec {
   sequelOf?: number;
   /** Seed for the game's box cover art (see ui/cover.ts); absent on older saves. */
   cover?: number;
+  /** Id of the studio's custom engine it's made with (see engines.ts); absent = no engine, basic tools only. */
+  engine?: number;
 }
 
 /** Fix bugs, add design or tech points, or rework the game to shift points towards the genre's ideal split. */
@@ -91,7 +93,27 @@ export interface ContractJob {
   weeksDone: number;
 }
 
-export type Activity = GameProject | ContractJob;
+/** A custom engine the studio built from the engine features it researched (see engines.ts). */
+export interface Engine {
+  id: number;
+  name: string;
+  /** Research ids of the engine features built into it. */
+  features: string[];
+  builtWeek: number;
+}
+
+/** Building a custom engine: the whole team works on it, like on a game, but there's nothing to sell. */
+export interface EngineProject {
+  kind: 'engine';
+  name: string;
+  features: string[];
+  startedWeek: number;
+  weeks: number;
+  weeksDone: number;
+  cost: number;
+}
+
+export type Activity = GameProject | ContractJob | EngineProject;
 
 export interface ReleasedGame extends GameSpec {
   id: number;
@@ -209,6 +231,8 @@ export interface GameState {
   ventures?: string[];
   /** Rival studios bought out. */
   acquired?: string[];
+  /** Custom engines the studio has built, oldest first (absent on saves from before engines were built). */
+  engines?: Engine[];
   /** Levels of the never-ending R&D projects (see rnd.ts). */
   rnd?: Partial<Record<string, number>>;
   /** The guided first game: the cards already dismissed, and whether it's finished or skipped (see guide.ts). */
@@ -283,6 +307,7 @@ export type SimEvent =
   | { type: 'zone'; staffId: number; name: string }
   | { type: 'devComplete' }
   | { type: 'contractDone'; offer: ContractOffer }
+  | { type: 'engineDone'; engine: Engine }
   | { type: 'notice'; notice: Notice }
   | { type: 'gameOver'; reason: 'bankrupt' | 'retired' }
   | { type: 'catLap'; staffId: number; name: string }

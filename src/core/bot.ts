@@ -28,6 +28,7 @@ import {
 } from './sim';
 import { RIVAL_CLASH_MULT, rivalClash, trendMult } from './industry';
 import { yearFraction } from './time';
+import { bestEngine, engineCost, featuresNotBuilt, startEngine, unlockedFeatures } from './engines';
 import type { GameSpec, GameState, ReleaseReport } from './types';
 
 /**
@@ -100,11 +101,18 @@ export function botTurn(state: GameState, style: BotStyle, reports: ReleaseRepor
     return;
   }
 
+  // Sensible players build a new engine once research has unlocked a feature their engines don't have.
+  if (style !== 'naive' && featuresNotBuilt(state).length) {
+    const features = unlockedFeatures(state).map((f) => f.id);
+    if (state.cash - engineCost(state, features.length) > reserve + monthlyCosts(state) * 2 && !startEngine(state, `Engine ${(state.engines?.length ?? 0) + 1}`, features)) return;
+  }
+
   const spec = style === 'smart' ? smartSpec(state) : style === 'casual' ? smartSpec(state, 2, true) : style === 'eager' ? eagerSpec(state) : naiveSpec(state);
   if (!spec) {
     if (state.contractOffers.length) startContract(state, state.contractOffers[0].id);
     return;
   }
+  spec.engine = bestEngine(state)?.id;
   const focus = style === 'smart' ? smartFocus(spec.genre, 0) : [50, 50, 50];
   if (startGame(state, spec, focus) && state.contractOffers.length) {
     startContract(state, state.contractOffers[0].id);
